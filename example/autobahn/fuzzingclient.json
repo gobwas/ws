@@ -1,0 +1,17 @@
+
+{
+   "outdir": "./example/autobahn/reports/servers",
+   "servers": [
+      {
+		 "agent": "Library",
+         "url":   "ws://127.0.0.1:9001/library"
+      },
+      {
+		 "agent": "Utils",
+         "url":   "ws://127.0.0.1:9001/utils"
+      }
+   ],
+   "cases": ["*"],
+   "exclude-cases": [],
+   "exclude-agent-cases": {}
+}
