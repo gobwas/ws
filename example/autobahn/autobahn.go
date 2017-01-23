@@ -83,7 +83,7 @@ func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
 				r = ur
 			}
 
-			wr := wsutil.NextWriter(conn, h.OpCode, false)
+			wr := wsutil.NewWriter(conn, h.OpCode, false)
 			_, err = io.Copy(wr, r)
 			if err == nil && ur != nil {
 				err = ur.Close()

@@ -3,16 +3,12 @@ package wsutil
 import (
 	"io"
 
+	"github.com/gobwas/pool"
 	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
 )
 
 const defaultWriteBuffer = 4096
-
-type WriterConfig struct {
-	Op   ws.OpCode
-	Mask bool
-}
 
 type Writer struct {
 	wr  io.Writer
@@ -26,27 +22,54 @@ type Writer struct {
 	mask bool
 }
 
-func NextWriter(dst io.Writer, op ws.OpCode, mask bool) *Writer {
-	return NewWriterSize(dst, 0, WriterConfig{Op: op, Mask: mask})
+var writers = pool.MakePoolMap(128, 65536)
+
+// GetWriter tries to reuse writer and get it from the pool.
+// If no writer is found, it calls NewWriterSize.
+//
+// Using this function is useful for memory consumption optimizations,
+// because NewWriter and NewWriterSize makes allocations for inner bytes buffer.
+//
+// If you have your own bytes buffer pool (pool of []byte) you could
+// use NewWriterBuffer to use pooled bytes in writer.
+func GetWriter(dst io.Writer, op ws.OpCode, mask bool, n int) *Writer {
+	n = pool.CeilToPowerOfTwo(n)
+	if p, ok := writers[n]; ok {
+		if w := p.Get(); w != nil {
+			ret := w.(*Writer)
+			ret.Reset(dst, op, mask)
+			return ret
+		}
+	}
+	return NewWriterSize(dst, op, mask, n)
 }
 
-func NewWriter(dst io.Writer, c WriterConfig) *Writer {
-	return NewWriterSize(dst, defaultWriteBuffer, c)
+// PutWriter puts w for future reuse by GetWriter.
+func PutWriter(w *Writer) {
+	n := pool.CeilToPowerOfTwo(len(w.buf))
+	if p, ok := writers[n]; ok {
+		w.Reset(nil, 0, false)
+		p.Put(w)
+	}
 }
 
-func NewWriterSize(dst io.Writer, n int, c WriterConfig) *Writer {
+func NewWriter(dst io.Writer, op ws.OpCode, mask bool) *Writer {
+	return NewWriterSize(dst, op, mask, 0)
+}
+
+func NewWriterSize(dst io.Writer, op ws.OpCode, mask bool, n int) *Writer {
 	if n <= 0 {
 		n = defaultWriteBuffer
 	}
-	return NewWriterBuffer(dst, make([]byte, n), c)
+	return NewWriterBuffer(dst, op, mask, make([]byte, n))
 }
 
-func NewWriterBuffer(wr io.Writer, buf []byte, c WriterConfig) *Writer {
+func NewWriterBuffer(wr io.Writer, op ws.OpCode, mask bool, buf []byte) *Writer {
 	return &Writer{
 		wr:   wr,
 		buf:  buf,
-		op:   c.Op,
-		mask: c.Mask,
+		op:   op,
+		mask: mask,
 	}
 }
 
@@ -101,6 +124,13 @@ func (w *Writer) ReadFrom(src io.Reader) (n int64, err error) {
 		err = nil
 	}
 	return
+}
+
+func (w *Writer) Reset(wr io.Writer, op ws.OpCode, mask bool) {
+	w.n = 0
+	w.wr = wr
+	w.op = op
+	w.mask = mask
 }
 
 func (w *Writer) Flush() error {
