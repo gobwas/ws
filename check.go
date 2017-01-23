@@ -96,9 +96,9 @@ func CheckHeader(h Header, s State) error {
 	// as defined in Section 7.4.1. A server MUST NOT mask any frames that it sends to the client.
 	// A client MUST close a connection if it detects a masked frame. In this case, it MAY use the
 	// status code 1002 (protocol error) as defined in Section 7.4.1.
-	case s.Is(StateServerSide) && h.Mask == nil:
+	case s.Is(StateServerSide) && !h.Masked:
 		return ErrProtocolMaskRequired
-	case s.Is(StateClientSide) && h.Mask != nil:
+	case s.Is(StateClientSide) && h.Masked:
 		return ErrProtocolMaskUnexpected
 
 	// [RFC6455]: See detailed explanation in 5.4 section.

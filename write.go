@@ -40,7 +40,7 @@ func WriteHeader(w io.Writer, h Header) error {
 		return ErrHeaderLengthUnexpected
 	}
 
-	if h.Mask != nil {
+	if h.Masked {
 		lenByte |= bit0
 		size += 4
 	}
@@ -64,8 +64,8 @@ func WriteHeader(w io.Writer, h Header) error {
 		maskPos += 8
 	}
 
-	if h.Mask != nil {
-		copy(bts[maskPos:], h.Mask)
+	if h.Masked {
+		copy(bts[maskPos:], h.Mask[:])
 	}
 
 	_, err := w.Write(bts)

@@ -3,6 +3,7 @@ package ws
 import (
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 )
 
 // Constants defined by specification.
@@ -181,7 +182,8 @@ type Header struct {
 	Rsv    byte
 	OpCode OpCode
 	Length int64
-	Mask   []byte
+	Masked bool
+	Mask   [4]byte
 }
 
 // Rsv1 reports whether the header has first rsv bit set.
@@ -279,7 +281,7 @@ func MaskFrame(f Frame) Frame {
 // with masked payload and Mask header's field set.
 // Note that it copies f payload to prevent collisions.
 // For less allocations you could use MaskFrameInplaceWith or construct frame manually.
-func MaskFrameWith(f Frame, mask []byte) Frame {
+func MaskFrameWith(f Frame, mask [4]byte) Frame {
 	p := make([]byte, len(f.Payload))
 	copy(p, f.Payload)
 	f.Payload = p
@@ -295,15 +297,17 @@ func MaskFrameInplace(f Frame) Frame {
 // MaskFrameInplaceWith masks frame with given mask and returns frame
 // with masked payload and Mask header's field set.
 // Note that it applies xor cipher to f.Payload without copying, that is, it modifies f.Payload inplace.
-func MaskFrameInplaceWith(f Frame, mask []byte) Frame {
-	f.Header.Mask = mask
-	Cipher(f.Payload, mask, 0)
+func MaskFrameInplaceWith(f Frame, m [4]byte) Frame {
+	f.Header.Masked = true
+	f.Header.Mask = m
+	Cipher(f.Payload, m, 0)
 	return f
 }
 
 // NewMask creates new random mask.
-func NewMask() []byte {
-	return randBytes(4)
+func NewMask() (ret [4]byte) {
+	binary.BigEndian.PutUint32(ret[:], rand.Uint32())
+	return
 }
 
 // CompileFrame returns byte representation of given frame.

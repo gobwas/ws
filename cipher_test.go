@@ -23,11 +23,11 @@ func TestCipher(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			// naive implementation of xor-cipher
-			exp := cipherNaive(test.in, test.mask[:], 0)
+			exp := cipherNaive(test.in, test.mask, 0)
 
 			res := make([]byte, len(test.in))
 			copy(res, test.in)
-			Cipher(res, test.mask[:], 0)
+			Cipher(res, test.mask, 0)
 
 			if !reflect.DeepEqual(res, exp) {
 				t.Errorf("Cipher(%v, %v):\nact:\t%v\nexp:\t%v\n", test.in, test.mask, res, exp)
@@ -41,13 +41,13 @@ func TestCipherChops(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", n), func(t *testing.T) {
 			p := make([]byte, n)
 			b := make([]byte, n)
-			m := make([]byte, 4)
+			var m [4]byte
 
 			_, err := rand.Read(p)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = rand.Read(m)
+			_, err = rand.Read(m[:])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,14 +83,14 @@ func TestCipherChops(t *testing.T) {
 	}
 }
 
-func cipherNaive(p, m []byte, pos int) []byte {
+func cipherNaive(p []byte, m [4]byte, pos int) []byte {
 	r := make([]byte, len(p))
 	copy(r, p)
 	cipherNaiveNoCp(r, m, pos)
 	return r
 }
 
-func cipherNaiveNoCp(p, m []byte, pos int) []byte {
+func cipherNaiveNoCp(p []byte, m [4]byte, pos int) []byte {
 	for i := 0; i < len(p); i++ {
 		p[i] ^= m[(pos+i)%4]
 	}
@@ -134,8 +134,8 @@ func BenchmarkCipher(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		mask := make([]byte, 4)
-		_, err = rand.Read(mask)
+		var mask [4]byte
+		_, err = rand.Read(mask[:])
 		if err != nil {
 			b.Fatal(err)
 		}
