@@ -166,7 +166,7 @@ func TestDialerHandshake(t *testing.T) {
 				WriterPool: &pw,
 			}
 
-			_, _, err := d.Dial(context.Background(), "ws://gobwas.com")
+			_, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
 			if test.err != err {
 				t.Errorf("unexpected error: %v;\n\twant %v", err, test.err)
 			}

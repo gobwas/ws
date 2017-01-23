@@ -57,15 +57,12 @@ var (
 var DefaultDialer Dialer
 
 // Dial is like Dialer{}.Dial().
-func Dial(ctx context.Context, urlstr string) (conn net.Conn, resp Response, err error) {
-	return DefaultDialer.Dial(ctx, urlstr)
+func Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, err error) {
+	return DefaultDialer.Dial(ctx, urlstr, h)
 }
 
 // Dialer contains options for establishing websocket connection to an url.
 type Dialer struct {
-	// Header is the set of custom headers that will be sent with the request.
-	Header http.Header
-
 	// Protocol is the list of subprotocol names the client wishes to speak, ordered by preference.
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	Protocol []string
@@ -94,11 +91,12 @@ type Dialer struct {
 }
 
 // Dial connects to the url host and handshakes connection to websocket.
-func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, resp Response, err error) {
+// Set of additional headers could be passed to be sent with the request.
+func (d Dialer) Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, err error) {
 	req := getRequest()
 	defer putRequest(req)
 
-	err = req.Reset(urlstr, d.Header, d.Protocol, d.Extensions)
+	err = req.Reset(urlstr, h, d.Protocol, d.Extensions)
 	if err != nil {
 		return
 	}
