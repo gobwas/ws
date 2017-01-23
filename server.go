@@ -27,7 +27,7 @@ var (
 )
 
 // SelectFromSlice creates accept function that could be used as Protocol/Extension
-// select function in the UpgradeConfig.
+// select during upgrade.
 func SelectFromSlice(accept []string) func(string) bool {
 	if len(accept) > 16 {
 		mp := make(map[string]struct{}, len(accept))
@@ -49,26 +49,41 @@ func SelectFromSlice(accept []string) func(string) bool {
 	}
 }
 
-// UpgradeConfig contains options for upgrading http connection to websocket.
-type UpgradeConfig struct {
-	// Header is the set of custom headers that will be sent with the response.
-	Header http.Header
+// SelectSingle creates accept function that could be used as Protocol/Extension
+// select during upgrade.
+func SelectSingle(v string) func(string) bool {
+	return func(p string) bool {
+		return v == p
+	}
+}
 
+// DefaultUpgrader is upgrader that holds no options and is used by Upgrade function.
+var DefaultUpgrader Upgrader
+
+// Upgrade is like Upgrader{}.Upgrade.
+func Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+	return DefaultUpgrader.Upgrade(r, w, h)
+}
+
+// Upgrader contains options for upgrading http connection to websocket.
+type Upgrader struct {
 	// Protocol is the select function that is used to select subprotocol
-	// from client passed list.
+	// from list requested by client. If this field is set, then the first matched
+	// protocol is sent to a client as negotiated.
 	Protocol func(string) bool
 
 	// Extension is the select function that is used to select extensions
-	// from client passed list.
+	// from list requested by client. If this field is set, then the all matched
+	// extensions are sent to a client as negotiated.
 	Extension func(string) bool
 }
 
-// Upgrade upgrades http connection to websocket.
-// It hijacks net.Conn from response writer.
+// Upgrade upgrades http connection to the websocket connection.
+// Set of additional headers could be passed to be sent with the response after successful upgrade.
 //
-// If succeed it returns upgraded connection and Handshake struct describing
-// handshake info.
-func Upgrade(r *http.Request, w http.ResponseWriter, c *UpgradeConfig) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+// It hijacks net.Conn from w and returns recevied net.Conn and bufio.ReadWriter.
+// On successful handshake it returns Handshake struct describing handshake info.
+func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
 	if r.Host == "" {
 		err = ErrBadHost
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -115,27 +130,27 @@ func Upgrade(r *http.Request, w http.ResponseWriter, c *UpgradeConfig) (conn net
 	writeHeaderKey(rw.Writer, headerSecAccept)
 	writeHeaderValueBytes(rw.Writer, accept)
 
-	if c != nil {
-		if p, check := r.Header[headerSecProtocol], c.Protocol; len(p) > 0 && check != nil {
-			for _, v := range p {
-				if check(v) {
-					hs.Protocol = v
-					writeHeader(rw.Writer, headerSecProtocol, hs.Protocol)
-					break
-				}
+	var check func(string) bool
+	if check = u.Protocol; check != nil {
+		for _, v := range r.Header[headerSecProtocol] {
+			if check(v) {
+				hs.Protocol = v
+				writeHeader(rw.Writer, headerSecProtocol, hs.Protocol)
+				break
 			}
 		}
+	}
+	if check = u.Extension; check != nil {
 		// TODO(gobwas) parse extensions.
-		//if e, check := r.Header[headerSecExtensions], c.Extension; len(e) > 0 && check != nil {
 		//	hs.Extensions = selectExtensions(e, c.Extension)
 		//	if len(hs.Extensions) > 0 {
 		//		writeHeader(rw.Writer, headerSecExtensions, strings.Join(hs.Extensions, ", "))
 		//	}
-		//}
-		for key, values := range c.Header {
-			for _, val := range values {
-				writeHeader(rw.Writer, key, val)
-			}
+	}
+
+	for key, values := range h {
+		for _, val := range values {
+			writeHeader(rw.Writer, key, val)
 		}
 	}
 

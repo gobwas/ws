@@ -19,12 +19,12 @@ import (
 
 func TestUpgrade(t *testing.T) {
 	for i, test := range []struct {
-		nonce []byte
-		req   *http.Request
-		res   *http.Response
-		hs    Handshake
-		cfg   *UpgradeConfig
-		err   error
+		nonce    []byte
+		req      *http.Request
+		res      *http.Response
+		hs       Handshake
+		upgrader Upgrader
+		err      error
 	}{
 		{
 			nonce: mustMakeNonce(),
@@ -37,7 +37,7 @@ func TestUpgrade(t *testing.T) {
 				headerUpgrade:    []string{"websocket"},
 				headerConnection: []string{"Upgrade"},
 			}),
-			cfg: &UpgradeConfig{
+			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
 					return true
 				},
@@ -54,7 +54,7 @@ func TestUpgrade(t *testing.T) {
 				headerUpgrade:    []string{"websocket"},
 				headerConnection: []string{"Upgrade"},
 			}),
-			cfg: &UpgradeConfig{
+			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
 					return true
 				},
@@ -74,7 +74,7 @@ func TestUpgrade(t *testing.T) {
 				headerSecProtocol: []string{"b"},
 			}),
 			hs: Handshake{Protocol: "b"},
-			cfg: &UpgradeConfig{
+			upgrader: Upgrader{
 				Protocol: SelectFromSlice([]string{"b", "d"}),
 			},
 		},
@@ -93,7 +93,7 @@ func TestUpgrade(t *testing.T) {
 		//		headerSecExtensions: []string{"b", "d"},
 		//	}),
 		//  hs: Handshake{Extensions: ["b", "d"]},
-		//	cfg: &UpgradeConfig{
+		//	upgrader: Upgrader{
 		//		Extension: SelectFromSlice([]string{"b", "d"}),
 		//	},
 		//},
@@ -105,7 +105,7 @@ func TestUpgrade(t *testing.T) {
 			}
 
 			res := newRecorder()
-			_, _, hs, err := Upgrade(test.req, res, test.cfg)
+			_, _, hs, err := test.upgrader.Upgrade(test.req, res, nil)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
@@ -131,9 +131,9 @@ func TestUpgrade(t *testing.T) {
 func BenchmarkUpgrade(b *testing.B) {
 	bts101 := []byte("HTTP/1.1 101")
 	for _, bench := range []struct {
-		label string
-		req   *http.Request
-		cfg   *UpgradeConfig
+		label    string
+		req      *http.Request
+		upgrader Upgrader
 	}{
 		{
 			label: "base",
@@ -143,7 +143,7 @@ func BenchmarkUpgrade(b *testing.B) {
 				headerSecVersion: []string{"13"},
 				headerSecKey:     []string{string(mustMakeNonce())},
 			}),
-			cfg: &UpgradeConfig{
+			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
 					return true
 				},
@@ -157,7 +157,7 @@ func BenchmarkUpgrade(b *testing.B) {
 				headerSecVersion: []string{"13"},
 				headerSecKey:     []string{string(mustMakeNonce())},
 			}),
-			cfg: &UpgradeConfig{
+			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
 					return true
 				},
@@ -169,7 +169,8 @@ func BenchmarkUpgrade(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					res := newRecorder()
-					_, _, _, err := Upgrade(bench.req, res, bench.cfg)
+					_, _, _, err := bench.upgrader.Upgrade(bench.req, res, nil)
+
 					if err != nil {
 						b.Fatal(err)
 					}

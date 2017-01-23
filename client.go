@@ -53,6 +53,14 @@ var (
 	ErrBadSubProtocol = fmt.Errorf("unexpected protocol in %q header", headerSecProtocol)
 )
 
+// DefaultDialer is dialer that holds no options and is used by Dial function.
+var DefaultDialer Dialer
+
+// Dial is like Dialer{}.Dial().
+func Dial(ctx context.Context, urlstr string) (conn net.Conn, resp Response, err error) {
+	return DefaultDialer.Dial(ctx, urlstr)
+}
+
 // Dialer contains options for establishing websocket connection to an url.
 type Dialer struct {
 	// Header is the set of custom headers that will be sent with the request.
