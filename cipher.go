@@ -5,6 +5,8 @@ import (
 	"unsafe"
 )
 
+var remain = [4]int{0, 3, 2, 1}
+
 // Cipher applies XOR cipher to the payload using mask.
 // Offset is used to cipher chunked data (e.g. in io.Reader implementations).
 //
@@ -28,8 +30,7 @@ func Cipher(payload, mask []byte, offset int) {
 	// Calculate position in mask due to previously processed bytes number.
 	mpos := offset % 4
 	// Count number of bytes will processed one by one from the begining of payload.
-	// Bitwise used to avoid additional if.
-	ln := (4 - mpos) & 0x0b
+	ln := remain[mpos]
 	// Count number of bytes will processed one by one from the end of payload.
 	// This is done to process payload by 8 bytes in each iteration of main loop.
 	rn := (n - ln) % 8
