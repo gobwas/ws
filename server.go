@@ -49,9 +49,9 @@ func SelectFromSlice(accept []string) func(string) bool {
 	}
 }
 
-// SelectSingle creates accept function that could be used as Protocol/Extension
+// SelectEqual creates accept function that could be used as Protocol/Extension
 // select during upgrade.
-func SelectSingle(v string) func(string) bool {
+func SelectEqual(v string) func(string) bool {
 	return func(p string) bool {
 		return v == p
 	}
