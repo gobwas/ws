@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"reflect"
+	"unsafe"
 )
 
 const (
@@ -18,15 +20,16 @@ var (
 
 // ReadHeader reads a frame header from r.
 func ReadHeader(r io.Reader) (h Header, err error) {
-	// Make slice with 2 bytes len for header, but with 8 byte capacity.
-	// The most useful case of reading header is to read header from
-	// client, that is with mask (4 byte) and some length most cases <= uint16 (2 bytes).
-	// If such case happened, we will reuse bytes without extra allocation.
-	bts := make([]byte, 2, 8)
+	// Make slice of 12 bytes for header.
+	// Note that maximum header size is 14. After reading first 2 bytes
+	// which are constant, we reuse them. So 14 - 2 = 12.
+	// We use unsafe to stick b to stack and avoid allocations.
+	var b [12]byte
 
-	//var hv uint64
-	//hp := uintptr(unsafe.Pointer(&hv))
-	//bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: hp, Len: 2, Cap: 8}))
+	// Cast bytes to slice with len 2 for reading first constant 2 bytes.
+	bp := uintptr(unsafe.Pointer(&b))
+	bh := &reflect.SliceHeader{Data: bp, Len: 2, Cap: 12}
+	bts := *(*[]byte)(unsafe.Pointer(bh))
 
 	// Prepare to hold first 2 bytes to choose size of next read.
 	_, err = io.ReadFull(r, bts)
@@ -40,8 +43,8 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 
 	var extra int
 
-	mask := bts[1]&bit0 != 0
-	if mask {
+	if bts[1]&bit0 != 0 {
+		h.Masked = true
 		extra += 4
 	}
 
@@ -65,12 +68,9 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 		return
 	}
 
-	if extra <= 8 {
-		bts = bts[:extra]
-	} else {
-		bts = make([]byte, extra)
-	}
-
+	// Increase len of bts to extra bytes need to read.
+	// Overwrite frist 2 bytes read before.
+	bts = bts[:extra]
 	_, err = io.ReadFull(r, bts)
 	if err != nil {
 		return
@@ -90,9 +90,8 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 		bts = bts[8:]
 	}
 
-	if mask {
-		// TODO(gobwas): move to type Mask uint32
-		h.Mask = bts[:4]
+	if h.Masked {
+		copy(h.Mask[:], bts)
 	}
 
 	return

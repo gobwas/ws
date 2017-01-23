@@ -58,7 +58,7 @@ func BenchmarkWriteHeader(b *testing.B) {
 				OpCode: OpText,
 				Fin:    true,
 				Length: int64(^(uint64(0)) >> 1),
-				Mask:   []byte("mask"),
+				Mask:   [4]byte{'m', 'a', 's', 'k'},
 			},
 		},
 	} {

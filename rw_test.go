@@ -24,7 +24,6 @@ var RWCases = []RWCase{
 			Rsv:    Rsv(false, false, true),
 			OpCode: OpText,
 			Length: 100,
-			Mask:   nil,
 		},
 	},
 	{
@@ -39,7 +38,8 @@ var RWCases = []RWCase{
 			Rsv:    Rsv(false, false, true),
 			OpCode: OpText,
 			Length: 100,
-			Mask:   []byte{0x01, 0x88, 0x00, 0xff},
+			Masked: true,
+			Mask:   [4]byte{0x01, 0x88, 0x00, 0xff},
 		},
 	},
 	{
@@ -54,7 +54,6 @@ var RWCases = []RWCase{
 			Rsv:    Rsv(true, true, false),
 			OpCode: OpBinary,
 			Length: 0x0fff,
-			Mask:   nil,
 		},
 	},
 	{
@@ -69,7 +68,6 @@ var RWCases = []RWCase{
 			Rsv:    Rsv(false, false, false),
 			OpCode: OpPong,
 			Length: 0x7f00000000000000,
-			Mask:   nil,
 		},
 	},
 }

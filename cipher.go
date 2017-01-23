@@ -1,11 +1,6 @@
 package ws
 
-import (
-	"reflect"
-	"unsafe"
-)
-
-var remain = [4]int{0, 3, 2, 1}
+import "unsafe"
 
 // Cipher applies XOR cipher to the payload using mask.
 // Offset is used to cipher chunked data (e.g. in io.Reader implementations).
@@ -14,11 +9,7 @@ var remain = [4]int{0, 3, 2, 1}
 // algorithm is applied.  The same algorithm applies regardless of the
 // direction of the translation, e.g., the same steps are applied to
 // mask the data as to unmask the data.
-func Cipher(payload, mask []byte, offset int) {
-	if len(mask) != 4 {
-		return
-	}
-
+func Cipher(payload []byte, mask [4]byte, offset int) {
 	n := len(payload)
 	if n < 8 {
 		for i := 0; i < n; i++ {
@@ -42,8 +33,11 @@ func Cipher(payload, mask []byte, offset int) {
 		payload[i] ^= mask[(mpos+i)%4]
 	}
 
-	mh := *(*reflect.SliceHeader)(unsafe.Pointer(&mask))
-	m := *(*uint32)(unsafe.Pointer(mh.Data))
+	// We should cast mask to uint32 with unsafe instead of encoding.BigEndian
+	// to avoid care of os dependent byte order. That is, on any endianess mask
+	// and payload will be presented with the same order. In other words, we
+	// could not use encoding.BigEndian on xoring payload as uint64.
+	m := *(*uint32)(unsafe.Pointer(&mask))
 	m2 := uint64(m)<<32 | uint64(m)
 
 	// Get pointer to payload at ln index to
@@ -58,3 +52,7 @@ func Cipher(payload, mask []byte, offset int) {
 		*v = *v ^ m2
 	}
 }
+
+// remain maps position in masking key [0,4) to number
+// of bytes that need to be processed manually inside Cipher().
+var remain = [4]int{0, 3, 2, 1}
