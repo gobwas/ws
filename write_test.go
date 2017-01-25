@@ -29,7 +29,7 @@ func TestWriteHeader(t *testing.T) {
 }
 
 func BenchmarkWriteHeader(b *testing.B) {
-	for i, bench := range RWBenchCases {
+	for _, bench := range RWBenchCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if err := WriteHeader(ioutil.Discard, bench.header); err != nil {
