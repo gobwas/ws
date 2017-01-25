@@ -112,7 +112,7 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 
 		textPending := false
 		utf8Reader := wsutil.NewUTF8Reader(nil)
-		cipherReader := wsutil.NewCipherReader(nil, nil)
+		cipherReader := wsutil.NewCipherReader(nil, [4]byte{0, 0, 0, 0})
 
 		for {
 			header, err := ws.ReadHeader(conn)
@@ -137,7 +137,7 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 			switch header.OpCode {
 			case ws.OpPing:
 				header.OpCode = ws.OpPong
-				header.Mask = nil
+				header.Masked = false
 				ws.WriteHeader(conn, header)
 				io.CopyN(conn, cipherReader, header.Length)
 				continue
@@ -216,7 +216,7 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			header.Mask = nil
+			header.Masked = false
 			ws.WriteHeader(conn, header)
 			conn.Write(payload)
 		}

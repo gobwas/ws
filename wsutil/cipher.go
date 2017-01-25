@@ -8,15 +8,15 @@ import (
 
 type CipherReader struct {
 	r    io.Reader
-	mask []byte
+	mask [4]byte
 	pos  int
 }
 
-func NewCipherReader(r io.Reader, mask []byte) *CipherReader {
+func NewCipherReader(r io.Reader, mask [4]byte) *CipherReader {
 	return &CipherReader{r, mask, 0}
 }
 
-func (c *CipherReader) Reset(r io.Reader, mask []byte) {
+func (c *CipherReader) Reset(r io.Reader, mask [4]byte) {
 	c.r = r
 	c.mask = mask
 	c.pos = 0

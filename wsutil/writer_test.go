@@ -13,39 +13,34 @@ import (
 func TestWriter(t *testing.T) {
 	for i, test := range []struct {
 		label  string
-		config WriterConfig
 		size   int
+		masked bool
 		data   [][]byte
 		expFrm []Frame
 		expBts []byte
 	}{
+		{},
 		{
-			config: WriterConfig{Op: OpText},
-		},
-		{
-			config: WriterConfig{Op: OpText},
 			data: [][]byte{
 				[]byte{},
 			},
 			expBts: MustCompileFrame(NewTextFrame("")),
 		},
 		{
-			config: WriterConfig{Op: OpText},
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
 			expBts: MustCompileFrame(NewTextFrame("hello, world!")),
 		},
 		{
-			config: WriterConfig{Op: OpText, Mask: true},
+			masked: true,
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
-			expFrm: []Frame{NewTextFrame("hello, world!")},
+			expFrm: []Frame{MaskFrame(NewTextFrame("hello, world!"))},
 		},
 		{
-			config: WriterConfig{Op: OpText},
-			size:   5,
+			size: 5,
 			data: [][]byte{
 				[]byte("hello"),
 				[]byte(", wor"),
@@ -82,8 +77,7 @@ func TestWriter(t *testing.T) {
 			),
 		},
 		{ // Large write case.
-			config: WriterConfig{Op: OpText},
-			size:   5,
+			size: 5,
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
@@ -111,7 +105,7 @@ func TestWriter(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			w := NewWriterSize(buf, test.size, test.config)
+			w := NewWriterSize(buf, OpText, test.masked, test.size)
 
 			for _, p := range test.data {
 				_, err := w.Write(p)
@@ -190,7 +184,7 @@ func TestWriterReadFrom(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			dst := &bytes.Buffer{}
-			wr := NewWriterSize(dst, test.size, WriterConfig{Op: OpText})
+			wr := NewWriterSize(dst, OpText, false, test.size)
 
 			chop := test.chop
 			if chop == 0 {
@@ -224,10 +218,6 @@ func frames(p []byte) (ret []Frame) {
 				break
 			}
 			panic(err)
-
-		}
-		if mask := f.Header.Mask; mask != nil {
-			Cipher(f.Payload, mask, 0)
 		}
 		ret = append(ret, f)
 	}
@@ -244,7 +234,10 @@ func pretty(f []Frame) string {
 
 func omitMask(f []Frame) []Frame {
 	for i := 0; i < len(f); i++ {
-		f[i].Header.Mask = []byte{0, 0, 0, 0}
+		if f[i].Header.Masked {
+			Cipher(f[i].Payload, f[i].Header.Mask, 0)
+			f[i].Header.Mask = [4]byte{0, 0, 0, 0}
+		}
 	}
 	return f
 }

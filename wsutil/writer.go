@@ -172,6 +172,7 @@ func (w *Writer) writeFrame(op ws.OpCode, p []byte, fin bool) (n int, err error)
 
 	payload := p
 	if w.mask {
+		header.Masked = true
 		header.Mask = ws.NewMask()
 
 		payload = pbytes.GetBufLen(len(p))

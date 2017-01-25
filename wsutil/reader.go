@@ -128,8 +128,8 @@ func (r *Reader) Next() (h ws.Header, err error) {
 
 	src := io.LimitReader(r.src, h.Length)
 	rd := src
-	if mask := h.Mask; mask != nil {
-		rd = NewCipherReader(rd, mask)
+	if h.Masked {
+		rd = NewCipherReader(rd, h.Mask)
 	}
 
 	if r.state.Is(ws.StateFragmented) && h.OpCode.IsControl() {

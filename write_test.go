@@ -33,34 +33,10 @@ func BenchmarkWriteHeader(b *testing.B) {
 		label  string
 		header Header
 	}{
-		{
-			"ping", Header{
-				OpCode: OpPing,
-				Fin:    true,
-			},
-		},
-		{
-			"text16", Header{
-				OpCode: OpText,
-				Fin:    true,
-				Length: int64(^(uint16(0))),
-			},
-		},
-		{
-			"text64", Header{
-				OpCode: OpText,
-				Fin:    true,
-				Length: int64(^(uint64(0)) >> 1),
-			},
-		},
-		{
-			"text64mask", Header{
-				OpCode: OpText,
-				Fin:    true,
-				Length: int64(^(uint64(0)) >> 1),
-				Mask:   [4]byte{'m', 'a', 's', 'k'},
-			},
-		},
+		{"t", Header{OpCode: OpText, Fin: true}},
+		{"t-m", Header{OpCode: OpText, Fin: true, Mask: NewMask()}},
+		{"t-m-u16", Header{OpCode: OpText, Fin: true, Length: len16, Mask: NewMask()}},
+		{"t-m-u64", Header{OpCode: OpText, Fin: true, Length: len64, Mask: NewMask()}},
 	} {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
