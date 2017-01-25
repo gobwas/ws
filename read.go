@@ -20,13 +20,18 @@ var (
 
 // ReadHeader reads a frame header from r.
 func ReadHeader(r io.Reader) (h Header, err error) {
-	// Make slice of 12 bytes for header.
-	// Note that maximum header size is 14. After reading first 2 bytes
-	// which are constant, we reuse them. So 14 - 2 = 12.
-	// We use unsafe to stick b to stack and avoid allocations.
+	// Make slice of bytes with capacity 12 that could hold any header.
+	//
+	// The maximum header size is 14, but due to the 2 hop reads,
+	// after first hop that reads first 2 constant bytes, we could reuse 2 bytes.
+	// So 14 - 2 = 12.
+	//
+	// We use unsafe to stick bts to stack and avoid allocations.
+	//
+	// Using stack based slice is safe here, cause golang docs for io.Reader
+	// says that "Implementations must not retain p".
+	// See https://golang.org/pkg/io/#Reader
 	var b [12]byte
-
-	// Cast bytes to slice with len 2 for reading first constant 2 bytes.
 	bp := uintptr(unsafe.Pointer(&b))
 	bh := &reflect.SliceHeader{Data: bp, Len: 2, Cap: 12}
 	bts := *(*[]byte)(unsafe.Pointer(bh))
