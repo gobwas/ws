@@ -17,10 +17,42 @@ type RWBenchCase struct {
 }
 
 var RWBenchCases = []RWBenchCase{
-	{"t", Header{OpCode: OpText, Fin: true}},
-	{"t-m", Header{OpCode: OpText, Fin: true, Mask: NewMask()}},
-	{"t-m-u16", Header{OpCode: OpText, Fin: true, Length: len16, Mask: NewMask()}},
-	{"t-m-u64", Header{OpCode: OpText, Fin: true, Length: len64, Mask: NewMask()}},
+	{
+		"no-mask",
+		Header{
+			OpCode: OpText,
+			Fin:    true,
+		},
+	},
+	{
+		"mask",
+		Header{
+			OpCode: OpText,
+			Fin:    true,
+			Masked: true,
+			Mask:   NewMask(),
+		},
+	},
+	{
+		"mask-u16",
+		Header{
+			OpCode: OpText,
+			Fin:    true,
+			Length: len16,
+			Masked: true,
+			Mask:   NewMask(),
+		},
+	},
+	{
+		"mask-u64",
+		Header{
+			OpCode: OpText,
+			Fin:    true,
+			Length: len64,
+			Masked: true,
+			Mask:   NewMask(),
+		},
+	},
 }
 
 var RWTestCases = []RWTestCase{
