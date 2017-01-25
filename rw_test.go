@@ -5,13 +5,25 @@ import (
 	"strings"
 )
 
-type RWCase struct {
+type RWTestCase struct {
 	Data   []byte
 	Header Header
 	Err    bool
 }
 
-var RWCases = []RWCase{
+type RWBenchCase struct {
+	label  string
+	header Header
+}
+
+var RWBenchCases = []RWBenchCase{
+	{"t", Header{OpCode: OpText, Fin: true}},
+	{"t-m", Header{OpCode: OpText, Fin: true, Mask: NewMask()}},
+	{"t-m-u16", Header{OpCode: OpText, Fin: true, Length: len16, Mask: NewMask()}},
+	{"t-m-u64", Header{OpCode: OpText, Fin: true, Length: len64, Mask: NewMask()}},
+}
+
+var RWTestCases = []RWTestCase{
 	{
 		Data: bits("1 001 0001 0 1100100"),
 		//          _ ___ ____ _ _______

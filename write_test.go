@@ -8,7 +8,7 @@ import (
 )
 
 func TestWriteHeader(t *testing.T) {
-	for i, test := range RWCases {
+	for i, test := range RWTestCases {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			err := WriteHeader(buf, test.Header)
@@ -29,15 +29,7 @@ func TestWriteHeader(t *testing.T) {
 }
 
 func BenchmarkWriteHeader(b *testing.B) {
-	for _, bench := range []struct {
-		label  string
-		header Header
-	}{
-		{"t", Header{OpCode: OpText, Fin: true}},
-		{"t-m", Header{OpCode: OpText, Fin: true, Mask: NewMask()}},
-		{"t-m-u16", Header{OpCode: OpText, Fin: true, Length: len16, Mask: NewMask()}},
-		{"t-m-u64", Header{OpCode: OpText, Fin: true, Length: len64, Mask: NewMask()}},
-	} {
+	for i, bench := range RWBenchCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if err := WriteHeader(ioutil.Discard, bench.header); err != nil {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestReadHeader(t *testing.T) {
-	for i, test := range append([]RWCase{
+	for i, test := range append([]RWTestCase{
 		{
 			Data: bits("0000 0000 0 1111111 10000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000"),
 			//                              _______________________________________________________________________
@@ -17,7 +17,7 @@ func TestReadHeader(t *testing.T) {
 			//                                                            Length value
 			Err: true,
 		},
-	}, RWCases...) {
+	}, RWTestCases...) {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			r := bytes.NewReader(test.Data)
 			h, err := ReadHeader(r)
@@ -38,15 +38,7 @@ func TestReadHeader(t *testing.T) {
 }
 
 func BenchmarkReadHeader(b *testing.B) {
-	for i, bench := range []struct {
-		label  string
-		header Header
-	}{
-		{"t", Header{OpCode: OpText, Fin: true}},
-		{"t-m", Header{OpCode: OpText, Fin: true, Mask: NewMask()}},
-		{"t-m-u16", Header{OpCode: OpText, Fin: true, Length: len16, Mask: NewMask()}},
-		{"t-m-u64", Header{OpCode: OpText, Fin: true, Length: len64, Mask: NewMask()}},
-	} {
+	for i, bench := range RWBenchCases {
 		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
 			bts := MustCompileFrame(Frame{Header: bench.header})
 			rds := make([]io.Reader, b.N)
