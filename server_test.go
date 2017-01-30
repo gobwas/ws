@@ -19,7 +19,7 @@ import (
 
 func TestUpgrade(t *testing.T) {
 	for i, test := range []struct {
-		nonce    []byte
+		nonce    [nonceSize]byte
 		req      *http.Request
 		res      *http.Response
 		hs       Handshake
@@ -99,10 +99,8 @@ func TestUpgrade(t *testing.T) {
 		//},
 	} {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			if test.nonce != nil {
-				test.req.Header.Set(headerSecKey, string(test.nonce))
-				test.res.Header.Set(headerSecAccept, string(makeAccept(test.nonce)))
-			}
+			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
+			test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 
 			res := newRecorder()
 			_, _, hs, err := test.upgrader.Upgrade(test.req, res, nil)
@@ -141,7 +139,7 @@ func BenchmarkUpgrade(b *testing.B) {
 				headerUpgrade:    []string{"websocket"},
 				headerConnection: []string{"Upgrade"},
 				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{string(mustMakeNonce())},
+				headerSecKey:     []string{mustMakeNonceStr()},
 			}),
 			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
@@ -155,7 +153,7 @@ func BenchmarkUpgrade(b *testing.B) {
 				headerUpgrade:    []string{"WEBSOCKET"},
 				headerConnection: []string{"UPGRADE"},
 				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{string(mustMakeNonce())},
+				headerSecKey:     []string{mustMakeNonceStr()},
 			}),
 			upgrader: Upgrader{
 				Protocol: func(sub string) bool {
@@ -420,8 +418,12 @@ func mustMakeResponse(code int, headers http.Header) *http.Response {
 	return res
 }
 
-func mustMakeNonce() []byte {
-	b := make([]byte, nonceSize)
-	newNonce(b)
-	return b
+func mustMakeNonce() (ret [nonceSize]byte) {
+	newNonce(ret[:])
+	return
+}
+
+func mustMakeNonceStr() string {
+	n := mustMakeNonce()
+	return string(n[:])
 }

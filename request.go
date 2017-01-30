@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"hash"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/textproto"
@@ -146,9 +147,10 @@ func checkNonce(accept string, nonce [nonceSize]byte) bool {
 		return false
 	}
 
-	expect := makeAccept(nonce[:])
+	var expect [acceptSize]byte
+	putAccept(nonce, expect[:])
 
-	return string(expect) == accept
+	return btsToString(expect[:]) == accept
 }
 
 //const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -173,32 +175,36 @@ func newNonce(dest []byte) {
 	base64.StdEncoding.Encode(dest, randBytes(nonceKeySize))
 }
 
-func makeAccept(nonce []byte) []byte {
-	accept := make([]byte, acceptSize)
-	putAccept(nonce, accept)
-	return accept
-}
-
 // putAccept generates accept bytes and puts them into p.
 // Given buffer should be exactly acceptSize bytes. If not putAccept will panic.
-func putAccept(nonce, p []byte) {
-	if len(nonce) != nonceSize {
-		panic(fmt.Sprintf("nonce size is %d; want %d", len(nonce), nonceSize))
-	}
+func putAccept(nonce [nonceSize]byte, p []byte) {
 	if len(p) != acceptSize {
 		panic(fmt.Sprintf("buffer size is %d; want %d", len(p), acceptSize))
 	}
 
-	var b [sha1.Size]byte
-	bh := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: bh, Len: 0, Cap: sha1.Size}))
-
 	sha := acquireSha1()
 	defer releaseSha1(sha)
 
-	sha.Write(nonce)
+	var sb [sha1.Size]byte
+	sh := uintptr(unsafe.Pointer(&sb))
+	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: sh, Len: 0, Cap: sha1.Size}))
+
+	nh := uintptr(unsafe.Pointer(&nonce))
+	nb := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: nh, Len: nonceSize, Cap: nonceSize}))
+
+	sha.Write(nb)
 	sha.Write(WebSocketMagic)
-	sum := sha.Sum(bts)
+	sha.Sum(sum)
 
 	base64.StdEncoding.Encode(p, sum)
+}
+
+func writeAccept(w io.Writer, nonce [nonceSize]byte) (int, error) {
+	var b [acceptSize]byte
+	bp := uintptr(unsafe.Pointer(&b))
+	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: bp, Len: acceptSize, Cap: acceptSize}))
+
+	putAccept(nonce, bts)
+
+	return w.Write(bts)
 }

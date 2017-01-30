@@ -17,6 +17,12 @@ func btsToString(bts []byte) string {
 	return *(*string)(unsafe.Pointer(s))
 }
 
+func strToNonce(s string) (ret [nonceSize]byte) {
+	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	ret = *(*[nonceSize]byte)(unsafe.Pointer(sh.Data))
+	return
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
