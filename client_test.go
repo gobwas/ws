@@ -124,17 +124,17 @@ func TestDialerHandshake(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				var key []byte
+				var nonce string
 				if test.accept {
-					rk := req.Header.Get(headerSecKey)
-					key = []byte(rk)
+					nonce = req.Header.Get(headerSecKey)
 				} else {
-					key = make([]byte, 24)
-					rand.Read(key)
+					k := make([]byte, 24)
+					rand.Read(k)
+					nonce = string(k)
 				}
 
-				accept := makeAccept([]byte(key))
-				test.res.Header.Set(headerSecAccept, string(accept))
+				accept := makeAccept(strToNonce(nonce))
+				test.res.Header.Set(headerSecAccept, accept)
 				test.res.Request = req
 				test.res.Write(rb)
 

@@ -126,9 +126,9 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 
 	rw.WriteString(textUpgrade)
 
-	accept := makeAccept(strToBytes(nonce))
 	writeHeaderKey(rw.Writer, headerSecAccept)
-	writeHeaderValueBytes(rw.Writer, accept)
+	writeAccept(rw.Writer, strToNonce(nonce))
+	rw.Writer.WriteString(crlf)
 
 	var check func(string) bool
 	if check = u.Protocol; check != nil {

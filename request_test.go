@@ -130,15 +130,22 @@ func TestRequestReset(t *testing.T) {
 	}
 }
 
+func makeAccept(nonce [nonceSize]byte) string {
+	accept := make([]byte, acceptSize)
+	putAccept(nonce, accept)
+	return string(accept)
+}
+
 func BenchmarkMakeAccept(b *testing.B) {
-	nonce := make([]byte, nonceSize)
-	_, err := rand.Read(nonce)
+	var nonce [nonceSize]byte
+	_, err := rand.Read(nonce[:])
 	if err != nil {
 		b.Fatal(err)
 	}
+	p := make([]byte, acceptSize)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		_ = makeAccept(nonce)
+		putAccept(nonce, p)
 	}
 }
 
@@ -149,7 +156,7 @@ func BenchmarkCheckNonce(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	accept := string(makeAccept(nonce[:]))
+	accept := makeAccept(nonce)
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
