@@ -9,14 +9,26 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 const (
-	nonceSize  = 24
-	acceptSize = 28
-	shaSumSize = 20
+	// RFC6455: The value of this header field MUST be a nonce consisting of a
+	// randomly selected 16-byte value that has been base64-encoded (see
+	// Section 4 of [RFC4648]).  The nonce MUST be selected randomly for each
+	// connection.
+	nonceKeySize = 16
+	nonceSize    = 24 // base64.StdEncoding.EncodedLen(nonceKeySize)
+
+	// RFC6455: The value of this header field is constructed by concatenating
+	// /key/, defined above in step 4 in Section 4.2.2, with the string
+	// "258EAFA5- E914-47DA-95CA-C5AB0DC85B11", taking the SHA-1 hash of this
+	// concatenated value to obtain a 20-byte value and base64- encoding (see
+	// Section 4 of [RFC4648]) this 20-byte hash.
+	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
 )
 
 var (
@@ -130,7 +142,7 @@ func releaseSha1(h hash.Hash) {
 
 // todo bench put expect to req as array
 func checkNonce(accept string, nonce [nonceSize]byte) bool {
-	if len(accept) != 28 {
+	if len(accept) != acceptSize {
 		return false
 	}
 
@@ -158,33 +170,35 @@ func randBytes(n int) []byte {
 }
 
 func newNonce(dest []byte) {
-	base64.StdEncoding.Encode(dest, randBytes(16))
+	base64.StdEncoding.Encode(dest, randBytes(nonceKeySize))
 }
 
 func makeAccept(nonce []byte) []byte {
-	bts := make([]byte, 0, acceptSize+shaSumSize)
-	n := putAccept(nonce, bts)
-	return bts[:n]
+	accept := make([]byte, acceptSize)
+	putAccept(nonce, accept)
+	return accept
 }
 
-func putAccept(nonce, buf []byte) int {
-	if cap(buf) < acceptSize+shaSumSize {
-		panic(fmt.Sprintf("buffer cap is %d; want at least %d", len(buf), acceptSize+shaSumSize))
-	}
+// putAccept generates accept bytes and puts them into p.
+// Given buffer should be exactly acceptSize bytes. If not putAccept will panic.
+func putAccept(nonce, p []byte) {
 	if len(nonce) != nonceSize {
 		panic(fmt.Sprintf("nonce size is %d; want %d", len(nonce), nonceSize))
 	}
+	if len(p) != acceptSize {
+		panic(fmt.Sprintf("buffer size is %d; want %d", len(p), acceptSize))
+	}
+
+	var b [sha1.Size]byte
+	bh := uintptr(unsafe.Pointer(&b))
+	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: bh, Len: 0, Cap: sha1.Size}))
 
 	sha := acquireSha1()
 	defer releaseSha1(sha)
 
 	sha.Write(nonce)
 	sha.Write(WebSocketMagic)
+	sum := sha.Sum(bts)
 
-	buf = buf[:acceptSize]
-	sum := sha.Sum(buf[acceptSize:])
-
-	base64.StdEncoding.Encode(buf, sum)
-
-	return acceptSize
+	base64.StdEncoding.Encode(p, sum)
 }
