@@ -149,7 +149,7 @@ func BenchmarkCheckNonce(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	accept := makeAccept(nonce[:])
+	accept := string(makeAccept(nonce[:]))
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
