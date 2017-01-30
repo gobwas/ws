@@ -136,7 +136,7 @@ func makeAccept(nonce [nonceSize]byte) string {
 	return string(accept)
 }
 
-func BenchmarkMakeAccept(b *testing.B) {
+func BenchmarkPutAccept(b *testing.B) {
 	var nonce [nonceSize]byte
 	_, err := rand.Read(nonce[:])
 	if err != nil {
