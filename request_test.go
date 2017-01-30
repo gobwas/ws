@@ -141,3 +141,18 @@ func BenchmarkMakeAccept(b *testing.B) {
 		_ = makeAccept(nonce)
 	}
 }
+
+func BenchmarkCheckNonce(b *testing.B) {
+	var nonce [nonceSize]byte
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	accept := makeAccept(nonce[:])
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_ = checkNonce(accept, nonce)
+	}
+}
