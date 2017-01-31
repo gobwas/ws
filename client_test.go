@@ -128,7 +128,7 @@ func TestDialerHandshake(t *testing.T) {
 				if test.accept {
 					nonce = req.Header.Get(headerSecKey)
 				} else {
-					k := make([]byte, 24)
+					k := make([]byte, nonceSize)
 					rand.Read(k)
 					nonce = string(k)
 				}

@@ -194,7 +194,7 @@ func putAccept(nonce [nonceSize]byte, p []byte) {
 
 	sha.Write(nb)
 	sha.Write(WebSocketMagic)
-	sha.Sum(sum)
+	sum = sha.Sum(sum)
 
 	base64.StdEncoding.Encode(p, sum)
 }
