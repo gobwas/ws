@@ -89,7 +89,7 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if u := getHeader(r.Header, headerUpgrade); u != "websocket" && strings.ToLower(u) != "websocket" {
+	if u := getHeader(r.Header, headerUpgrade); u != "websocket" && !equalFold(u, "websocket") {
 		err = ErrBadUpgrade
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

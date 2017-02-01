@@ -23,6 +23,8 @@ func strToNonce(s string) (ret [nonceSize]byte) {
 	return
 }
 
+// equalFold checks s to be case insensitive equal to p. Note that p MUST be
+// only ascii letters. That is, every byte in p belongs to range ['a','z'] or ['A','Z'].
 func equalFold(a, b string) bool {
 	const (
 		bit  = 'a' - 'A'
@@ -43,7 +45,7 @@ func equalFold(a, b string) bool {
 	n := len(a)
 
 	// Prepare manual conversion on bytes that not lay in uint64.
-	m := n % 8
+	m := n % 16
 	for i := 0; i < m; i++ {
 		if a[i]|bit != b[i]|bit {
 			return false

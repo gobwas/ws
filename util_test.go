@@ -13,11 +13,13 @@ type equalFoldCase struct {
 }
 
 var equalFoldCases = []equalFoldCase{
-	{"simple_case", "websocket", "WebSocket"},
-	randomEqual(20),
-	randomEqual(24),
-	randomEqual(1000),
-	randomEqual(1024),
+	{"websocket", "WebSocket", "websocket"},
+	{"upgrade", "Upgrade", "upgrade"},
+	//randomEqual(20),
+	//randomEqual(24),
+	randomEqualLetters(20),
+	randomEqualLetters(24),
+	randomEqualLetters(64),
 }
 
 func TestEqualFold(t *testing.T) {
@@ -41,11 +43,6 @@ func BenchmarkEqualFold(b *testing.B) {
 				_ = equalFold(bench.a, bench.b)
 			}
 		})
-		b.Run(fmt.Sprintf("%s#%d_str", bench.label, i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = strings.EqualFold(bench.a, bench.b)
-			}
-		})
 	}
 }
 
@@ -58,12 +55,28 @@ func randomEqual(n int) (c equalFoldCase) {
 		c := byte(rand.Intn('~'-' '+1) + ' ') // Random character from '~' to ' '.
 
 		a[i] = c
+		b[i] = c
 
-		if 'A' <= c && c <= 'Z' && rand.Intn(2) == 1 {
-			b[i] = c | ('a' - 'A') // Swap fold.
-		} else {
-			b[i] = c
+		if 'A' <= c && c <= 'Z' {
+			b[i] |= ('a' - 'A') // Swap fold.
 		}
+	}
+
+	c.a = string(a)
+	c.b = string(b)
+
+	return
+}
+
+func randomEqualLetters(n int) (c equalFoldCase) {
+	c.label = fmt.Sprintf("rnd_eq_lett_%d", n)
+
+	a, b := make([]byte, n), make([]byte, n)
+
+	for i := 0; i < n; i++ {
+		c := byte(rand.Intn('Z'-'A'+1) + 'A') // Random character from 'A' to 'Z'.
+		a[i] = c
+		b[i] = c | ('a' - 'A') // Swap fold.
 	}
 
 	c.a = string(a)

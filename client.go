@@ -189,11 +189,11 @@ func (d Dialer) handshake(req *request, resp Response) (protocol string, extensi
 		err = ErrBadStatus
 		return
 	}
-	if upgrade := resp.Header.Get(headerUpgrade); strings.ToLower(upgrade) != "websocket" {
+	if u := resp.Header.Get(headerUpgrade); u != "websocket" && !equalFold(u, "websocket") {
 		err = ErrBadUpgrade
 		return
 	}
-	if connection := resp.Header.Get(headerConnection); !strings.Contains(strings.ToLower(connection), "upgrade") {
+	if c := resp.Header.Get(headerConnection); c != "Upgrade" && !hasToken(c, "upgrade") {
 		err = ErrBadConnection
 		return
 	}
