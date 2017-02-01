@@ -199,7 +199,7 @@ func hasToken(header, token string) bool {
 	for i := 0; i <= len(header); i++ {
 		if i == len(header) || header[i] == ',' {
 			v := strings.TrimSpace(header[pos:i])
-			if len(v) == len(token) && strings.ToLower(v) == token {
+			if equalFold(v, token) {
 				return true
 			}
 			pos = i + 1
