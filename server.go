@@ -2,11 +2,15 @@ package ws
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
+	"net/textproto"
 	"strings"
 	_ "unsafe" // for go:linkname
+
+	"github.com/gobwas/pool/pbufio"
 )
 
 const (
@@ -76,6 +80,61 @@ type Upgrader struct {
 	// from list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	Extension func(string) bool
+}
+
+func readLine(br *bufio.Reader) (line []byte, err error) {
+	var more bool
+	for {
+		bts, more, err = br.ReadLine()
+		if err != nil {
+			return
+		}
+		// Avoid copying bytes to the nil slice.
+		if line == nil {
+			line = bts
+		} else {
+			line = append(line, bts...)
+		}
+		if !more {
+			break
+		}
+	}
+	return
+}
+
+func parseRequestLine(line []byte) (method, uri, proto []byte, ok bool) {
+	p1 := bytes.IndexByte(line, ' ')
+	p2 := bytes.IndexByte(line[p1+1:], ' ')
+	if p1 < 0 || p2 < 0 {
+		return
+	}
+	p2 += p1 + 1
+	return line[:p1], line[p1+1 : p2], line[p2+1:], true
+}
+
+func (u Upgrader) UpgradeConn(conn io.ReadWrtier, h http.Header) (hs Handshake, err error) {
+	br := pbufio.GetReader(conn, 512)
+	defer pbufio.PutReader(br, 512)
+
+	// See https://tools.ietf.org/html/rfc6455#section-4.1
+	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
+	line, err := readLine(br)
+	if err != nil {
+		return
+	}
+	method, uri, proto, ok := parseRequestLine(line)
+	if !ok {
+		// return bad request
+	}
+	if btsToString(method) != "GET" {
+		//
+	}
+	if len(proto) < 3 || proto[0] != '1' || asciiLT(proto[2], 1) {
+
+	}
+
+	textproto.NewReader()
+	http.ReadRequest()
 }
 
 // Upgrade upgrades http connection to the websocket connection.

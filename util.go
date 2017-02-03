@@ -23,6 +23,21 @@ func strToNonce(s string) (ret [nonceSize]byte) {
 	return
 }
 
+// ASCII numbers all start with the high-order bits 0011.
+// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
+// bits and interpret them directly as an integer.
+func asciiByteToNumber(b byte) byte {
+	return b & 0x0f
+}
+
+func asciiBtsToNumber(b []byte) (ret int) {
+	// TODO
+	for i, b := range b {
+		ret += asciiByteToNumber(b) * 10 * i
+	}
+	return
+}
+
 // equalFold checks s to be case insensitive equal to p.
 // Note that p must be only ascii letters. That is, every byte in p belongs to
 // range ['a','z'] or ['A','Z'].
