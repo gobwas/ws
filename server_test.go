@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -127,7 +128,6 @@ func TestUpgrade(t *testing.T) {
 }
 
 func BenchmarkUpgrade(b *testing.B) {
-	bts101 := []byte("HTTP/1.1 101")
 	for _, bench := range []struct {
 		label    string
 		req      *http.Request
@@ -166,15 +166,23 @@ func BenchmarkUpgrade(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					res := newRecorder()
-					_, _, _, err := bench.upgrader.Upgrade(bench.req, res, nil)
+					res := &recorder{
+						conn: func(_ *bytes.Buffer) net.Conn {
+							return stubConn{
+								write: ioutil.Discard.Write,
+							}
+						},
+					}
 
+					_, rw, _, err := bench.upgrader.Upgrade(bench.req, res, nil)
 					if err != nil {
 						b.Fatal(err)
 					}
-					if !bytes.HasPrefix(res.Body.Bytes(), bts101) {
-						b.Fatalf("unexpected http status code: %v\n%s", res.Code, res.Body.String())
-					}
+
+					// Use httpNewBufio* linked functions here to make
+					// benchmark more closer to real life usage.
+					httpPutBufioReader(rw.Reader)
+					httpPutBufioWriter(rw.Writer)
 				}
 			})
 		})
@@ -341,9 +349,22 @@ func sortHeaders(bts []byte) []byte {
 	return bytes.Join(lines, []byte("\r\n"))
 }
 
+//go:linkname httpPutBufioReader net/http.putBufioReader
+func httpPutBufioReader(*bufio.Reader)
+
+//go:linkname httpPutBufioWriter net/http.putBufioWriter
+func httpPutBufioWriter(*bufio.Writer)
+
+//go:linkname httpNewBufioReader net/http.newBufioReader
+func httpNewBufioReader(io.Reader) *bufio.Reader
+
+//go:linkname httpNewBufioWriterSize net/http.newBufioWriterSize
+func httpNewBufioWriterSize(io.Writer, int) *bufio.Writer
+
 type recorder struct {
 	*httptest.ResponseRecorder
 	hijacked bool
+	conn     func(*bytes.Buffer) net.Conn
 }
 
 func newRecorder() *recorder {
@@ -359,18 +380,6 @@ func (r *recorder) Bytes() []byte {
 	return dumpResponse(r.Result())
 }
 
-//go:linkname httpPutBufioReader net/http.putBufioReader
-func httpPutBufioReader(*bufio.Reader)
-
-//go:linkname httpPutBufioWriter net/http.putBufioWriter
-func httpPutBufioWriter(*bufio.Writer)
-
-//go:linkname httpNewBufioReader net/http.newBufioReader
-func httpNewBufioReader(io.Reader) *bufio.Reader
-
-//go:linkname httpNewBufioWriterSize net/http.newBufioWriterSize
-func httpNewBufioWriterSize(io.Writer, int) *bufio.Writer
-
 func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 	if r.hijacked {
 		err = fmt.Errorf("already hijacked")
@@ -379,18 +388,25 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 
 	r.hijacked = true
 
-	buf := r.ResponseRecorder.Body
+	var buf *bytes.Buffer
+	if r.ResponseRecorder != nil {
+		buf = r.ResponseRecorder.Body
+	}
 
-	conn = stubConn{
-		read:  buf.Read,
-		write: buf.Write,
-		close: func() error { return nil },
+	if r.conn != nil {
+		conn = r.conn(buf)
+	} else {
+		conn = stubConn{
+			read:  buf.Read,
+			write: buf.Write,
+			close: func() error { return nil },
+		}
 	}
 
 	// Use httpNewBufio* linked functions here to make
 	// benchmark more closer to real life usage.
-	br := httpNewBufioReader(buf)
-	bw := httpNewBufioWriterSize(buf, 4<<10)
+	br := httpNewBufioReader(conn)
+	bw := httpNewBufioWriterSize(conn, 4<<10)
 
 	brw = bufio.NewReadWriter(br, bw)
 
