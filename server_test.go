@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -13,97 +14,101 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	_ "unsafe" // for go:linkname
 )
 
-func TestUpgrade(t *testing.T) {
-	for i, test := range []struct {
-		nonce    [nonceSize]byte
-		req      *http.Request
-		res      *http.Response
-		hs       Handshake
-		upgrader Upgrader
-		err      error
-	}{
-		{
-			nonce: mustMakeNonce(),
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"websocket"},
-				headerConnection: []string{"Upgrade"},
-				headerSecVersion: []string{"13"},
-			}),
-			res: mustMakeResponse(101, http.Header{
-				headerUpgrade:    []string{"websocket"},
-				headerConnection: []string{"Upgrade"},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
-				},
-			},
-		},
-		{
-			nonce: mustMakeNonce(),
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"WEBSOCKET"},
-				headerConnection: []string{"UPGRADE"},
-				headerSecVersion: []string{"13"},
-			}),
-			res: mustMakeResponse(101, http.Header{
-				headerUpgrade:    []string{"websocket"},
-				headerConnection: []string{"Upgrade"},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
-				},
-			},
-		},
-		{
-			nonce: mustMakeNonce(),
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:     []string{"websocket"},
-				headerConnection:  []string{"Upgrade"},
-				headerSecVersion:  []string{"13"},
-				headerSecProtocol: []string{"a", "b", "c", "d"},
-			}),
-			res: mustMakeResponse(101, http.Header{
-				headerUpgrade:     []string{"websocket"},
-				headerConnection:  []string{"Upgrade"},
-				headerSecProtocol: []string{"b"},
-			}),
-			hs: Handshake{Protocol: "b"},
-			upgrader: Upgrader{
-				Protocol: SelectFromSlice([]string{"b", "d"}),
-			},
-		},
-		// TODO(gobwas) uncomment after selectExtension is ready.
-		//{
-		//	nonce: mustMakeNonce(),
-		//	req: mustMakeRequest("GET", "ws://example.org", http.Header{
-		//		headerUpgrade:       []string{"websocket"},
-		//		headerConnection:    []string{"Upgrade"},
-		//		headerSecVersion:    []string{"13"},
-		//		headerSecExtensions: []string{"a", "b", "c", "d"},
-		//	}),
-		//	res: mustMakeResponse(101, http.Header{
-		//		headerUpgrade:       []string{"websocket"},
-		//		headerConnection:    []string{"Upgrade"},
-		//		headerSecExtensions: []string{"b", "d"},
-		//	}),
-		//  hs: Handshake{Extensions: ["b", "d"]},
-		//	upgrader: Upgrader{
-		//		Extension: SelectFromSlice([]string{"b", "d"}),
-		//	},
-		//},
-	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+type upgradeCase struct {
+	label string
+
+	protocol, extension func(string) bool
+
+	nonce [nonceSize]byte
+	req   *http.Request
+	res   *http.Response
+	hs    Handshake
+	err   error
+}
+
+var upgradeCases = []upgradeCase{
+	{
+		label:    "lowercase",
+		protocol: func(sub string) bool { return true },
+		nonce:    mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"13"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+		}),
+	},
+	{
+		label:    "uppercase",
+		protocol: func(sub string) bool { return true },
+		nonce:    mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"WEBSOCKET"},
+			headerConnection: []string{"UPGRADE"},
+			headerSecVersion: []string{"13"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+		}),
+	},
+	{
+		label:    "subproto",
+		protocol: SelectFromSlice([]string{"b", "d"}),
+		nonce:    mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecVersion:  []string{"13"},
+			headerSecProtocol: []string{"a", "b", "c", "d"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecProtocol: []string{"b"},
+		}),
+		hs: Handshake{Protocol: "b"},
+	},
+	// TODO(gobwas) uncomment after selectExtension is ready.
+	//{
+	//	extension: SelectFromSlice([]string{"b", "d"}),
+	//	nonce: mustMakeNonce(),
+	//	req: mustMakeRequest("GET", "ws://example.org", http.Header{
+	//		headerUpgrade:       []string{"websocket"},
+	//		headerConnection:    []string{"Upgrade"},
+	//		headerSecVersion:    []string{"13"},
+	//		headerSecExtensions: []string{"a", "b", "c", "d"},
+	//	}),
+	//	res: mustMakeResponse(101, http.Header{
+	//		headerUpgrade:       []string{"websocket"},
+	//		headerConnection:    []string{"Upgrade"},
+	//		headerSecExtensions: []string{"b", "d"},
+	//	}),
+	//  hs: Handshake{Extensions: ["b", "d"]},
+	//},
+}
+
+func TestUpgrader(t *testing.T) {
+	for _, test := range upgradeCases {
+		t.Run(test.label, func(t *testing.T) {
 			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
 			test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 
+			u := Upgrader{
+				Protocol:  test.protocol,
+				Extension: test.extension,
+			}
+
 			res := newRecorder()
-			_, _, hs, err := test.upgrader.Upgrade(test.req, res, nil)
+			_, _, hs, err := u.Upgrade(test.req, res, nil)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
@@ -126,54 +131,110 @@ func TestUpgrade(t *testing.T) {
 	}
 }
 
-func BenchmarkUpgrade(b *testing.B) {
-	bts101 := []byte("HTTP/1.1 101")
-	for _, bench := range []struct {
-		label    string
-		req      *http.Request
-		upgrader Upgrader
-	}{
-		{
-			label: "base",
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"websocket"},
-				headerConnection: []string{"Upgrade"},
-				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{mustMakeNonceStr()},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
-				},
-			},
-		},
-		{
-			label: "uppercase",
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"WEBSOCKET"},
-				headerConnection: []string{"UPGRADE"},
-				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{mustMakeNonceStr()},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
-				},
-			},
-		},
-	} {
+func TestConnUpgrader(t *testing.T) {
+	for _, test := range upgradeCases {
+		t.Run(test.label, func(t *testing.T) {
+			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
+			test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+
+			u := ConnUpgrader{
+				Protocol:  test.protocol,
+				Extension: test.extension,
+			}
+
+			conn := &bytes.Buffer{}
+			test.req.Write(conn)
+
+			hs, err := u.Upgrade(conn, nil)
+			if test.err != err {
+				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
+				return
+			}
+
+			actRespBts := sortHeaders(conn.Bytes())
+			expRespBts := sortHeaders(dumpResponse(test.res))
+			if !bytes.Equal(actRespBts, expRespBts) {
+				t.Errorf(
+					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n====",
+					actRespBts, expRespBts,
+				)
+				return
+			}
+
+			if !reflect.DeepEqual(hs, test.hs) {
+				t.Errorf("unexpected handshake: %#v; want %#v", hs, test.hs)
+			}
+		})
+	}
+}
+
+func BenchmarkUpgrader(b *testing.B) {
+	for _, bench := range upgradeCases {
+		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+
+		u := Upgrader{
+			Protocol:  bench.protocol,
+			Extension: bench.extension,
+		}
+
 		b.Run(bench.label, func(b *testing.B) {
+			res := make([]http.ResponseWriter, b.N)
+			for i := 0; i < b.N; i++ {
+				res[i] = newRecorder()
+			}
+
+			i := new(int64)
+
+			b.ResetTimer()
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					res := newRecorder()
-					_, _, _, err := bench.upgrader.Upgrade(bench.req, res, nil)
-
+					w := res[atomic.AddInt64(i, 1)-1]
+					_, _, _, err := u.Upgrade(bench.req, w, nil)
 					if err != nil {
 						b.Fatal(err)
 					}
-					if !bytes.HasPrefix(res.Body.Bytes(), bts101) {
-						b.Fatalf("unexpected http status code: %v\n%s", res.Code, res.Body.String())
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkConnUpgrader(b *testing.B) {
+	for _, bench := range upgradeCases {
+		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+
+		u := ConnUpgrader{
+			Protocol:  bench.protocol,
+			Extension: bench.extension,
+		}
+
+		buf := &bytes.Buffer{}
+		bench.req.Write(buf)
+
+		bts := buf.Bytes()
+
+		type benchReadWriter struct {
+			io.Reader
+			io.Writer
+		}
+
+		b.Run(bench.label, func(b *testing.B) {
+			conn := make([]io.ReadWriter, b.N)
+			for i := 0; i < b.N; i++ {
+				conn[i] = benchReadWriter{bytes.NewReader(bts), ioutil.Discard}
+			}
+
+			i := new(int64)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					c := conn[atomic.AddInt64(i, 1)-1]
+					_, err := u.Upgrade(c, nil)
+					if err != nil {
+						b.Fatal(err)
 					}
 				}
 			})
@@ -217,7 +278,7 @@ func TestHasToken(t *testing.T) {
 		{"Keep-Alive, Close,  hello", "upgrade", false},
 	} {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			if has := hasToken(test.header, test.token); has != test.exp {
+			if has := strHasToken(test.header, test.token); has != test.exp {
 				t.Errorf("hasToken(%q, %q) = %v; want %v", test.header, test.token, has, test.exp)
 			}
 		})
@@ -235,7 +296,7 @@ func BenchmarkHasToken(b *testing.B) {
 	} {
 		b.Run(fmt.Sprintf("#%d", i), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = hasToken(bench.header, bench.token)
+				_ = strHasToken(bench.header, bench.token)
 			}
 		})
 	}
@@ -272,6 +333,44 @@ func BenchmarkSelectProtocol(b *testing.B) {
 		b.Run(fmt.Sprintf("#%s_optimized", bench.label), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				selectProtocol(bench.header, bench.accept)
+			}
+		})
+	}
+}
+
+type httpVersionCase struct {
+	in    []byte
+	major int
+	minor int
+	ok    bool
+}
+
+var httpVersionCases = []httpVersionCase{
+	{[]byte("HTTP/1.1"), 1, 1, true},
+	{[]byte("HTTP/1.0"), 1, 0, true},
+	{[]byte("HTTP/1.2"), 1, 2, true},
+	{[]byte("HTTP/42.1092"), 42, 1092, true},
+}
+
+func TestParseHttpVersion(t *testing.T) {
+	for _, c := range httpVersionCases {
+		t.Run(string(c.in), func(t *testing.T) {
+			major, minor, ok := parseHttpVersion(c.in)
+			if major != c.major || minor != c.minor || ok != c.ok {
+				t.Errorf(
+					"parseHttpVersion([]byte(%q)) = %v, %v, %v; want %v, %v, %v",
+					string(c.in), major, minor, ok, c.major, c.minor, c.ok,
+				)
+			}
+		})
+	}
+}
+
+func BenchmarkParseHttpVersion(b *testing.B) {
+	for _, c := range httpVersionCases {
+		b.Run(string(c.in), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _, _ = parseHttpVersion(c.in)
 			}
 		})
 	}

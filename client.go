@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/gobwas/pool/pbufio"
@@ -189,11 +188,11 @@ func (d Dialer) handshake(req *request, resp Response) (protocol string, extensi
 		err = ErrBadStatus
 		return
 	}
-	if u := resp.Header.Get(headerUpgrade); u != "websocket" && !equalFold(u, "websocket") {
+	if u := resp.Header.Get(headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
 		err = ErrBadUpgrade
 		return
 	}
-	if c := resp.Header.Get(headerConnection); c != "Upgrade" && !hasToken(c, "upgrade") {
+	if c := resp.Header.Get(headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrBadConnection
 		return
 	}
@@ -224,24 +223,6 @@ func (d Dialer) handshake(req *request, resp Response) (protocol string, extensi
 	return
 }
 
-func hostport(u *url.URL) string {
-	host, port := split2(u.Host, ':')
-	if port != "" {
-		return u.Host
-	}
-	if u.Scheme == "wss" {
-		return host + ":443"
-	}
-	return host + ":80"
-}
-
-func split2(s string, sep byte) (a, b string) {
-	if i := strings.LastIndexByte(s, sep); i != -1 {
-		return s[:i], s[i+1:]
-	}
-	return s, ""
-}
-
 type readerPool int
 
 func (n readerPool) Get(r io.Reader) *bufio.Reader { return pbufio.GetReader(r, int(n)) }
@@ -250,7 +231,7 @@ func (n readerPool) Put(r *bufio.Reader)           { pbufio.PutReader(r, int(n))
 type writerPool int
 
 func (n writerPool) Get(w io.Writer) *bufio.Writer { return pbufio.GetWriter(w, int(n)) }
-func (n writerPool) Put(w *bufio.Writer)           { pbufio.PutWriter(w, int(n)) }
+func (n writerPool) Put(w *bufio.Writer)           { pbufio.PutWriter(w) }
 
 type timeoutError struct{}
 
