@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	textErrorContent = "Content-Type: text/plain; charset=utf-8\r\n"
+	textErrorContent = "Content-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\n"
 	textUpgrade      = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
 	textBadRequest   = "HTTP/1.1 400 Bad Request\r\n" + textErrorContent
 	crlf             = "\r\n"
@@ -25,8 +25,8 @@ const (
 var (
 	ErrMalformedHttpRequest = fmt.Errorf("malformed HTTP request")
 
-	ErrBadHttpRequestVersion = fmt.Errorf("bad HTTP request version")
-	ErrBadHttpRequestMethod  = fmt.Errorf("bad HTTP request method")
+	ErrBadHttpRequestProto  = fmt.Errorf("bad HTTP request protocol version")
+	ErrBadHttpRequestMethod = fmt.Errorf("bad HTTP request method")
 
 	ErrBadHost       = fmt.Errorf("bad %q header", headerHost)
 	ErrBadUpgrade    = fmt.Errorf("bad %q header", headerUpgrade)
@@ -189,26 +189,33 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 	br := pbufio.GetReader(conn, 512)
 	defer pbufio.PutReader(br, 512)
 
-	//http.ReadRequest()
 	req, err := parseRequestLine(br)
 	if err != nil {
 		return
 	}
 
+	// Use BadRequest as default error status code.
+	code := http.StatusBadRequest
+
+	bw := pbufio.GetWriter(conn, 512)
+	defer pbufio.PutWriter(bw)
+
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if btsToString(req.method) != "GET" {
 		err = ErrBadHttpRequestMethod
+		sendResponseError(bw, err, code)
+		return
 	}
 	if err == nil && (req.major != 1 || req.minor < 1) {
-		err = ErrBadHttpRequestVersion
+		err = ErrBadHttpRequestProto
+		sendResponseError(bw, err, code)
+		return
 	}
 
 	var (
 		headerSeen byte
 		nonce      []byte
-
-		code = http.StatusBadRequest
 	)
 	for {
 		line, e := readLine(br)
@@ -252,17 +259,18 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 			if err == nil && !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
 				err = ErrBadConnection
 			}
-		case headerSecVersion:
-			headerSeen |= headerSeenSecVersion
-			if err == nil && !bytes.Equal(v, expHeaderSecVersion) {
-				err = ErrBadSecVersion
-			}
 		case headerSecKey:
 			headerSeen |= headerSeenSecKey
 			if err == nil && len(v) != nonceSize {
 				err = ErrBadSecKey
 			}
 			nonce = v
+		case headerSecVersion:
+			headerSeen |= headerSeenSecVersion
+			if err == nil && !bytes.Equal(v, expHeaderSecVersion) {
+				err = ErrBadSecVersion
+				code = http.StatusUpgradeRequired
+			}
 
 		case headerSecProtocol:
 			if check := u.Protocol; check != nil && hs.Protocol == "" {
@@ -287,7 +295,7 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		}
 	}
 
-	if headerSeen != headerSeenAll {
+	if err == nil && headerSeen != headerSeenAll {
 		switch {
 		case headerSeen & ^byte(headerSeenHost) == 0:
 			err = ErrBadHost
@@ -304,11 +312,8 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		}
 	}
 
-	bw := pbufio.GetWriter(conn, 512)
-	defer pbufio.PutWriter(bw)
-
 	if err != nil {
-		writeError(bw, err.Error(), code)
+		sendResponseError(bw, err, code)
 		return
 	}
 
@@ -376,16 +381,16 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if v := getHeader(r.Header, headerSecVersion); v != "13" {
-		err = ErrBadSecVersion
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	nonce := getHeader(r.Header, headerSecKey)
 	if len(nonce) != nonceSize {
 		err = ErrBadSecKey
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if v := getHeader(r.Header, headerSecVersion); v != "13" {
+		err = ErrBadSecVersion
+		w.Header().Set(headerSecVersion, "13")
+		http.Error(w, err.Error(), http.StatusUpgradeRequired)
 		return
 	}
 
@@ -479,7 +484,7 @@ func writeHeaderValueBytes(bw *bufio.Writer, value []byte) {
 	bw.WriteString(crlf)
 }
 
-func writeError(bw *bufio.Writer, err string, code int) {
+func writeResponseErrorLine(bw *bufio.Writer, code int) {
 	switch code {
 	case http.StatusBadRequest:
 		bw.WriteString(textBadRequest)
@@ -491,10 +496,16 @@ func writeError(bw *bufio.Writer, err string, code int) {
 		bw.WriteString(crlf)
 		bw.WriteString(textErrorContent)
 	}
+}
 
-	writeHeader(bw, "Content-Length", strconv.FormatInt(int64(len(err)), 10))
+func sendResponseError(bw *bufio.Writer, err error, code int) error {
+	writeResponseErrorLine(bw, code)
 	bw.WriteString(crlf)
-	bw.WriteString(err)
+	if err != nil {
+		bw.WriteString(err.Error())
+		bw.WriteByte('\n') // Just to be consistent with http.Error().
+	}
+	return bw.Flush()
 }
 
 func selectProtocol(h string, ok func(string) bool) string {

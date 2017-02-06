@@ -94,13 +94,54 @@ var upgradeCases = []upgradeCase{
 	//	}),
 	//  hs: Handshake{Extensions: ["b", "d"]},
 	//},
+
+	// Error cases.
+	// ------------
+
+	{
+		label: "err_bad_method",
+		nonce: mustMakeNonce(),
+		req: mustMakeRequest("POST", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"13"},
+		}),
+		res: mustMakeErrResponse(400, ErrBadHttpRequestMethod, nil),
+		err: ErrBadHttpRequestMethod,
+	},
+	{
+		label: "err_bad_proto",
+		nonce: mustMakeNonce(),
+		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"13"},
+		})),
+		res: mustMakeErrResponse(400, ErrBadHttpRequestProto, nil),
+		err: ErrBadHttpRequestProto,
+	},
+	{
+		label: "err_bad_version",
+		nonce: mustMakeNonce(),
+		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"15"},
+		})),
+		res: mustMakeErrResponse(426, ErrBadSecVersion, http.Header{
+			headerSecVersion: []string{"13"},
+		}),
+		err: ErrBadSecVersion,
+	},
 }
 
 func TestUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
-			test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+			if test.err == nil {
+				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+			}
 
 			u := Upgrader{
 				Protocol:  test.protocol,
@@ -135,7 +176,9 @@ func TestConnUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
-			test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+			if test.err == nil {
+				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+			}
 
 			u := ConnUpgrader{
 				Protocol:  test.protocol,
@@ -505,6 +548,12 @@ func mustMakeRequest(method, url string, headers http.Header) *http.Request {
 	return req
 }
 
+func setHttpProto(major, minor int, req *http.Request) *http.Request {
+	req.ProtoMajor = major
+	req.ProtoMinor = minor
+	return req
+}
+
 func mustMakeResponse(code int, headers http.Header) *http.Response {
 	res := &http.Response{
 		StatusCode:    code,
@@ -513,6 +562,27 @@ func mustMakeResponse(code int, headers http.Header) *http.Response {
 		ProtoMajor:    1,
 		ProtoMinor:    1,
 		ContentLength: -1,
+	}
+	return res
+}
+
+func mustMakeErrResponse(code int, err error, headers http.Header) *http.Response {
+	res := &http.Response{
+		StatusCode: code,
+		Status:     http.StatusText(code),
+		Header: http.Header{
+			"Content-Type":           []string{"text/plain; charset=utf-8"},
+			"X-Content-Type-Options": []string{"nosniff"},
+		},
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		ContentLength: -1,
+	}
+	if err != nil {
+		res.Body = ioutil.NopCloser(strings.NewReader(err.Error() + "\n"))
+	}
+	for k, v := range headers {
+		res.Header[k] = v
 	}
 	return res
 }
