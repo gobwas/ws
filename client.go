@@ -250,7 +250,7 @@ func (n readerPool) Put(r *bufio.Reader)           { pbufio.PutReader(r, int(n))
 type writerPool int
 
 func (n writerPool) Get(w io.Writer) *bufio.Writer { return pbufio.GetWriter(w, int(n)) }
-func (n writerPool) Put(w *bufio.Writer)           { pbufio.PutWriter(w, int(n)) }
+func (n writerPool) Put(w *bufio.Writer)           { pbufio.PutWriter(w) }
 
 type timeoutError struct{}
 
