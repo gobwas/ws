@@ -180,6 +180,11 @@ func BenchmarkCanonicalizeHeaderKey(b *testing.B) {
 				canonicalizeHeaderKey(bts)
 			}
 		})
+		b.Run(fmt.Sprintf("%s_std", string(bts)), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				canonic(bts)
+			}
+		})
 	}
 }
 

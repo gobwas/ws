@@ -179,6 +179,18 @@ func canonicalizeHeaderKey(k []byte) {
 	}
 }
 
+func canonic(k []byte) {
+	upper := true
+	for i, c := range k {
+		if upper && 'a' <= c && c <= 'z' {
+			k[i] -= toLower
+		} else if !upper && 'A' <= c && c <= 'Z' {
+			k[i] += toLower
+		}
+		upper = c == '-'
+	}
+}
+
 // readLine is a wrapper around bufio.Reader.ReadLine(), it calls ReadLine()
 // until full line will be read.
 func readLine(br *bufio.Reader) (line []byte, err error) {
