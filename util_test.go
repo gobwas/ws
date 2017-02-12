@@ -52,13 +52,9 @@ type equalFoldCase struct {
 var equalFoldCases = []equalFoldCase{
 	{"websocket", "WebSocket", "websocket"},
 	{"upgrade", "Upgrade", "upgrade"},
-
 	randomEqualLetters(20),
-	randomEqualLetters(24),
 	randomEqualLetters(64),
-
 	inequalAt(randomEqualLetters(20), 10),
-	inequalAt(randomEqualLetters(24), 17),
 	inequalAt(randomEqualLetters(64), 30),
 }
 
