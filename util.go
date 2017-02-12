@@ -156,13 +156,12 @@ const (
 // Algorithm below is like standard textproto/CanonicalMIMEHeaderKey, except
 // that it operates with slice of bytes and modifies it inplace without copying.
 func canonicalizeHeaderKey(k []byte) {
-	// TODO(gobwas): could it be optimized?
 	upper := true
 	for i, c := range k {
 		if upper && 'a' <= c && c <= 'z' {
-			k[i] -= toLower
+			k[i] &= toUpper
 		} else if !upper && 'A' <= c && c <= 'Z' {
-			k[i] += toLower
+			k[i] |= toLower
 		}
 		upper = c == '-'
 	}
