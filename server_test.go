@@ -180,21 +180,12 @@ func TestConnUpgrader(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 			}
 
-			var hs Handshake
 			u := ConnUpgrader{
 				Protocol: func(p []byte) bool {
-					if sp := string(p); test.protocol(sp) {
-						hs.Protocol = sp
-						return true
-					}
-					return false
+					return test.protocol(string(p))
 				},
 				Extension: func(e []byte) bool {
-					if ep := string(e); test.extension(string(e)) {
-						hs.Extensions = append(hs.Extensions, ep)
-						return true
-					}
-					return false
+					return test.extension(string(e))
 				},
 			}
 
@@ -204,7 +195,7 @@ func TestConnUpgrader(t *testing.T) {
 			reqBytes := dumpRequest(test.req)
 			conn := bytes.NewBuffer(reqBytes)
 
-			err := u.Upgrade(conn, nil)
+			hs, err := u.Upgrade(conn, nil)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return

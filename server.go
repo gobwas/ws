@@ -203,7 +203,7 @@ var (
 	expHeaderSecVersion      = []byte("13")
 )
 
-func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (err error) {
+func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
 	const (
@@ -267,8 +267,6 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (err error) {
 		// bit on.
 		headerSeen byte
 		nonce      []byte
-		hs         Handshake
-		hsProto    []byte
 	)
 	for {
 		line, e := readLine(br)
@@ -330,13 +328,7 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (err error) {
 		case headerSecProtocol:
 			if check := u.Protocol; check != nil && hs.Protocol == "" {
 				if check(v) {
-					// TODO(gobwas): we could avoid copying here by
-					// creating var [64]byte holder for subprotocol value,
-					// and then dumping it below when saying client which protocol
-					// we selected.
-					hsProto = make([]byte, len(v))
-					copy(hsProto, v)
-					hs.Protocol = btsToString(hsProto)
+					hs.Protocol = string(v)
 				}
 			}
 		case headerSecExtensions:
