@@ -149,6 +149,10 @@ func TestBSplit3(t *testing.T) {
 }
 
 var canonicalHeaderCases = [][]byte{
+	[]byte("foo-"),
+	[]byte("-foo"),
+	[]byte("-"),
+	[]byte("foo----bar"),
 	[]byte("foo-bar"),
 	[]byte("FoO-BaR"),
 	[]byte("Foo-Bar"),
@@ -178,11 +182,6 @@ func BenchmarkCanonicalizeHeaderKey(b *testing.B) {
 		b.Run(fmt.Sprintf("%s", string(bts)), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				canonicalizeHeaderKey(bts)
-			}
-		})
-		b.Run(fmt.Sprintf("%s_std", string(bts)), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				canonic(bts)
 			}
 		})
 	}

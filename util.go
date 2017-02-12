@@ -156,30 +156,6 @@ const (
 // Algorithm below is like standard textproto/CanonicalMIMEHeaderKey, except
 // that it operates with slice of bytes and modifies it inplace without copying.
 func canonicalizeHeaderKey(k []byte) {
-	if len(k) == 0 {
-		return
-	}
-	var i int
-	for {
-		k[0] &= toUpper
-
-		i = bytes.IndexByte(k, '-')
-		if i == -1 {
-			break
-		}
-
-		for j := 1; j < i; j++ {
-			k[j] |= toLower
-		}
-		k = k[i+1:]
-	}
-
-	for j := 1; j < len(k); j++ {
-		k[j] |= toLower
-	}
-}
-
-func canonic(k []byte) {
 	upper := true
 	for i, c := range k {
 		if upper && 'a' <= c && c <= 'z' {
