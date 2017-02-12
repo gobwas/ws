@@ -9,6 +9,41 @@ import (
 	"testing"
 )
 
+func TestHasToken(t *testing.T) {
+	for i, test := range []struct {
+		header string
+		token  string
+		exp    bool
+	}{
+		{"Keep-Alive, Close, Upgrade", "upgrade", true},
+		{"Keep-Alive, Close, upgrade, hello", "upgrade", true},
+		{"Keep-Alive, Close,  hello", "upgrade", false},
+	} {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			if has := strHasToken(test.header, test.token); has != test.exp {
+				t.Errorf("hasToken(%q, %q) = %v; want %v", test.header, test.token, has, test.exp)
+			}
+		})
+	}
+}
+
+func BenchmarkHasToken(b *testing.B) {
+	for i, bench := range []struct {
+		header string
+		token  string
+	}{
+		{"Keep-Alive, Close, Upgrade", "upgrade"},
+		{"Keep-Alive, Close, upgrade, hello", "upgrade"},
+		{"Keep-Alive, Close,  hello", "upgrade"},
+	} {
+		b.Run(fmt.Sprintf("#%d", i), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = strHasToken(bench.header, bench.token)
+			}
+		})
+	}
+}
+
 type equalFoldCase struct {
 	label string
 	a, b  string

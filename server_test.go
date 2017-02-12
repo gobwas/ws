@@ -99,7 +99,7 @@ var upgradeCases = []upgradeCase{
 	// ------------
 
 	{
-		label: "err_bad_method",
+		label: "err_bad_http_method",
 		nonce: mustMakeNonce(),
 		req: mustMakeRequest("POST", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
@@ -110,7 +110,7 @@ var upgradeCases = []upgradeCase{
 		err: ErrBadHttpRequestMethod,
 	},
 	{
-		label: "err_bad_proto",
+		label: "err_bad_http_proto",
 		nonce: mustMakeNonce(),
 		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
@@ -121,9 +121,9 @@ var upgradeCases = []upgradeCase{
 		err: ErrBadHttpRequestProto,
 	},
 	{
-		label: "err_bad_version",
+		label: "err_bad_sec_version",
 		nonce: mustMakeNonce(),
-		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
+		req: setHttpProto(1, 1, mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"15"},
@@ -180,15 +180,31 @@ func TestConnUpgrader(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 			}
 
+			var hs Handshake
 			u := ConnUpgrader{
-				Protocol:  test.protocol,
-				Extension: test.extension,
+				Protocol: func(p []byte) bool {
+					if sp := string(p); test.protocol(sp) {
+						hs.Protocol = sp
+						return true
+					}
+					return false
+				},
+				Extension: func(e []byte) bool {
+					if ep := string(e); test.extension(string(e)) {
+						hs.Extensions = append(hs.Extensions, ep)
+						return true
+					}
+					return false
+				},
 			}
 
-			conn := &bytes.Buffer{}
-			test.req.Write(conn)
+			// We use dumpRequest here because test.req.Write is always send
+			// http/1.1 proto version, that does not fits all our testing
+			// cases.
+			reqBytes := dumpRequest(test.req)
+			conn := bytes.NewBuffer(reqBytes)
 
-			hs, err := u.Upgrade(conn, nil)
+			err := u.Upgrade(conn, nil)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
@@ -248,8 +264,12 @@ func BenchmarkConnUpgrader(b *testing.B) {
 		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
 
 		u := ConnUpgrader{
-			Protocol:  bench.protocol,
-			Extension: bench.extension,
+			Protocol: func(p []byte) bool {
+				return bench.protocol(btsToString(p))
+			},
+			Extension: func(e []byte) bool {
+				return bench.extension(btsToString(e))
+			},
 		}
 
 		buf := &bytes.Buffer{}
@@ -275,10 +295,7 @@ func BenchmarkConnUpgrader(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					c := conn[atomic.AddInt64(i, 1)-1]
-					_, err := u.Upgrade(c, nil)
-					if err != nil {
-						b.Fatal(err)
-					}
+					u.Upgrade(c, nil)
 				}
 			})
 		})
@@ -305,41 +322,6 @@ func TestSelectProtocol(t *testing.T) {
 
 			if !reflect.DeepEqual(calls, exp) {
 				t.Errorf("selectProtocol(%q, fn); called fn with %v; want %v", test.header, calls, exp)
-			}
-		})
-	}
-}
-
-func TestHasToken(t *testing.T) {
-	for i, test := range []struct {
-		header string
-		token  string
-		exp    bool
-	}{
-		{"Keep-Alive, Close, Upgrade", "upgrade", true},
-		{"Keep-Alive, Close, upgrade, hello", "upgrade", true},
-		{"Keep-Alive, Close,  hello", "upgrade", false},
-	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			if has := strHasToken(test.header, test.token); has != test.exp {
-				t.Errorf("hasToken(%q, %q) = %v; want %v", test.header, test.token, has, test.exp)
-			}
-		})
-	}
-}
-
-func BenchmarkHasToken(b *testing.B) {
-	for i, bench := range []struct {
-		header string
-		token  string
-	}{
-		{"Keep-Alive, Close, Upgrade", "upgrade"},
-		{"Keep-Alive, Close, upgrade, hello", "upgrade"},
-		{"Keep-Alive, Close,  hello", "upgrade"},
-	} {
-		b.Run(fmt.Sprintf("#%d", i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = strHasToken(bench.header, bench.token)
 			}
 		})
 	}
@@ -381,44 +363,6 @@ func BenchmarkSelectProtocol(b *testing.B) {
 	}
 }
 
-type httpVersionCase struct {
-	in    []byte
-	major int
-	minor int
-	ok    bool
-}
-
-var httpVersionCases = []httpVersionCase{
-	{[]byte("HTTP/1.1"), 1, 1, true},
-	{[]byte("HTTP/1.0"), 1, 0, true},
-	{[]byte("HTTP/1.2"), 1, 2, true},
-	{[]byte("HTTP/42.1092"), 42, 1092, true},
-}
-
-func TestParseHttpVersion(t *testing.T) {
-	for _, c := range httpVersionCases {
-		t.Run(string(c.in), func(t *testing.T) {
-			major, minor, ok := parseHttpVersion(c.in)
-			if major != c.major || minor != c.minor || ok != c.ok {
-				t.Errorf(
-					"parseHttpVersion([]byte(%q)) = %v, %v, %v; want %v, %v, %v",
-					string(c.in), major, minor, ok, c.major, c.minor, c.ok,
-				)
-			}
-		})
-	}
-}
-
-func BenchmarkParseHttpVersion(b *testing.B) {
-	for _, c := range httpVersionCases {
-		b.Run(string(c.in), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_, _, _ = parseHttpVersion(c.in)
-			}
-		})
-	}
-}
-
 func randProtocols(n, m int) []string {
 	ret := make([]string, n)
 	bts := make([]byte, m)
@@ -437,6 +381,7 @@ func randProtocols(n, m int) []string {
 	}
 	return ret
 }
+
 func dumpRequest(req *http.Request) []byte {
 	bts, err := httputil.DumpRequest(req, true)
 	if err != nil {

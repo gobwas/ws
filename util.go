@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"net/url"
@@ -152,7 +153,8 @@ const (
 		uint64(toLower)<<56
 )
 
-// Algorithm below is like standard textproto/CanonicalMIMEHeaderKey.
+// Algorithm below is like standard textproto/CanonicalMIMEHeaderKey, except
+// that it operates with slice of bytes and modifies it inplace without copying.
 func canonicalizeHeaderKey(k []byte) {
 	if len(k) == 0 {
 		return
@@ -187,6 +189,29 @@ func canonic(k []byte) {
 		}
 		upper = c == '-'
 	}
+}
+
+// readLine is a wrapper around bufio.Reader.ReadLine(), it calls ReadLine()
+// until full line will be read.
+func readLine(br *bufio.Reader) (line []byte, err error) {
+	var more bool
+	var bts []byte
+	for {
+		bts, more, err = br.ReadLine()
+		if err != nil {
+			return
+		}
+		// Avoid copying bytes to the nil slice.
+		if line == nil {
+			line = bts
+		} else {
+			line = append(line, bts...)
+		}
+		if !more {
+			break
+		}
+	}
+	return
 }
 
 // strEqualFold checks s to be case insensitive equal to p.

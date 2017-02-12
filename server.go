@@ -13,14 +13,6 @@ import (
 	"github.com/gobwas/pool/pbufio"
 )
 
-const (
-	textErrorContent = "Content-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\n"
-	textUpgrade      = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-	textBadRequest   = "HTTP/1.1 400 Bad Request\r\n" + textErrorContent
-	crlf             = "\r\n"
-	colonAndSpace    = ": "
-)
-
 // Errors used by upgraders.
 var (
 	ErrMalformedHttpRequest = fmt.Errorf("malformed HTTP request")
@@ -76,9 +68,6 @@ func Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Co
 	return DefaultUpgrader.Upgrade(r, w, h)
 }
 
-type Handshaker struct {
-}
-
 // Upgrader contains options for upgrading http connection to websocket.
 type Upgrader struct {
 	// Protocol is the select function that is used to select subprotocol
@@ -92,280 +81,24 @@ type Upgrader struct {
 	Extension func(string) bool
 }
 
-type ConnUpgrader struct {
-	// Protocol is the select function that is used to select subprotocol
-	// from list requested by client. If this field is set, then the first matched
-	// protocol is sent to a client as negotiated.
-	Protocol func(string) bool
-
-	// Extension is the select function that is used to select extensions
-	// from list requested by client. If this field is set, then the all matched
-	// extensions are sent to a client as negotiated.
-	Extension func(string) bool
-
-	Route  func(host, uri []byte) (err error, code int)
-	Header func(key, value []byte) (err error, code int)
-}
-
-func readLine(br *bufio.Reader) (line []byte, err error) {
-	var more bool
-	var bts []byte
-	for {
-		bts, more, err = br.ReadLine()
-		if err != nil {
-			return
-		}
-		// Avoid copying bytes to the nil slice.
-		if line == nil {
-			line = bts
-		} else {
-			line = append(line, bts...)
-		}
-		if !more {
-			break
-		}
-	}
-	return
-}
-
-var (
-	httpVersion1_0    = []byte("HTTP/1.0")
-	httpVersion1_1    = []byte("HTTP/1.1")
-	httpVersionPrefix = []byte("HTTP/")
-)
-
-func parseHttpVersion(bts []byte) (major, minor int, ok bool) {
-	switch {
-	case bytes.Equal(bts, httpVersion1_0):
-		return 1, 0, true
-	case bytes.Equal(bts, httpVersion1_1):
-		return 1, 1, true
-	case len(bts) < 8:
-		return
-	case !bytes.Equal(bts[:5], httpVersionPrefix):
-		return
-	}
-
-	bts = bts[5:]
-
-	dot := bytes.IndexByte(bts, '.')
-	if dot == -1 {
-		return
-	}
-	var err error
-	major, err = asciiToInt(bts[:dot])
-	if err != nil {
-		return
-	}
-	minor, err = asciiToInt(bts[dot+1:])
-	if err != nil {
-		return
-	}
-
-	return major, minor, true
-}
-
-const (
-	headerSeenHost = 1 << iota
-	headerSeenUpgrade
-	headerSeenConnection
-	headerSeenSecVersion
-	headerSeenSecKey
-
-	headerSeenAll = 0 |
-		headerSeenHost |
-		headerSeenUpgrade |
-		headerSeenConnection |
-		headerSeenSecVersion |
-		headerSeenSecKey
-)
-
-var expHeaderUpgrade = []byte("websocket")
-var expHeaderConnection = []byte("Upgrade")
-var expHeaderConnectionLower = []byte("upgrade")
-var expHeaderSecVersion = []byte("13")
-
-func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, err error) {
-	br := pbufio.GetReader(conn, 512)
-	defer pbufio.PutReader(br, 512)
-
-	req, err := parseRequestLine(br)
-	if err != nil {
-		return
-	}
-
-	// Use BadRequest as default error status code.
-	code := http.StatusBadRequest
-
-	bw := pbufio.GetWriter(conn, 512)
-	defer pbufio.PutWriter(bw)
-
-	// See https://tools.ietf.org/html/rfc6455#section-4.1
-	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
-	if btsToString(req.method) != "GET" {
-		err = ErrBadHttpRequestMethod
-		sendResponseError(bw, err, code)
-		return
-	}
-	if err == nil && (req.major != 1 || req.minor < 1) {
-		err = ErrBadHttpRequestProto
-		sendResponseError(bw, err, code)
-		return
-	}
-
-	var (
-		headerSeen byte
-		nonce      []byte
-	)
-	for {
-		line, e := readLine(br)
-		if e != nil {
-			err = e
-			return
-		}
-
-		// Blank line, no more lines to read.
-		if len(line) == 0 {
-			break
-		}
-
-		k, v, ok := parseHeaderLine(line)
-		if !ok {
-			err = ErrMalformedHttpRequest
-			return
-		}
-
-		switch btsToString(k) {
-		case headerHost:
-			headerSeen |= headerSeenHost
-			if len(v) == 0 {
-				if err == nil {
-					err = ErrBadHost
-				}
-			} else if onRoute := u.Route; onRoute != nil {
-				if e, c := onRoute(v, req.uri); err == nil && e != nil {
-					err = e
-					code = c
-				}
-			}
-
-		case headerUpgrade:
-			headerSeen |= headerSeenUpgrade
-			if err == nil && !bytes.Equal(v, expHeaderUpgrade) && !btsEqualFold(v, expHeaderUpgrade) {
-				err = ErrBadUpgrade
-			}
-		case headerConnection:
-			headerSeen |= headerSeenConnection
-			if err == nil && !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
-				err = ErrBadConnection
-			}
-		case headerSecKey:
-			headerSeen |= headerSeenSecKey
-			if err == nil && len(v) != nonceSize {
-				err = ErrBadSecKey
-			}
-			nonce = v
-		case headerSecVersion:
-			headerSeen |= headerSeenSecVersion
-			if err == nil && !bytes.Equal(v, expHeaderSecVersion) {
-				err = ErrBadSecVersion
-				code = http.StatusUpgradeRequired
-			}
-
-		case headerSecProtocol:
-			if check := u.Protocol; check != nil && hs.Protocol == "" {
-				if check(btsToString(v)) {
-					// TODO(gobwas) we could avoid copying here by
-					// creating var [64]byte holder for subprotocol value,
-					// and then dumping it below when saying client which protocol
-					// we selected.
-					hs.Protocol = string(v)
-				}
-			}
-		case headerSecExtensions:
-			// TODO(gobwas) select extensions.
-
-		default:
-			if onHeader := u.Header; onHeader != nil {
-				if e, c := onHeader(k, v); err == nil && e != nil {
-					err = e
-					code = c
-				}
-			}
-		}
-	}
-
-	if err == nil && headerSeen != headerSeenAll {
-		switch {
-		case headerSeen & ^byte(headerSeenHost) == 0:
-			err = ErrBadHost
-		case headerSeen & ^byte(headerSeenUpgrade) == 0:
-			err = ErrBadUpgrade
-		case headerSeen & ^byte(headerSeenConnection) == 0:
-			err = ErrBadConnection
-		case headerSeen & ^byte(headerSeenSecVersion) == 0:
-			err = ErrBadSecVersion
-		case headerSeen & ^byte(headerSeenSecKey) == 0:
-			err = ErrBadSecKey
-		default:
-			panic("unknown headers state")
-		}
-	}
-
-	if err != nil {
-		sendResponseError(bw, err, code)
-		return
-	}
-
-	err = writeUpgrade(bw, btsToNonce(nonce), hs, h)
-
-	return
-}
-
-func parseHeaderLine(line []byte) (k, v []byte, ok bool) {
-	colon := bytes.IndexByte(line, ':')
-	if colon == -1 {
-		return
-	}
-
-	k = btrim(line[:colon])
-	canonicalizeHeaderKey(k)
-
-	v = btrim(line[colon+1:])
-
-	return k, v, true
-}
-
-type requestLine struct {
-	method, uri  []byte
-	major, minor int
-}
-
-func parseRequestLine(br *bufio.Reader) (req requestLine, err error) {
-	line, err := readLine(br)
-	if err != nil {
-		return
-	}
-
-	var proto []byte
-	req.method, req.uri, proto = bsplit3(line, ' ')
-
-	var ok bool
-	req.major, req.minor, ok = parseHttpVersion(proto)
-	if !ok {
-		err = ErrMalformedHttpRequest
-		return
-	}
-
-	return
-}
-
 // Upgrade upgrades http connection to the websocket connection.
 // Set of additional headers could be passed to be sent with the response after successful upgrade.
 //
 // It hijacks net.Conn from w and returns recevied net.Conn and bufio.ReadWriter.
 // On successful handshake it returns Handshake struct describing handshake info.
 func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+	// See https://tools.ietf.org/html/rfc6455#section-4.1
+	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
+	if r.Method != http.MethodGet {
+		err = ErrBadHttpRequestMethod
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if r.ProtoMajor < 1 || (r.ProtoMajor == 1 && r.ProtoMinor < 1) {
+		err = ErrBadHttpRequestProto
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if r.Host == "" {
 		err = ErrBadHost
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -420,7 +153,232 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		return
 	}
 
-	err = writeUpgrade(rw.Writer, strToNonce(nonce), hs, h)
+	writeUpgrade(rw.Writer, strToNonce(nonce), hs, h)
+	err = rw.Writer.Flush()
+
+	return
+}
+
+type ConnUpgrader struct {
+	// Protocol is the select function that is used to select subprotocol
+	// from list requested by client. If this field is set, then the first matched
+	// protocol is sent to a client as negotiated.
+	//
+	// The argument is only valid until the callback returns.
+	Protocol func([]byte) bool
+
+	// Extension is the select function that is used to select extensions
+	// from list requested by client. If this field is set, then the all matched
+	// extensions are sent to a client as negotiated.
+	//
+	// The argument is only valid until the callback returns.
+	Extension func([]byte) bool
+
+	// OnRequest is a callback that will be called after request line and
+	// "Host" header successful parsing. Setting this field helps to implement
+	// some application logic.
+	//
+	// The arguments are only valid until the callback returns.
+	//
+	// Returned value could be used to prevent processing request and response
+	// with appropriate http status.
+	OnRequest func(host, uri []byte) (err error, code int, header HeaderWriter)
+
+	// OnHeader is a callback that will be called after successful parsing of
+	// header, that is not used during WebSocket handshake procedure. That is,
+	// it will be called with non-websocket headers, which could be relevant
+	// for application-level logic.
+	//
+	// The arguments are only valid until the callback returns.
+	//
+	// Returned value could be used to prevent processing request and response
+	// with appropriate http status.
+	OnHeader func(key, value []byte) (err error, code int, header HeaderWriter)
+}
+
+var (
+	expHeaderUpgrade         = []byte("websocket")
+	expHeaderConnection      = []byte("Upgrade")
+	expHeaderConnectionLower = []byte("upgrade")
+	expHeaderSecVersion      = []byte("13")
+)
+
+func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (err error) {
+	// headerSeen constants helps to report whether or not some header was seen
+	// during reading request bytes.
+	const (
+		headerSeenHost = 1 << iota
+		headerSeenUpgrade
+		headerSeenConnection
+		headerSeenSecVersion
+		headerSeenSecKey
+
+		// headerSeenAll is the value that we expect to receive at the end of
+		// headers read/parse loop.
+		headerSeenAll = 0 |
+			headerSeenHost |
+			headerSeenUpgrade |
+			headerSeenConnection |
+			headerSeenSecVersion |
+			headerSeenSecKey
+	)
+
+	br := pbufio.GetReader(conn, 512)
+	defer pbufio.PutReader(br, 512)
+
+	// Read HTTP request line like "GET /ws HTTP/1.1".
+	rl, err := readLine(br)
+	if err != nil {
+		return
+	}
+	// Parse request line data like HTTP version, uri and method.
+	req, err := httpParseRequestLine(rl)
+	if err != nil {
+		return
+	}
+
+	var (
+		// Use BadRequest as default error status code.
+		code = http.StatusBadRequest
+		errh HeaderWriter
+	)
+
+	bw := pbufio.GetWriter(conn, 512)
+	defer pbufio.PutWriter(bw)
+
+	// See https://tools.ietf.org/html/rfc6455#section-4.1
+	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
+	if btsToString(req.method) != http.MethodGet {
+		err = ErrBadHttpRequestMethod
+		writeResponseError(bw, err, code, nil)
+		bw.Flush()
+		return
+	}
+	if req.major < 1 || (req.major == 1 && req.minor < 1) {
+		err = ErrBadHttpRequestProto
+		writeResponseError(bw, err, code, nil)
+		bw.Flush()
+		return
+	}
+
+	// Start headers read/parse loop.
+	var (
+		// headerSeen reports which header was seen by setting corresponding
+		// bit on.
+		headerSeen byte
+		nonce      []byte
+		hs         Handshake
+		hsProto    []byte
+	)
+	for {
+		line, e := readLine(br)
+		if e != nil {
+			err = e
+			return
+		}
+
+		// Blank line, no more lines to read.
+		if len(line) == 0 {
+			break
+		}
+
+		k, v, ok := httpParseHeaderLine(line)
+		if !ok {
+			err = ErrMalformedHttpRequest
+			return
+		}
+
+		switch btsToString(k) {
+		case headerHost:
+			headerSeen |= headerSeenHost
+			if len(v) == 0 {
+				if err == nil {
+					err = ErrBadHost
+				}
+			} else if onRequest := u.OnRequest; err == nil && onRequest != nil {
+				if e, c, hw := onRequest(v, req.uri); e != nil {
+					err = e
+					code = c
+					errh = hw
+				}
+			}
+
+		case headerUpgrade:
+			headerSeen |= headerSeenUpgrade
+			if err == nil && !bytes.Equal(v, expHeaderUpgrade) && !btsEqualFold(v, expHeaderUpgrade) {
+				err = ErrBadUpgrade
+			}
+		case headerConnection:
+			headerSeen |= headerSeenConnection
+			if err == nil && !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
+				err = ErrBadConnection
+			}
+		case headerSecKey:
+			headerSeen |= headerSeenSecKey
+			if err == nil && len(v) != nonceSize {
+				err = ErrBadSecKey
+			}
+			nonce = v
+		case headerSecVersion:
+			headerSeen |= headerSeenSecVersion
+			if err == nil && !bytes.Equal(v, expHeaderSecVersion) {
+				err = ErrBadSecVersion
+				code = http.StatusUpgradeRequired
+				errh = headerWriterSecVersion
+			}
+
+		case headerSecProtocol:
+			if check := u.Protocol; check != nil && hs.Protocol == "" {
+				if check(v) {
+					// TODO(gobwas): we could avoid copying here by
+					// creating var [64]byte holder for subprotocol value,
+					// and then dumping it below when saying client which protocol
+					// we selected.
+					hsProto = make([]byte, len(v))
+					copy(hsProto, v)
+					hs.Protocol = btsToString(hsProto)
+				}
+			}
+		case headerSecExtensions:
+			// TODO(gobwas) select extensions.
+
+		default:
+			if onHeader := u.OnHeader; err == nil && onHeader != nil {
+				if e, c, hw := onHeader(k, v); e != nil {
+					err = e
+					code = c
+					errh = hw
+				}
+			}
+		}
+	}
+
+	if err == nil && headerSeen != headerSeenAll {
+		switch {
+		case headerSeen & ^byte(headerSeenHost) == 0:
+			err = ErrBadHost
+		case headerSeen & ^byte(headerSeenUpgrade) == 0:
+			err = ErrBadUpgrade
+		case headerSeen & ^byte(headerSeenConnection) == 0:
+			err = ErrBadConnection
+		case headerSeen & ^byte(headerSeenSecVersion) == 0:
+			err = ErrBadSecVersion
+		case headerSeen & ^byte(headerSeenSecKey) == 0:
+			err = ErrBadSecKey
+		default:
+			panic("unknown headers state")
+		}
+	}
+
+	if err != nil {
+		writeResponseError(bw, err, code, errh)
+		bw.Flush()
+		return
+	}
+
+	writeUpgrade(bw, btsToNonce(nonce), hs, h)
+	err = bw.Flush()
+
 	return
 }
 
@@ -435,33 +393,6 @@ func getHeader(h http.Header, key string) string {
 		return ""
 	}
 	return v[0]
-}
-
-func writeUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h http.Header) error {
-	bw.WriteString(textUpgrade)
-
-	writeHeaderKey(bw, headerSecAccept)
-	writeAccept(bw, nonce)
-	bw.WriteString(crlf)
-
-	if hs.Protocol != "" {
-		writeHeader(bw, headerSecProtocol, hs.Protocol)
-	}
-	if len(hs.Extensions) > 0 {
-		// TODO(gobwas)
-		//	if len(hs.Extensions) > 0 {
-		//		writeHeader(bw, headerSecExtensions, strings.Join(hs.Extensions, ", "))
-		//	}
-	}
-	for key, values := range h {
-		for _, val := range values {
-			writeHeader(bw, key, val)
-		}
-	}
-
-	bw.WriteString(crlf)
-
-	return bw.Flush()
 }
 
 func writeHeader(bw *bufio.Writer, key, value string) {
@@ -484,7 +415,47 @@ func writeHeaderValueBytes(bw *bufio.Writer, value []byte) {
 	bw.WriteString(crlf)
 }
 
-func writeResponseErrorLine(bw *bufio.Writer, code int) {
+// HeaderWriter represents low level HTTP header writer.
+// If you want to dump some http.Header instance into given bufio.Writer, you
+// could do something like this:
+//
+// h := make(http.Header{"foo": []string{"bar"}})
+// return func(bw *bufio.Writer) { h.Write(bw) }
+//
+// This type is for clients ability to avoid allocations and call bufio.Writer
+// methods directly.
+type HeaderWriter func(*bufio.Writer)
+
+func headerWriterSecVersion(bw *bufio.Writer) {
+	writeHeader(bw, headerSecVersion, "13")
+}
+
+func writeUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h http.Header) {
+	bw.WriteString(textUpgrade)
+
+	writeHeaderKey(bw, headerSecAccept)
+	writeAccept(bw, nonce)
+	bw.WriteString(crlf)
+
+	if hs.Protocol != "" {
+		writeHeader(bw, headerSecProtocol, hs.Protocol)
+	}
+	if len(hs.Extensions) > 0 {
+		// TODO(gobwas)
+		//	if len(hs.Extensions) > 0 {
+		//		writeHeader(bw, headerSecExtensions, strings.Join(hs.Extensions, ", "))
+		//	}
+	}
+	for key, values := range h {
+		for _, val := range values {
+			writeHeader(bw, key, val)
+		}
+	}
+
+	bw.WriteString(crlf)
+}
+
+func writeResponseError(bw *bufio.Writer, err error, code int, hw HeaderWriter) {
 	switch code {
 	case http.StatusBadRequest:
 		bw.WriteString(textBadRequest)
@@ -496,16 +467,14 @@ func writeResponseErrorLine(bw *bufio.Writer, code int) {
 		bw.WriteString(crlf)
 		bw.WriteString(textErrorContent)
 	}
-}
-
-func sendResponseError(bw *bufio.Writer, err error, code int) error {
-	writeResponseErrorLine(bw, code)
+	if hw != nil {
+		hw(bw)
+	}
 	bw.WriteString(crlf)
 	if err != nil {
 		bw.WriteString(err.Error())
 		bw.WriteByte('\n') // Just to be consistent with http.Error().
 	}
-	return bw.Flush()
 }
 
 func selectProtocol(h string, ok func(string) bool) string {
