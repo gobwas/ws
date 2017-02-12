@@ -240,10 +240,7 @@ func BenchmarkUpgrader(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					w := res[atomic.AddInt64(i, 1)-1]
-					_, _, _, err := u.Upgrade(bench.req, w, nil)
-					if err != nil {
-						b.Fatal(err)
-					}
+					u.Upgrade(bench.req, w, nil)
 				}
 			})
 		})
