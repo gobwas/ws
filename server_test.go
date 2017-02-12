@@ -172,41 +172,61 @@ func TestUpgrader(t *testing.T) {
 	}
 }
 
-func BenchmarkUpgrade(b *testing.B) {
-	for _, bench := range []struct {
-		label    string
-		req      *http.Request
-		upgrader Upgrader
-	}{
-		{
-			label: "base",
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"websocket"},
-				headerConnection: []string{"Upgrade"},
-				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{mustMakeNonceStr()},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
+func TestConnUpgrader(t *testing.T) {
+	for _, test := range upgradeCases {
+		t.Run(test.label, func(t *testing.T) {
+			test.req.Header.Set(headerSecKey, string(test.nonce[:]))
+			if test.err == nil {
+				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+			}
+
+			u := ConnUpgrader{
+				Protocol: func(p []byte) bool {
+					return test.protocol(string(p))
 				},
-			},
-		},
-		{
-			label: "uppercase",
-			req: mustMakeRequest("GET", "ws://example.org", http.Header{
-				headerUpgrade:    []string{"WEBSOCKET"},
-				headerConnection: []string{"UPGRADE"},
-				headerSecVersion: []string{"13"},
-				headerSecKey:     []string{mustMakeNonceStr()},
-			}),
-			upgrader: Upgrader{
-				Protocol: func(sub string) bool {
-					return true
+				Extension: func(e []byte) bool {
+					return test.extension(string(e))
 				},
-			},
-		},
-	} {
+			}
+
+			// We use dumpRequest here because test.req.Write is always send
+			// http/1.1 proto version, that does not fits all our testing
+			// cases.
+			reqBytes := dumpRequest(test.req)
+			conn := bytes.NewBuffer(reqBytes)
+
+			hs, err := u.Upgrade(conn, nil)
+			if test.err != err {
+				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
+				return
+			}
+
+			actRespBts := sortHeaders(conn.Bytes())
+			expRespBts := sortHeaders(dumpResponse(test.res))
+			if !bytes.Equal(actRespBts, expRespBts) {
+				t.Errorf(
+					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n====",
+					actRespBts, expRespBts,
+				)
+				return
+			}
+
+			if !reflect.DeepEqual(hs, test.hs) {
+				t.Errorf("unexpected handshake: %#v; want %#v", hs, test.hs)
+			}
+		})
+	}
+}
+
+func BenchmarkUpgrader(b *testing.B) {
+	for _, bench := range upgradeCases {
+		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+
+		u := Upgrader{
+			Protocol:  bench.protocol,
+			Extension: bench.extension,
+		}
+
 		b.Run(bench.label, func(b *testing.B) {
 			res := make([]http.ResponseWriter, b.N)
 			for i := 0; i < b.N; i++ {
@@ -219,23 +239,54 @@ func BenchmarkUpgrade(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
-					res := &recorder{
-						conn: func(_ *bytes.Buffer) net.Conn {
-							return stubConn{
-								write: ioutil.Discard.Write,
-							}
-						},
-					}
-
-					_, rw, _, err := bench.upgrader.Upgrade(bench.req, res, nil)
+					w := res[atomic.AddInt64(i, 1)-1]
+					_, _, _, err := u.Upgrade(bench.req, w, nil)
 					if err != nil {
 						b.Fatal(err)
 					}
+				}
+			})
+		})
+	}
+}
 
-					// Use httpNewBufio* linked functions here to make
-					// benchmark more closer to real life usage.
-					httpPutBufioReader(rw.Reader)
-					httpPutBufioWriter(rw.Writer)
+func BenchmarkConnUpgrader(b *testing.B) {
+	for _, bench := range upgradeCases {
+		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+
+		u := ConnUpgrader{
+			Protocol: func(p []byte) bool {
+				return bench.protocol(btsToString(p))
+			},
+			Extension: func(e []byte) bool {
+				return bench.extension(btsToString(e))
+			},
+		}
+
+		buf := &bytes.Buffer{}
+		bench.req.Write(buf)
+
+		bts := buf.Bytes()
+
+		type benchReadWriter struct {
+			io.Reader
+			io.Writer
+		}
+
+		b.Run(bench.label, func(b *testing.B) {
+			conn := make([]io.ReadWriter, b.N)
+			for i := 0; i < b.N; i++ {
+				conn[i] = benchReadWriter{bytes.NewReader(bts), ioutil.Discard}
+			}
+
+			i := new(int64)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					c := conn[atomic.AddInt64(i, 1)-1]
+					u.Upgrade(c, nil)
 				}
 			})
 		})
