@@ -77,6 +77,23 @@ var upgradeCases = []upgradeCase{
 		}),
 		hs: Handshake{Protocol: "b"},
 	},
+	{
+		label:    "subproto_comma",
+		protocol: SelectFromSlice([]string{"b", "d"}),
+		nonce:    mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecVersion:  []string{"13"},
+			headerSecProtocol: []string{"a, b, c, d"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecProtocol: []string{"b"},
+		}),
+		hs: Handshake{Protocol: "b"},
+	},
 	// TODO(gobwas) uncomment after selectExtension is ready.
 	//{
 	//	extension: SelectFromSlice([]string{"b", "d"}),
@@ -99,7 +116,7 @@ var upgradeCases = []upgradeCase{
 	// ------------
 
 	{
-		label: "err_bad_http_method",
+		label: "bad_http_method",
 		nonce: mustMakeNonce(),
 		req: mustMakeRequest("POST", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
@@ -110,7 +127,7 @@ var upgradeCases = []upgradeCase{
 		err: ErrBadHttpRequestMethod,
 	},
 	{
-		label: "err_bad_http_proto",
+		label: "bad_http_proto",
 		nonce: mustMakeNonce(),
 		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
@@ -121,7 +138,7 @@ var upgradeCases = []upgradeCase{
 		err: ErrBadHttpRequestProto,
 	},
 	{
-		label: "err_bad_sec_version",
+		label: "bad_sec_version",
 		nonce: mustMakeNonce(),
 		req: setHttpProto(1, 1, mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
@@ -290,7 +307,7 @@ func BenchmarkConnUpgrader(b *testing.B) {
 	}
 }
 
-func TestSelectProtocol(t *testing.T) {
+func TestHttpStrSelectProtocol(t *testing.T) {
 	for i, test := range []struct {
 		header string
 	}{
@@ -303,7 +320,7 @@ func TestSelectProtocol(t *testing.T) {
 			}
 
 			var calls []string
-			selectProtocol(test.header, func(s string) bool {
+			strSelectProtocol(test.header, func(s string) bool {
 				calls = append(calls, s)
 				return false
 			})
@@ -345,7 +362,7 @@ func BenchmarkSelectProtocol(b *testing.B) {
 	} {
 		b.Run(fmt.Sprintf("#%s_optimized", bench.label), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				selectProtocol(bench.header, bench.accept)
+				strSelectProtocol(bench.header, bench.accept)
 			}
 		})
 	}
