@@ -2,12 +2,15 @@ package ws
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/textproto"
 	"strings"
 	"testing"
 )
+
+var compareWithStd = flag.Bool("std", false, "compare with standard library implementation (if exists)")
 
 func TestHasToken(t *testing.T) {
 	for i, test := range []struct {
@@ -52,13 +55,11 @@ type equalFoldCase struct {
 var equalFoldCases = []equalFoldCase{
 	{"websocket", "WebSocket", "websocket"},
 	{"upgrade", "Upgrade", "upgrade"},
-	randomEqualLetters(20),
-	randomEqualLetters(64),
-	inequalAt(randomEqualLetters(20), 10),
-	inequalAt(randomEqualLetters(64), 30),
+	randomEqualLetters(512),
+	inequalAt(randomEqualLetters(512), 256),
 }
 
-func TestEqualFold(t *testing.T) {
+func TestStrEqualFold(t *testing.T) {
 	for i, test := range equalFoldCases {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			if len(test.a) < 100 && len(test.b) < 100 {
@@ -72,13 +73,43 @@ func TestEqualFold(t *testing.T) {
 	}
 }
 
-func BenchmarkEqualFold(b *testing.B) {
+func BenchmarkStrEqualFold(b *testing.B) {
 	for i, bench := range equalFoldCases {
 		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_ = strEqualFold(bench.a, bench.b)
 			}
 		})
+	}
+	if *compareWithStd {
+		for i, bench := range equalFoldCases {
+			b.Run(fmt.Sprintf("%s#%d_std", bench.label, i), func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					_ = strings.EqualFold(bench.a, bench.b)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkBtsEqualFold(b *testing.B) {
+	for i, bench := range equalFoldCases {
+		ab, bb := []byte(bench.a), []byte(bench.b)
+		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = btsEqualFold(ab, bb)
+			}
+		})
+	}
+	if *compareWithStd {
+		for i, bench := range equalFoldCases {
+			ab, bb := []byte(bench.a), []byte(bench.b)
+			b.Run(fmt.Sprintf("%s#%d_std", bench.label, i), func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					_ = bytes.EqualFold(ab, bb)
+				}
+			})
+		}
 	}
 }
 

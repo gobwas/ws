@@ -8,7 +8,40 @@ import (
 	"reflect"
 	"strings"
 	"unsafe"
+
+	"github.com/gobwas/httphead"
 )
+
+// SelectFromSlice creates accept function that could be used as Protocol/Extension
+// select during upgrade.
+func SelectFromSlice(accept []string) func(string) bool {
+	if len(accept) > 16 {
+		mp := make(map[string]struct{}, len(accept))
+		for _, p := range accept {
+			mp[p] = struct{}{}
+		}
+		return func(p string) bool {
+			_, ok := mp[p]
+			return ok
+		}
+	}
+	return func(p string) bool {
+		for _, ok := range accept {
+			if p == ok {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// SelectEqual creates accept function that could be used as Protocol/Extension
+// select during upgrade.
+func SelectEqual(v string) func(string) bool {
+	return func(p string) bool {
+		return v == p
+	}
+}
 
 func strToBytes(str string) []byte {
 	s := *(*reflect.StringHeader)(unsafe.Pointer(&str))
@@ -112,32 +145,16 @@ func btrim(bts []byte) []byte {
 	return bts[i:j]
 }
 
-func strHasToken(header, token string) bool {
-	var pos int
-	for i := 0; i <= len(header); i++ {
-		if i == len(header) || header[i] == ',' {
-			v := strings.TrimSpace(header[pos:i])
-			if strEqualFold(v, token) {
-				return true
-			}
-			pos = i + 1
-		}
-	}
-	return false
+func strHasToken(header, token string) (has bool) {
+	return btsHasToken(strToBytes(header), strToBytes(token))
 }
 
-func btsHasToken(header, token []byte) bool {
-	var pos int
-	for i := 0; i <= len(header); i++ {
-		if i == len(header) || header[i] == ',' {
-			v := bytes.TrimSpace(header[pos:i])
-			if btsEqualFold(v, token) {
-				return true
-			}
-			pos = i + 1
-		}
-	}
-	return false
+func btsHasToken(header, token []byte) (has bool) {
+	httphead.List(header, func(v []byte) bool {
+		has = btsEqualFold(v, token)
+		return !has
+	})
+	return
 }
 
 const (
@@ -169,6 +186,14 @@ func canonicalizeHeaderKey(k []byte) {
 
 // readLine is a wrapper around bufio.Reader.ReadLine(), it calls ReadLine()
 // until full line will be read.
+//
+// It is much like the textproto/Reader.ReadLine() except the thing that it
+// returns raw bytes, instead of string. That is, it avoids copying bytes read
+// from br.
+// textproto/Reader.ReadLineBytes() is alsow makes copy because br.ReadLine()
+// return bytes slice that is valid only until next br.ReadLine() call. That
+// is, we could control that calls and do not need to make additional copy for
+// safety.
 func readLine(br *bufio.Reader) (line []byte, err error) {
 	var more bool
 	var bts []byte
@@ -197,19 +222,14 @@ func strEqualFold(s, p string) bool {
 	if len(s) != len(p) {
 		return false
 	}
-
 	n := len(s)
-
 	// Prepare manual conversion on bytes that not lay in uint64.
-	// We divide here by 16, not by 8 cause it is still faster
-	// linear compare for short strings.
-	m := n % 16
+	m := n % 8
 	for i := 0; i < m; i++ {
 		if s[i]|toLower != p[i]|toLower {
 			return false
 		}
 	}
-
 	// Iterate over uint64 parts of s.
 	n = (n - m) >> 3
 	if n == 0 {
@@ -240,19 +260,14 @@ func btsEqualFold(s, p []byte) bool {
 	if len(s) != len(p) {
 		return false
 	}
-
 	n := len(s)
-
 	// Prepare manual conversion on bytes that not lay in uint64.
-	// We divide here by 16, not by 8 cause it is still faster
-	// linear compare for short strings.
-	m := n % 16
+	m := n % 8
 	for i := 0; i < m; i++ {
 		if s[i]|toLower != p[i]|toLower {
 			return false
 		}
 	}
-
 	// Iterate over uint64 parts of s.
 	n = (n - m) >> 3
 	if n == 0 {

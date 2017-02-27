@@ -8,7 +8,6 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"reflect"
 	"strings"
@@ -30,18 +29,6 @@ const (
 	// concatenated value to obtain a 20-byte value and base64- encoding (see
 	// Section 4 of [RFC4648]) this 20-byte hash.
 	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
-)
-
-var (
-	headerUpgrade       = textproto.CanonicalMIMEHeaderKey("Upgrade")
-	headerConnection    = textproto.CanonicalMIMEHeaderKey("Connection")
-	headerHost          = textproto.CanonicalMIMEHeaderKey("Host")
-	headerOrigin        = textproto.CanonicalMIMEHeaderKey("Origin")
-	headerSecVersion    = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Version")
-	headerSecProtocol   = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Protocol")
-	headerSecExtensions = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Extensions")
-	headerSecKey        = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Key")
-	headerSecAccept     = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Accept")
 )
 
 var ErrBadNonce = fmt.Errorf("nonce size is not %d", nonceSize)

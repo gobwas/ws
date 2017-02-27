@@ -7,58 +7,12 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	_ "unsafe" // for go:linkname
 
 	"github.com/gobwas/pool/pbufio"
 )
 
-// Errors used by upgraders.
-var (
-	ErrMalformedHttpRequest = fmt.Errorf("malformed HTTP request")
-
-	ErrBadHttpRequestProto  = fmt.Errorf("bad HTTP request protocol version")
-	ErrBadHttpRequestMethod = fmt.Errorf("bad HTTP request method")
-
-	ErrBadHost       = fmt.Errorf("bad %q header", headerHost)
-	ErrBadUpgrade    = fmt.Errorf("bad %q header", headerUpgrade)
-	ErrBadConnection = fmt.Errorf("bad %q header", headerConnection)
-	ErrBadSecAccept  = fmt.Errorf("bad %q header", headerSecAccept)
-	ErrBadSecKey     = fmt.Errorf("bad %q header", headerSecKey)
-	ErrBadSecVersion = fmt.Errorf("bad %q header", headerSecVersion)
-	ErrBadHijacker   = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
-)
-
-// SelectFromSlice creates accept function that could be used as Protocol/Extension
-// select during upgrade.
-func SelectFromSlice(accept []string) func(string) bool {
-	if len(accept) > 16 {
-		mp := make(map[string]struct{}, len(accept))
-		for _, p := range accept {
-			mp[p] = struct{}{}
-		}
-		return func(p string) bool {
-			_, ok := mp[p]
-			return ok
-		}
-	}
-	return func(p string) bool {
-		for _, ok := range accept {
-			if p == ok {
-				return true
-			}
-		}
-		return false
-	}
-}
-
-// SelectEqual creates accept function that could be used as Protocol/Extension
-// select during upgrade.
-func SelectEqual(v string) func(string) bool {
-	return func(p string) bool {
-		return v == p
-	}
-}
+var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
 
 // DefaultUpgrader is upgrader that holds no options and is used by Upgrade function.
 var DefaultUpgrader Upgrader
@@ -104,46 +58,51 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if u := getHeader(r.Header, headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
+	if u := httpGetHeader(r.Header, headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
 		err = ErrBadUpgrade
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if c := getHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
+	if c := httpGetHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrBadConnection
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	nonce := getHeader(r.Header, headerSecKey)
+	nonce := httpGetHeader(r.Header, headerSecKey)
 	if len(nonce) != nonceSize {
 		err = ErrBadSecKey
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if v := getHeader(r.Header, headerSecVersion); v != "13" {
+	if v := httpGetHeader(r.Header, headerSecVersion); v != "13" {
 		err = ErrBadSecVersion
 		w.Header().Set(headerSecVersion, "13")
 		http.Error(w, err.Error(), http.StatusUpgradeRequired)
 		return
 	}
 
-	var check func(string) bool
-	if check = u.Protocol; check != nil {
+	if check := u.Protocol; check != nil {
 		for _, v := range r.Header[headerSecProtocol] {
-			if check(v) {
-				hs.Protocol = v
+			var ok, done bool
+			hs.Protocol, done, ok = strSelectProtocol(v, check)
+			if !ok {
+				err = ErrMalformedHttpRequest
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if done {
 				break
 			}
 		}
 	}
-	if check = u.Extension; check != nil {
+	if check := u.Extension; check != nil {
 		// TODO(gobwas) parse extensions.
 		//	hs.Extensions = selectExtensions(e, c.Extension)
 	}
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		err = ErrBadHijacker
+		err = ErrNotHijacker
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -153,7 +112,7 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		return
 	}
 
-	writeUpgrade(rw.Writer, strToNonce(nonce), hs, h)
+	httpWriteUpgrade(rw.Writer, strToNonce(nonce), hs, h)
 	err = rw.Writer.Flush()
 
 	return
@@ -182,7 +141,7 @@ type ConnUpgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnRequest func(host, uri []byte) (err error, code int, header HeaderWriter)
+	OnRequest func(host, uri []byte) (err error, code int, header HttpHeaderWriter)
 
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
@@ -193,7 +152,7 @@ type ConnUpgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnHeader func(key, value []byte) (err error, code int, header HeaderWriter)
+	OnHeader func(key, value []byte) (err error, code int, header HttpHeaderWriter)
 }
 
 var (
@@ -240,7 +199,7 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 	var (
 		// Use BadRequest as default error status code.
 		code = http.StatusBadRequest
-		errh HeaderWriter
+		errh HttpHeaderWriter
 	)
 
 	bw := pbufio.GetWriter(conn, 512)
@@ -250,13 +209,13 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if btsToString(req.method) != http.MethodGet {
 		err = ErrBadHttpRequestMethod
-		writeResponseError(bw, err, code, nil)
+		httpWriteResponseError(bw, err, code, nil)
 		bw.Flush()
 		return
 	}
 	if req.major < 1 || (req.major == 1 && req.minor < 1) {
 		err = ErrBadHttpRequestProto
-		writeResponseError(bw, err, code, nil)
+		httpWriteResponseError(bw, err, code, nil)
 		bw.Flush()
 		return
 	}
@@ -326,9 +285,13 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 			}
 
 		case headerSecProtocol:
-			if check := u.Protocol; check != nil && hs.Protocol == "" {
-				if check(v) {
-					hs.Protocol = string(v)
+			if check := u.Protocol; err == nil && check != nil && hs.Protocol == "" {
+				p, selected, ok := btsSelectProtocol(v, check)
+				if !ok {
+					err = ErrMalformedHttpRequest
+				}
+				if selected {
+					hs.Protocol = string(p)
 				}
 			}
 		case headerSecExtensions:
@@ -363,131 +326,19 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 	}
 
 	if err != nil {
-		writeResponseError(bw, err, code, errh)
+		httpWriteResponseError(bw, err, code, errh)
 		bw.Flush()
 		return
 	}
 
-	writeUpgrade(bw, btsToNonce(nonce), hs, h)
+	httpWriteUpgrade(bw, btsToNonce(nonce), hs, h)
 	err = bw.Flush()
 
 	return
 }
 
-// getHeader is the same as textproto.MIMEHeader.Get, except the thing,
-// that key is already canonical. This helps to increase performance.
-func getHeader(h http.Header, key string) string {
-	if h == nil {
-		return ""
-	}
-	v := h[key]
-	if len(v) == 0 {
-		return ""
-	}
-	return v[0]
-}
-
-func writeHeader(bw *bufio.Writer, key, value string) {
-	writeHeaderKey(bw, key)
-	writeHeaderValue(bw, value)
-}
-
-func writeHeaderKey(bw *bufio.Writer, key string) {
-	bw.WriteString(key)
-	bw.WriteString(colonAndSpace)
-}
-
-func writeHeaderValue(bw *bufio.Writer, value string) {
-	bw.WriteString(value)
-	bw.WriteString(crlf)
-}
-
-func writeHeaderValueBytes(bw *bufio.Writer, value []byte) {
-	bw.Write(value)
-	bw.WriteString(crlf)
-}
-
-// HeaderWriter represents low level HTTP header writer.
-// If you want to dump some http.Header instance into given bufio.Writer, you
-// could do something like this:
-//
-// h := make(http.Header{"foo": []string{"bar"}})
-// return func(bw *bufio.Writer) { h.Write(bw) }
-//
-// This type is for clients ability to avoid allocations and call bufio.Writer
-// methods directly.
-type HeaderWriter func(*bufio.Writer)
-
 func headerWriterSecVersion(bw *bufio.Writer) {
-	writeHeader(bw, headerSecVersion, "13")
-}
-
-func writeUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h http.Header) {
-	bw.WriteString(textUpgrade)
-
-	writeHeaderKey(bw, headerSecAccept)
-	writeAccept(bw, nonce)
-	bw.WriteString(crlf)
-
-	if hs.Protocol != "" {
-		writeHeader(bw, headerSecProtocol, hs.Protocol)
-	}
-	if len(hs.Extensions) > 0 {
-		// TODO(gobwas)
-		//	if len(hs.Extensions) > 0 {
-		//		writeHeader(bw, headerSecExtensions, strings.Join(hs.Extensions, ", "))
-		//	}
-	}
-	for key, values := range h {
-		for _, val := range values {
-			writeHeader(bw, key, val)
-		}
-	}
-
-	bw.WriteString(crlf)
-}
-
-func writeResponseError(bw *bufio.Writer, err error, code int, hw HeaderWriter) {
-	switch code {
-	case http.StatusBadRequest:
-		bw.WriteString(textBadRequest)
-	default:
-		bw.WriteString("HTTP/1.1 ")
-		bw.WriteString(strconv.FormatInt(int64(code), 10))
-		bw.WriteByte(' ')
-		bw.WriteString(http.StatusText(code))
-		bw.WriteString(crlf)
-		bw.WriteString(textErrorContent)
-	}
-	if hw != nil {
-		hw(bw)
-	}
-	bw.WriteString(crlf)
-	if err != nil {
-		bw.WriteString(err.Error())
-		bw.WriteByte('\n') // Just to be consistent with http.Error().
-	}
-}
-
-func selectProtocol(h string, ok func(string) bool) string {
-	var start int
-	for i := 0; i < len(h); i++ {
-		c := h[i]
-		// The elements that comprise this value MUST be non-empty strings with characters in the range
-		// U+0021 to U+007E not including separator characters as defined in [RFC2616]
-		// and MUST all be unique strings.
-		if c != ',' && '!' <= c && c <= '~' {
-			continue
-		}
-		if str := h[start:i]; len(str) > 0 && ok(str) {
-			return str
-		}
-		start = i + 1
-	}
-	if str := h[start:]; len(str) > 0 && ok(str) {
-		return str
-	}
-	return ""
+	httpWriteHeader(bw, headerSecVersion, "13")
 }
 
 func selectExtensions(h []string, ok func(string) bool) []string {
