@@ -338,33 +338,47 @@ func TestSelectExtensions(t *testing.T) {
 
 func BenchmarkSelectProtocol(b *testing.B) {
 	for _, bench := range []struct {
-		label  string
-		header string
-		accept func(string) bool
+		label     string
+		header    string
+		acceptStr func(string) bool
+		acceptBts func([]byte) bool
 	}{
 		{
 			label:  "never accept",
 			header: "jsonrpc, soap, grpc",
-			accept: func(s string) bool {
+			acceptStr: func(s string) bool {
 				return len(s)%2 == 2 // never ok
+			},
+			acceptBts: func(v []byte) bool {
+				return len(v)%2 == 2 // never ok
 			},
 		},
 		{
-			label:  "from slice",
-			header: "a, b, c, d, e, f, g",
-			accept: SelectFromSlice([]string{"g", "f", "e", "d"}),
+			label:     "from slice",
+			header:    "a, b, c, d, e, f, g",
+			acceptStr: SelectFromSlice([]string{"g", "f", "e", "d"}),
 		},
 		{
-			label:  "uniq 1024 from slise",
-			header: strings.Join(randProtocols(1024, 16), ", "),
-			accept: SelectFromSlice(randProtocols(1024, 17)),
+			label:     "uniq 1024 from slise",
+			header:    strings.Join(randProtocols(1024, 16), ", "),
+			acceptStr: SelectFromSlice(randProtocols(1024, 17)),
 		},
 	} {
-		b.Run(fmt.Sprintf("#%s_optimized", bench.label), func(b *testing.B) {
+		b.Run(fmt.Sprintf("String/%s", bench.label), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				strSelectProtocol(bench.header, bench.accept)
+				strSelectProtocol(bench.header, bench.acceptStr)
 			}
 		})
+		if bench.acceptBts != nil {
+			b.Run(fmt.Sprintf("Bytes/%s", bench.label), func(b *testing.B) {
+				h := []byte(bench.header)
+				b.StartTimer()
+
+				for i := 0; i < b.N; i++ {
+					btsSelectProtocol(h, bench.acceptBts)
+				}
+			})
+		}
 	}
 }
 
