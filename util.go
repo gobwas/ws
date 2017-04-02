@@ -150,7 +150,7 @@ func strHasToken(header, token string) (has bool) {
 }
 
 func btsHasToken(header, token []byte) (has bool) {
-	httphead.List(header, func(v []byte) bool {
+	httphead.ScanTokens(header, func(v []byte) bool {
 		has = btsEqualFold(v, token)
 		return !has
 	})
@@ -190,7 +190,7 @@ func canonicalizeHeaderKey(k []byte) {
 // It is much like the textproto/Reader.ReadLine() except the thing that it
 // returns raw bytes, instead of string. That is, it avoids copying bytes read
 // from br.
-// textproto/Reader.ReadLineBytes() is alsow makes copy because br.ReadLine()
+// textproto/Reader.ReadLineBytes() is also makes copy because br.ReadLine()
 // return bytes slice that is valid only until next br.ReadLine() call. That
 // is, we could control that calls and do not need to make additional copy for
 // safety.

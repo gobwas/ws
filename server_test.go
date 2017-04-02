@@ -17,12 +17,15 @@ import (
 	"sync/atomic"
 	"testing"
 	_ "unsafe" // for go:linkname
+
+	"github.com/gobwas/httphead"
 )
 
 type upgradeCase struct {
 	label string
 
-	protocol, extension func(string) bool
+	protocol  func(string) bool
+	extension func(httphead.Option) bool
 
 	nonce [nonceSize]byte
 	req   *http.Request
@@ -94,23 +97,38 @@ var upgradeCases = []upgradeCase{
 		}),
 		hs: Handshake{Protocol: "b"},
 	},
-	// TODO(gobwas) uncomment after selectExtension is ready.
-	//{
-	//	extension: SelectFromSlice([]string{"b", "d"}),
-	//	nonce: mustMakeNonce(),
-	//	req: mustMakeRequest("GET", "ws://example.org", http.Header{
-	//		headerUpgrade:       []string{"websocket"},
-	//		headerConnection:    []string{"Upgrade"},
-	//		headerSecVersion:    []string{"13"},
-	//		headerSecExtensions: []string{"a", "b", "c", "d"},
-	//	}),
-	//	res: mustMakeResponse(101, http.Header{
-	//		headerUpgrade:       []string{"websocket"},
-	//		headerConnection:    []string{"Upgrade"},
-	//		headerSecExtensions: []string{"b", "d"},
-	//	}),
-	//  hs: Handshake{Extensions: ["b", "d"]},
-	//},
+	{
+		extension: func(opt httphead.Option) bool {
+			switch string(opt.Name) {
+			case "b", "d":
+				return true
+			default:
+				return false
+			}
+		},
+		nonce: mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:       []string{"websocket"},
+			headerConnection:    []string{"Upgrade"},
+			headerSecVersion:    []string{"13"},
+			headerSecExtensions: []string{"a;foo=1", "b;bar=2", "c", "d;baz=3"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:       []string{"websocket"},
+			headerConnection:    []string{"Upgrade"},
+			headerSecExtensions: []string{"b;bar=2,d;baz=3"},
+		}),
+		hs: Handshake{
+			Extensions: []httphead.Option{
+				httphead.NewOption("b", map[string]string{
+					"bar": "2",
+				}),
+				httphead.NewOption("d", map[string]string{
+					"baz": "3",
+				}),
+			},
+		},
+	},
 
 	// Error cases.
 	// ------------
@@ -176,14 +194,23 @@ func TestUpgrader(t *testing.T) {
 			expRespBts := sortHeaders(dumpResponse(test.res))
 			if !bytes.Equal(actRespBts, expRespBts) {
 				t.Errorf(
-					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n====",
-					actRespBts, expRespBts,
+					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n==== on request:\n%s\n====",
+					actRespBts, expRespBts, dumpRequest(test.req),
 				)
 				return
 			}
 
-			if !reflect.DeepEqual(hs, test.hs) {
-				t.Errorf("unexpected handshake: %#v; want %#v", hs, test.hs)
+			if act, exp := hs.Protocol, test.hs.Protocol; act != exp {
+				t.Errorf("handshake protocol is %q want %q", act, exp)
+			}
+			if act, exp := len(hs.Extensions), len(test.hs.Extensions); act != exp {
+				t.Errorf("handshake got %d extensions; want %d", act, exp)
+			} else {
+				for i := 0; i < act; i++ {
+					if act, exp := hs.Extensions[i], test.hs.Extensions[i]; !act.Equal(exp) {
+						t.Errorf("handshake %d-th extension is %s; want %s", i, act, exp)
+					}
+				}
 			}
 		})
 	}
@@ -201,8 +228,8 @@ func TestConnUpgrader(t *testing.T) {
 				Protocol: func(p []byte) bool {
 					return test.protocol(string(p))
 				},
-				Extension: func(e []byte) bool {
-					return test.extension(string(e))
+				Extension: func(e httphead.Option) bool {
+					return test.extension(e)
 				},
 			}
 
@@ -222,14 +249,23 @@ func TestConnUpgrader(t *testing.T) {
 			expRespBts := sortHeaders(dumpResponse(test.res))
 			if !bytes.Equal(actRespBts, expRespBts) {
 				t.Errorf(
-					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n====",
-					actRespBts, expRespBts,
+					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n==== on request:\n%s\n====",
+					actRespBts, expRespBts, dumpRequest(test.req),
 				)
 				return
 			}
 
-			if !reflect.DeepEqual(hs, test.hs) {
-				t.Errorf("unexpected handshake: %#v; want %#v", hs, test.hs)
+			if act, exp := hs.Protocol, test.hs.Protocol; act != exp {
+				t.Errorf("handshake protocol is %q want %q", act, exp)
+			}
+			if act, exp := len(hs.Extensions), len(test.hs.Extensions); act != exp {
+				t.Errorf("handshake got %d extensions; want %d", act, exp)
+			} else {
+				for i := 0; i < act; i++ {
+					if act, exp := hs.Extensions[i], test.hs.Extensions[i]; !act.Equal(exp) {
+						t.Errorf("handshake %d-th extension is %s; want %s", i, act, exp)
+					}
+				}
 			}
 		})
 	}
@@ -272,8 +308,8 @@ func BenchmarkConnUpgrader(b *testing.B) {
 			Protocol: func(p []byte) bool {
 				return bench.protocol(btsToString(p))
 			},
-			Extension: func(e []byte) bool {
-				return bench.extension(btsToString(e))
+			Extension: func(e httphead.Option) bool {
+				return bench.extension(e)
 			},
 		}
 
@@ -436,7 +472,7 @@ type headersBytes [][]byte
 
 func (h headersBytes) Len() int           { return len(h) }
 func (h headersBytes) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h headersBytes) Less(i, j int) bool { return string(h[i]) < string(h[j]) }
+func (h headersBytes) Less(i, j int) bool { return bytes.Compare(h[i], h[j]) == -1 }
 
 func sortHeaders(bts []byte) []byte {
 	lines := bytes.Split(bts, []byte("\r\n"))

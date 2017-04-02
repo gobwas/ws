@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"unsafe"
+
+	"github.com/gobwas/httphead"
 )
 
 const (
@@ -39,10 +42,10 @@ type request struct {
 	http.Request
 	Nonce      [nonceSize]byte
 	Protocols  []string
-	Extensions []string
+	Extensions []httphead.Option
 }
 
-func (req *request) Reset(urlstr string, headers http.Header, protocols, extensions []string) error {
+func (req *request) Reset(urlstr string, headers http.Header, protocols []string, extensions []httphead.Option) error {
 	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
 		return err
@@ -60,7 +63,9 @@ func (req *request) Reset(urlstr string, headers http.Header, protocols, extensi
 
 	req.Extensions = extensions
 	if extensions != nil {
-		req.Header.Set(headerSecExtensions, strings.Join(extensions, ", "))
+		buf := bytes.Buffer{}
+		httphead.WriteOptions(&buf, extensions)
+		req.Header.Set(headerSecExtensions, buf.String())
 	}
 
 	req.Header.Set("User-Agent", "") // Disable default user-agent header.

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	_ "unsafe" // for go:linkname
 
+	"github.com/gobwas/httphead"
 	"github.com/gobwas/pool/pbufio"
 )
 
@@ -32,7 +33,7 @@ type Upgrader struct {
 	// Extension is the select function that is used to select extensions
 	// from list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
-	Extension func(string) bool
+	Extension func(httphead.Option) bool
 }
 
 // Upgrade upgrades http connection to the websocket connection.
@@ -83,21 +84,28 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 
 	if check := u.Protocol; check != nil {
 		for _, v := range r.Header[headerSecProtocol] {
-			var ok, done bool
-			hs.Protocol, done, ok = strSelectProtocol(v, check)
+			var ok bool
+			hs.Protocol, ok = strSelectProtocol(v, check)
 			if !ok {
 				err = ErrMalformedHttpRequest
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if done {
+			if hs.Protocol != "" {
 				break
 			}
 		}
 	}
 	if check := u.Extension; check != nil {
-		// TODO(gobwas) parse extensions.
-		//	hs.Extensions = selectExtensions(e, c.Extension)
+		for _, v := range r.Header[headerSecExtensions] {
+			var ok bool
+			hs.Extensions, ok = strSelectExtensions(v, hs.Extensions, check)
+			if !ok {
+				err = ErrMalformedHttpRequest
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	hj, ok := w.(http.Hijacker)
@@ -119,19 +127,40 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 }
 
 type ConnUpgrader struct {
-	// Protocol is the select function that is used to select subprotocol
+	// Protocol is a select function that is used to select subprotocol
 	// from list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
 	//
 	// The argument is only valid until the callback returns.
 	Protocol func([]byte) bool
 
-	// Extension is the select function that is used to select extensions
+	// Extension is a select function that is used to select extensions
 	// from list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	//
 	// The argument is only valid until the callback returns.
-	Extension func([]byte) bool
+	//
+	// According to the RFC6455 order of extensions passed by a client is
+	// significant. That is, returning true from this function means that no
+	// other extension with the same name should be checked because server
+	// accepted the most preferable extension right now:
+	// "Note that the order of extensions is significant.  Any interactions between
+	// multiple extensions MAY be defined in the documents defining the extensions.
+	// In the absence of such definitions, the interpretation is that the header
+	// fields listed by the client in its request represent a preference of the
+	// header fields it wishes to use, with the first options listed being most
+	// preferable."
+	Extension func(httphead.Option) bool
+
+	// ProtocolCustrom allow user to parse Sec-WebSocket-Protocol header manually.
+	// Note that returned bytes must be valid until Upgrade returns.
+	// If ProtocolCustom is set, it used instead of Protocol function.
+	ProtocolCustom func([]byte) (string, bool)
+
+	// ExtensionCustorm allow user to parse Sec-WebSocket-Extensions header manually.
+	// Note that returned options should be valid until Upgrade returns.
+	// If ExtensionCustom is set, it used instead of Extension function.
+	ExtensionCustom func([]byte, []httphead.Option) ([]httphead.Option, bool)
 
 	// OnRequest is a callback that will be called after request line and
 	// "Host" header successful parsing. Setting this field helps to implement
@@ -285,17 +314,30 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 			}
 
 		case headerSecProtocol:
-			if check := u.Protocol; err == nil && check != nil && hs.Protocol == "" {
-				p, selected, ok := btsSelectProtocol(v, check)
+			if custom, check := u.ProtocolCustom, u.Protocol; err == nil && hs.Protocol == "" && (custom != nil || check != nil) {
+				var ok bool
+				if custom != nil {
+					hs.Protocol, ok = custom(v)
+				} else {
+					hs.Protocol, ok = btsSelectProtocol(v, check)
+				}
 				if !ok {
 					err = ErrMalformedHttpRequest
 				}
-				if selected {
-					hs.Protocol = string(p)
+			}
+
+		case headerSecExtensions:
+			if custom, check := u.ExtensionCustom, u.Extension; err == nil && (custom != nil || check != nil) {
+				var ok bool
+				if custom != nil {
+					hs.Extensions, ok = custom(v, hs.Extensions)
+				} else {
+					hs.Extensions, ok = btsSelectExtensions(v, hs.Extensions, check)
+				}
+				if !ok {
+					err = ErrMalformedHttpRequest
 				}
 			}
-		case headerSecExtensions:
-			// TODO(gobwas) select extensions.
 
 		default:
 			if onHeader := u.OnHeader; err == nil && onHeader != nil {

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/gobwas/httphead"
 	"github.com/gobwas/pool/pbufio"
 )
 
@@ -32,7 +33,7 @@ type Handshake struct {
 	Protocol string
 
 	// Extensions is the list of negotiated extensions.
-	Extensions []string
+	Extensions []httphead.Option
 }
 
 // Response represents result of dialing.
@@ -50,6 +51,7 @@ var (
 var (
 	ErrBadStatus      = fmt.Errorf("unexpected http status")
 	ErrBadSubProtocol = fmt.Errorf("unexpected protocol in %q header", headerSecProtocol)
+	ErrBadExtensions  = fmt.Errorf("unexpected extensions in %q header", headerSecProtocol)
 )
 
 // DefaultDialer is dialer that holds no options and is used by Dial function.
@@ -69,7 +71,7 @@ type Dialer struct {
 	// Extensions is the list of extensions, that client wishes to speak.
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// See https://tools.ietf.org/html/rfc6455#section-9.1
-	Extensions []string
+	Extensions []httphead.Option
 
 	// NetDial is the function that is used to get plain tcp connection.
 	// If it is not nil, then it is used instead of net.Dialer.
@@ -183,7 +185,7 @@ func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *ht
 	return http.ReadResponse(br, nil)
 }
 
-func (d Dialer) handshake(req *request, resp Response) (protocol string, extensions []string, err error) {
+func (d Dialer) handshake(req *request, resp Response) (protocol string, extensions []httphead.Option, err error) {
 	if resp.StatusCode != 101 {
 		err = ErrBadStatus
 		return
@@ -200,8 +202,27 @@ func (d Dialer) handshake(req *request, resp Response) (protocol string, extensi
 		err = ErrBadSecAccept
 		return
 	}
-	if extensions := resp.Header.Get(headerSecExtensions); extensions != "" {
-		// TODO(gobwas): implement extensions logic.
+
+	for _, ext := range resp.Header[headerSecExtensions] {
+		var ok bool
+		extensions, ok = httphead.ParseOptions([]byte(ext), extensions)
+		if !ok {
+			err = ErrMalformedHttpResponse
+			return
+		}
+	}
+	for _, ext := range extensions {
+		var ok bool
+		for _, want := range req.Extensions {
+			if ext.Equal(want) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			err = ErrBadExtensions
+			return
+		}
 	}
 
 	// We check single value of Sec-Websocket-Protocol header according to this:

@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/gobwas/httphead"
 )
 
 func TestRequestReset(t *testing.T) {
@@ -18,16 +20,21 @@ func TestRequestReset(t *testing.T) {
 		expHost    string
 		expPath    string
 		protocols  []string
-		extensions []string
+		extensions []httphead.Option
 		headers    http.Header
 		err        bool
 	}{
 		{
-			url:        "wss://websocket.com/chat",
-			expHost:    "websocket.com",
-			expPath:    "/chat",
-			protocols:  []string{"subproto", "hello"},
-			extensions: []string{"foo; bar=1", "baz"},
+			url:       "wss://websocket.com/chat",
+			expHost:   "websocket.com",
+			expPath:   "/chat",
+			protocols: []string{"subproto", "hello"},
+			extensions: []httphead.Option{
+				httphead.NewOption("foo", map[string]string{
+					"bar": "1",
+				}),
+				httphead.NewOption("baz", nil),
+			},
 			headers: http.Header{
 				"Origin": []string{"https://websocket.com"},
 			},
@@ -101,13 +108,11 @@ func TestRequestReset(t *testing.T) {
 			}
 			r.Header.Del(headerSecProtocol)
 
-			ext := r.Header.Get(headerSecExtensions)
-			extensions := strings.Split(ext, ",")
-			for i, e := range extensions {
-				extensions[i] = strings.TrimSpace(e)
-			}
-			if !reflect.DeepEqual(extensions, test.extensions) {
-				t.Errorf("%q headers is %v; want %s", headerSecExtensions, extensions, test.extensions)
+			extensions := r.Header.Get(headerSecExtensions)
+			extbuf := bytes.Buffer{}
+			httphead.WriteOptions(&extbuf, test.extensions)
+			if exp := extbuf.String(); extensions != exp {
+				t.Errorf("%q headers is %v; want %s", headerSecExtensions, extensions, exp)
 			}
 			r.Header.Del(headerSecExtensions)
 

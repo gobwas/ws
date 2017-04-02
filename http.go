@@ -20,7 +20,8 @@ const (
 )
 
 var (
-	ErrMalformedHttpRequest = fmt.Errorf("malformed HTTP request")
+	ErrMalformedHttpRequest  = fmt.Errorf("malformed HTTP request")
+	ErrMalformedHttpResponse = fmt.Errorf("malformed HTTP response")
 
 	ErrBadHttpRequestProto  = fmt.Errorf("bad HTTP request protocol version")
 	ErrBadHttpRequestMethod = fmt.Errorf("bad HTTP request method")
@@ -152,25 +153,40 @@ func httpGetHeader(h http.Header, key string) string {
 // characters as defined in [RFC2616] and MUST all be unique strings.  The ABNF
 // for the value of this header field is 1#token, where the definitions of
 // constructs and rules are as given in [RFC2616].
-func strSelectProtocol(h string, choose func(string) bool) (ret string, selected, ok bool) {
-	ok = httphead.List(strToBytes(h), func(v []byte) bool {
-		if selected = choose(btsToString(v)); selected {
+func strSelectProtocol(h string, check func(string) bool) (ret string, ok bool) {
+	ok = httphead.ScanTokens(strToBytes(h), func(v []byte) bool {
+		if check(btsToString(v)) {
 			ret = string(v)
+			return false
 		}
-		return !selected
+		return true
 	})
 	return
 }
-func btsSelectProtocol(h []byte, choose func([]byte) bool) (ret []byte, selected, ok bool) {
-	ok = httphead.List(h, func(v []byte) bool {
-		selected = choose(v)
-		ret = v
-		return !selected
+func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) {
+	var selected []byte
+	ok = httphead.ScanTokens(h, func(v []byte) bool {
+		if check(v) {
+			selected = v
+			return false
+		}
+		return true
 	})
-	if !selected {
-		ret = nil
+	if ok && selected != nil {
+		return string(selected), true
 	}
 	return
+}
+
+func strSelectExtensions(h string, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {
+	return btsSelectExtensions(strToBytes(h), selected, check)
+}
+func btsSelectExtensions(h []byte, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {
+	s := httphead.OptionSelector{
+		Flags: httphead.SelectUnique | httphead.SelectCopy,
+		Check: check,
+	}
+	return s.Select(h, selected)
 }
 
 func httpWriteHeader(bw *bufio.Writer, key, value string) {
@@ -195,16 +211,12 @@ func httpWriteUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h h
 		httpWriteHeader(bw, headerSecProtocol, hs.Protocol)
 	}
 	if len(hs.Extensions) > 0 {
-		// TODO(gobwas)
-		//	if len(hs.Extensions) > 0 {
-		//		writeHeader(bw, headerSecExtensions, strings.Join(hs.Extensions, ", "))
-		//	}
+		httpWriteHeaderKey(bw, headerSecExtensions)
+		httphead.WriteOptions(bw, hs.Extensions)
+		bw.WriteString(crlf)
 	}
-	for key, values := range h {
-		for _, val := range values {
-			httpWriteHeader(bw, key, val)
-		}
-	}
+
+	h.Write(bw)
 
 	bw.WriteString(crlf)
 }
