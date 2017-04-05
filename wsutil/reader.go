@@ -41,6 +41,8 @@ func PongHandler(w io.Writer, state ws.State) FrameHandler {
 			return nil
 		}
 
+		// int(h.Length) is safe here because control frame could be < 125
+		// bytes length by RFC.
 		buf := pbytes.GetBufLen(int(h.Length))
 		defer pbytes.PutBuf(buf)
 
