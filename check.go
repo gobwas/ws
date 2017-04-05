@@ -112,7 +112,7 @@ func CheckHeader(h Header, s State) error {
 }
 
 // CheckCloseFrameData checks received close information
-// to be valid RFC6455 compatible clsoe info.
+// to be valid RFC6455 compatible close info.
 //
 // Note that code.Empty() or code.IsAppLevel() will raise error.
 //

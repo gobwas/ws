@@ -11,51 +11,110 @@ import (
 
 type FrameHandler func(h ws.Header, r io.Reader) error
 
-func ControlHandler(w io.Writer, state ws.State) FrameHandler {
+func PingHandler(w io.Writer, state ws.State) FrameHandler {
 	return func(h ws.Header, rd io.Reader) (err error) {
-		// int(h.Length) is safe cause control frame could be < 125 bytes length.
-		p := pbytes.GetBufLen(int(h.Length))
-		defer pbytes.PutBuf(p)
+		var p []byte
+		if h.Length != 0 {
+			// int(h.Length) is safe here because control frame could be < 125
+			// bytes length by RFC.
+			p = pbytes.GetBufLen(int(h.Length))
+			defer pbytes.PutBuf(p)
 
-		_, err = io.ReadFull(rd, p)
-		if err != nil {
-			return
+			_, err = io.ReadFull(rd, p)
+			if err != nil {
+				return
+			}
 		}
 
-		var f ws.Frame
+		f := ws.NewPongFrame(p)
+		if state.Is(ws.StateClientSide) {
+			f = ws.MaskFrameInplace(f)
+		}
 
-		switch h.OpCode {
-		default:
-			return
-		case ws.OpPing:
-			f = ws.NewPongFrame(p)
-		case ws.OpClose:
-			code, reason := ws.ParseCloseFrameDataUnsafe(p)
-			if code.Empty() {
-				code = ws.StatusNoStatusRcvd
-				f = ws.CloseFrame
-			} else if err = ws.CheckCloseFrameData(code, reason); err != nil {
-				code = ws.StatusProtocolError
-				reason = err.Error()
-				f = ws.NewCloseFrame(code, reason)
+		return ws.WriteFrame(w, f)
+	}
+}
+
+func PongHandler(w io.Writer, state ws.State) FrameHandler {
+	return func(h ws.Header, rd io.Reader) (err error) {
+		if h.Length == 0 {
+			return nil
+		}
+
+		buf := pbytes.GetBufLen(int(h.Length))
+		defer pbytes.PutBuf(buf)
+
+		// Discard pong message according to the RFC6455:
+		// A Pong frame MAY be sent unsolicited. This serves as a
+		// unidirectional heartbeat. A response to an unsolicited Pong frame
+		// is not expected.
+		_, err = io.CopyBuffer(ioutil.Discard, rd, buf)
+
+		return
+	}
+}
+
+func CloseHandler(w io.Writer, state ws.State) FrameHandler {
+	return func(h ws.Header, rd io.Reader) (err error) {
+		var (
+			f      ws.Frame
+			code   ws.StatusCode
+			reason string
+		)
+		if h.Length == 0 {
+			f = ws.CloseFrame
+			code = ws.StatusNoStatusRcvd
+		} else {
+			// int(h.Length) is safe here because control frame could be < 125
+			// bytes length by RFC.
+			p := pbytes.GetBufLen(int(h.Length))
+			defer pbytes.PutBuf(p)
+
+			_, err = io.ReadFull(rd, p)
+			if err != nil {
+				return
+			}
+
+			code, reason = ws.ParseCloseFrameData(p)
+
+			if e := ws.CheckCloseFrameData(code, reason); e != nil {
+				f = ws.NewCloseFrame(ws.StatusProtocolError, e.Error())
 			} else {
-				// [RFC6455:5.5.1]:
+				// RFC6455#5.5.1:
 				// If an endpoint receives a Close frame and did not previously
 				// send a Close frame, the endpoint MUST send a Close frame in
 				// response. (When sending a Close frame in response, the endpoint
 				// typically echos the status code it received.)
 				f = ws.NewCloseFrame(code, "")
 			}
-			err = ErrClosed{code, reason}
 		}
 
 		if state.Is(ws.StateClientSide) {
-			f = ws.MaskFrame(f)
-		}
-		if ew := ws.WriteFrame(w, f); ew != nil {
-			err = ew
+			f = ws.MaskFrameInplace(f)
 		}
 
+		if err = ws.WriteFrame(w, f); err == nil {
+			err = ErrClosed{code, reason}
+		}
+
+		return
+	}
+}
+
+func ControlHandler(w io.Writer, state ws.State) FrameHandler {
+	pingHandler := PingHandler(w, state)
+	pongHandler := PongHandler(w, state)
+	closeHandler := CloseHandler(w, state)
+
+	return func(h ws.Header, rd io.Reader) (err error) {
+		switch h.OpCode {
+		case ws.OpPing:
+			return pingHandler(h, rd)
+		case ws.OpPong:
+			return pongHandler(h, rd)
+		case ws.OpClose:
+			return closeHandler(h, rd)
+		}
 		return
 	}
 }
