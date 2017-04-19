@@ -239,7 +239,7 @@ func TestConnUpgrader(t *testing.T) {
 			reqBytes := dumpRequest(test.req)
 			conn := bytes.NewBuffer(reqBytes)
 
-			hs, err := u.Upgrade(conn, nil)
+			hs, err := u.Upgrade(conn)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
@@ -313,10 +313,7 @@ func BenchmarkConnUpgrader(b *testing.B) {
 			},
 		}
 
-		buf := &bytes.Buffer{}
-		bench.req.Write(buf)
-
-		bts := buf.Bytes()
+		reqBytes := dumpRequest(bench.req)
 
 		type benchReadWriter struct {
 			io.Reader
@@ -326,7 +323,7 @@ func BenchmarkConnUpgrader(b *testing.B) {
 		b.Run(bench.label, func(b *testing.B) {
 			conn := make([]io.ReadWriter, b.N)
 			for i := 0; i < b.N; i++ {
-				conn[i] = benchReadWriter{bytes.NewReader(bts), ioutil.Discard}
+				conn[i] = benchReadWriter{bytes.NewReader(reqBytes), ioutil.Discard}
 			}
 
 			i := new(int64)
@@ -336,7 +333,7 @@ func BenchmarkConnUpgrader(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					c := conn[atomic.AddInt64(i, 1)-1]
-					u.Upgrade(c, nil)
+					u.Upgrade(c)
 				}
 			})
 		})

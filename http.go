@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/textproto"
 	"strconv"
@@ -12,11 +13,16 @@ import (
 )
 
 const (
-	textErrorContent = "Content-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\n"
-	textUpgrade      = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-	textBadRequest   = "HTTP/1.1 400 Bad Request\r\n" + textErrorContent
-	crlf             = "\r\n"
-	colonAndSpace    = ": "
+	textErrorContent    = "Content-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\n"
+	textUpgrade         = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+	textBadRequest      = "HTTP/1.1 400 Bad Request\r\n" + textErrorContent
+	textUpgradeRequired = "HTTP/1.1 426 Upgrade Required\r\n" + textErrorContent
+	crlf                = "\r\n"
+	colonAndSpace       = ": "
+)
+
+var (
+	btsErrorVersion = []byte(headerSecVersion + ": 13\r\n")
 )
 
 var (
@@ -51,17 +57,6 @@ var (
 	httpVersion1_1    = []byte("HTTP/1.1")
 	httpVersionPrefix = []byte("HTTP/")
 )
-
-// HttpHeaderWriter represents low level HTTP header writer.
-// If you want to dump some http.Header instance into given bufio.Writer, you
-// could do something like this:
-//
-// h := make(http.Header{"foo": []string{"bar"}})
-// return func(bw *bufio.Writer) { h.Write(bw) }
-//
-// This type is for clients ability to avoid allocations and call bufio.Writer
-// methods directly.
-type HttpHeaderWriter func(*bufio.Writer)
 
 type httpRequestLine struct {
 	method, uri  []byte
@@ -200,7 +195,7 @@ func httpWriteHeaderKey(bw *bufio.Writer, key string) {
 	bw.WriteString(colonAndSpace)
 }
 
-func httpWriteUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h http.Header) {
+func httpWriteResponseUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, hw func(io.Writer)) {
 	bw.WriteString(textUpgrade)
 
 	httpWriteHeaderKey(bw, headerSecAccept)
@@ -215,16 +210,19 @@ func httpWriteUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, h h
 		httphead.WriteOptions(bw, hs.Extensions)
 		bw.WriteString(crlf)
 	}
-
-	h.Write(bw)
+	if hw != nil {
+		hw(bw)
+	}
 
 	bw.WriteString(crlf)
 }
 
-func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw HttpHeaderWriter) {
+func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Writer)) {
 	switch code {
 	case http.StatusBadRequest:
 		bw.WriteString(textBadRequest)
+	case http.StatusUpgradeRequired:
+		bw.WriteString(textUpgradeRequired)
 	default:
 		bw.WriteString("HTTP/1.1 ")
 		bw.WriteString(strconv.FormatInt(int64(code), 10))
@@ -240,5 +238,13 @@ func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw HttpHeader
 	if err != nil {
 		bw.WriteString(err.Error())
 		bw.WriteByte('\n') // Just to be consistent with http.Error().
+	}
+}
+
+// HeaderWriter creates callback function that will dump h into recevied
+// io.Writer inside created callback.
+func HeaderWriter(h http.Header) func(io.Writer) {
+	return func(w io.Writer) {
+		h.Write(w)
 	}
 }

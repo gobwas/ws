@@ -120,7 +120,12 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 		return
 	}
 
-	httpWriteUpgrade(rw.Writer, strToNonce(nonce), hs, h)
+	var hw func(io.Writer)
+	if h != nil {
+		hw = HeaderWriter(h)
+	}
+
+	httpWriteResponseUpgrade(rw.Writer, strToNonce(nonce), hs, hw)
 	err = rw.Writer.Flush()
 
 	return
@@ -133,6 +138,11 @@ type ConnUpgrader struct {
 	//
 	// The argument is only valid until the callback returns.
 	Protocol func([]byte) bool
+
+	// ProtocolCustrom allow user to parse Sec-WebSocket-Protocol header manually.
+	// Note that returned bytes must be valid until Upgrade returns.
+	// If ProtocolCustom is set, it used instead of Protocol function.
+	ProtocolCustom func([]byte) (string, bool)
 
 	// Extension is a select function that is used to select extensions
 	// from list requested by client. If this field is set, then the all matched
@@ -152,15 +162,20 @@ type ConnUpgrader struct {
 	// preferable."
 	Extension func(httphead.Option) bool
 
-	// ProtocolCustrom allow user to parse Sec-WebSocket-Protocol header manually.
-	// Note that returned bytes must be valid until Upgrade returns.
-	// If ProtocolCustom is set, it used instead of Protocol function.
-	ProtocolCustom func([]byte) (string, bool)
-
 	// ExtensionCustorm allow user to parse Sec-WebSocket-Extensions header manually.
 	// Note that returned options should be valid until Upgrade returns.
 	// If ExtensionCustom is set, it used instead of Extension function.
 	ExtensionCustom func([]byte, []httphead.Option) ([]httphead.Option, bool)
+
+	// Header is a callback that will be called with io.Writer.
+	// Write() calls that writer will put data in the response http headers
+	// section.
+	//
+	// It used instead of http.Header mapping to avoid allocations in user land.
+	//
+	// Not that if present, this callback will be called for any result of
+	// upgrading.
+	Header func(io.Writer)
 
 	// OnRequest is a callback that will be called after request line and
 	// "Host" header successful parsing. Setting this field helps to implement
@@ -170,7 +185,7 @@ type ConnUpgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnRequest func(host, uri []byte) (err error, code int, header HttpHeaderWriter)
+	OnRequest func(host, uri []byte) (err error, code int)
 
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
@@ -181,7 +196,24 @@ type ConnUpgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnHeader func(key, value []byte) (err error, code int, header HttpHeaderWriter)
+	OnHeader func(key, value []byte) (err error, code int)
+
+	// BeforeUpgrade is a callback that will be called before sending
+	// successful upgrade response.
+	//
+	// Setting BeforeUpgrade allows user to make final application-level
+	// checks and decide whether this connection is allowed to successfully
+	// upgrade to WebSocket. That is, the session checks and other application
+	// logic could be contained inside this callback.
+	//
+	// BeforeUpgrade could return header writer callback, that will be called
+	// to provide some user land http headers in response.
+	//
+	// If by some reason connection should not be upgraded then BeforeUpgrade
+	// should return error and appropriate http status code.
+	//
+	// Note that header writer callback will be called even if err is non-nil.
+	BeforeUpgrade func() (header func(io.Writer), err error, code int)
 }
 
 var (
@@ -191,7 +223,26 @@ var (
 	expHeaderSecVersion      = []byte("13")
 )
 
-func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, err error) {
+type headerWriter struct {
+	cb [3]func(io.Writer)
+	n  int
+}
+
+func (w *headerWriter) add(cb func(io.Writer)) {
+	if w.n == len(w.cb) {
+		panic("header callbacks overflow")
+	}
+	w.cb[w.n] = cb
+	w.n++
+}
+
+func (w headerWriter) flush(to io.Writer) {
+	for i := 0; i < w.n; i++ {
+		w.cb[i](to)
+	}
+}
+
+func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
 	const (
@@ -225,12 +276,6 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		return
 	}
 
-	var (
-		// Use BadRequest as default error status code.
-		code = http.StatusBadRequest
-		errh HttpHeaderWriter
-	)
-
 	bw := pbufio.GetWriter(conn, 512)
 	defer pbufio.PutWriter(bw)
 
@@ -238,13 +283,13 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if btsToString(req.method) != http.MethodGet {
 		err = ErrBadHttpRequestMethod
-		httpWriteResponseError(bw, err, code, nil)
+		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
 		bw.Flush()
 		return
 	}
 	if req.major < 1 || (req.major == 1 && req.minor < 1) {
 		err = ErrBadHttpRequestProto
-		httpWriteResponseError(bw, err, code, nil)
+		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
 		bw.Flush()
 		return
 	}
@@ -255,17 +300,28 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		// bit on.
 		headerSeen byte
 		nonce      []byte
+		code       int
+
+		hcb func(io.Writer)
+		hw  headerWriter
 	)
+	if u.Header != nil {
+		hw.add(u.Header)
+	}
 	for {
 		line, e := readLine(br)
 		if e != nil {
 			err = e
 			return
 		}
-
 		// Blank line, no more lines to read.
 		if len(line) == 0 {
 			break
+		}
+		// If we already have an error just read out whole request without
+		// processing.
+		if err != nil {
+			continue
 		}
 
 		k, v, ok := httpParseHeaderLine(line)
@@ -278,43 +334,42 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		case headerHost:
 			headerSeen |= headerSeenHost
 			if len(v) == 0 {
-				if err == nil {
-					err = ErrBadHost
-				}
-			} else if onRequest := u.OnRequest; err == nil && onRequest != nil {
-				if e, c, hw := onRequest(v, req.uri); e != nil {
-					err = e
-					code = c
-					errh = hw
-				}
+				err = ErrBadHost
+			} else if onRequest := u.OnRequest; onRequest != nil {
+				err, code = onRequest(v, req.uri)
 			}
 
 		case headerUpgrade:
 			headerSeen |= headerSeenUpgrade
-			if err == nil && !bytes.Equal(v, expHeaderUpgrade) && !btsEqualFold(v, expHeaderUpgrade) {
+			if !bytes.Equal(v, expHeaderUpgrade) && !btsEqualFold(v, expHeaderUpgrade) {
 				err = ErrBadUpgrade
 			}
+
 		case headerConnection:
 			headerSeen |= headerSeenConnection
-			if err == nil && !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
+			if !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
 				err = ErrBadConnection
 			}
+
 		case headerSecKey:
 			headerSeen |= headerSeenSecKey
-			if err == nil && len(v) != nonceSize {
+			if len(v) != nonceSize {
 				err = ErrBadSecKey
+			} else {
+				nonce = v
 			}
-			nonce = v
+
 		case headerSecVersion:
 			headerSeen |= headerSeenSecVersion
-			if err == nil && !bytes.Equal(v, expHeaderSecVersion) {
+			if !bytes.Equal(v, expHeaderSecVersion) {
 				err = ErrBadSecVersion
 				code = http.StatusUpgradeRequired
-				errh = headerWriterSecVersion
+
+				hw.add(headerWriterSecVersion)
 			}
 
 		case headerSecProtocol:
-			if custom, check := u.ProtocolCustom, u.Protocol; err == nil && hs.Protocol == "" && (custom != nil || check != nil) {
+			if custom, check := u.ProtocolCustom, u.Protocol; hs.Protocol == "" && (custom != nil || check != nil) {
 				var ok bool
 				if custom != nil {
 					hs.Protocol, ok = custom(v)
@@ -327,7 +382,7 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 			}
 
 		case headerSecExtensions:
-			if custom, check := u.ExtensionCustom, u.Extension; err == nil && (custom != nil || check != nil) {
+			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil {
 				var ok bool
 				if custom != nil {
 					hs.Extensions, ok = custom(v, hs.Extensions)
@@ -340,17 +395,14 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 			}
 
 		default:
-			if onHeader := u.OnHeader; err == nil && onHeader != nil {
-				if e, c, hw := onHeader(k, v); e != nil {
-					err = e
-					code = c
-					errh = hw
-				}
+			if onHeader := u.OnHeader; onHeader != nil {
+				err, code = onHeader(k, v)
 			}
 		}
 	}
 
-	if err == nil && headerSeen != headerSeenAll {
+	switch {
+	case err == nil && headerSeen != headerSeenAll:
 		switch {
 		case headerSeen & ^byte(headerSeenHost) == 0:
 			err = ErrBadHost
@@ -365,22 +417,29 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter, h http.Header) (hs Handshake, 
 		default:
 			panic("unknown headers state")
 		}
+
+	case err == nil && u.BeforeUpgrade != nil:
+		hcb, err, code = u.BeforeUpgrade()
+		if hcb != nil {
+			hw.add(hcb)
+		}
 	}
 
 	if err != nil {
-		httpWriteResponseError(bw, err, code, errh)
+		httpWriteResponseError(bw, err, code, hw.flush)
+		// Do not store Flush() error to not override already existing one.
 		bw.Flush()
 		return
 	}
 
-	httpWriteUpgrade(bw, btsToNonce(nonce), hs, h)
+	httpWriteResponseUpgrade(bw, btsToNonce(nonce), hs, hw.flush)
 	err = bw.Flush()
 
 	return
 }
 
-func headerWriterSecVersion(bw *bufio.Writer) {
-	httpWriteHeader(bw, headerSecVersion, "13")
+func headerWriterSecVersion(w io.Writer) {
+	w.Write(btsErrorVersion)
 }
 
 func selectExtensions(h []string, ok func(string) bool) []string {

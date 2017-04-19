@@ -1,3 +1,5 @@
+TEST ?=.
+
 BENCH     ?=.
 BENCH_BASE?=master
 
@@ -5,7 +7,7 @@ autobahn:
 	go build -o ./bin/autobahn ./example/autobahn
 
 test:
-	go test -cover ./...
+	go test -run=$(TEST) -cover ./...
 
 testrfc: PID:=$(shell mktemp -t autobahn.XXXX)
 testrfc: autobahn
