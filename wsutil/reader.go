@@ -96,7 +96,7 @@ func CloseHandler(w io.Writer, state ws.State) FrameHandler {
 		}
 
 		if err = ws.WriteFrame(w, f); err == nil {
-			err = ErrClosed{code, reason}
+			err = ClosedError{code, reason}
 		}
 
 		return
@@ -139,13 +139,21 @@ type Reader struct {
 	handler handler
 }
 
-type ErrClosed struct {
+type ClosedError struct {
 	code   ws.StatusCode
 	reason string
 }
 
-func (err ErrClosed) Error() string {
+func (err ClosedError) Error() string {
 	return "ws closed: " + strconv.FormatUint(uint64(err.code), 10) + " " + err.reason
+}
+
+func (err ClosedError) Reason() string {
+	return err.reason
+}
+
+func (err ClosedError) Code() ws.StatusCode {
+	return err.code
 }
 
 func NewReader(r io.Reader, s ws.State) *Reader {
