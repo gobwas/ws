@@ -77,8 +77,29 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 	}
 	if v := httpGetHeader(r.Header, headerSecVersion); v != "13" {
 		err = ErrBadSecVersion
-		w.Header().Set(headerSecVersion, "13")
-		http.Error(w, err.Error(), http.StatusUpgradeRequired)
+		// According to RFC6455:
+		//
+		// If this version does not match a version understood by the server,
+		// the server MUST abort the WebSocket handshake described in this
+		// section and instead send an appropriate HTTP error code (such as 426
+		// Upgrade Required) and a |Sec-WebSocket-Version| header field
+		// indicating the version(s) the server is capable of understanding.
+		//
+		// So we branching here cause empty or not present version does not
+		// meet the ABNF rules of RFC6455:
+		//
+		// version = DIGIT | (NZDIGIT DIGIT) |
+		// ("1" DIGIT DIGIT) | ("2" DIGIT DIGIT)
+		// ; Limited to 0-255 range, with no leading zeros
+		//
+		// That is, if version is really invalid – we sent 426 status, if it
+		// not present or empty – it is 400.
+		if v != "" {
+			w.Header().Set(headerSecVersion, "13")
+			http.Error(w, err.Error(), http.StatusUpgradeRequired)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -300,11 +321,14 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		// bit on.
 		headerSeen byte
 		nonce      []byte
-		code       int
 
 		hcb func(io.Writer)
 		hw  headerWriter
 	)
+
+	// Use default http status code for errors.
+	code := http.StatusBadRequest
+
 	if u.Header != nil {
 		hw.add(u.Header)
 	}
@@ -362,6 +386,14 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		case headerSecVersion:
 			headerSeen |= headerSeenSecVersion
 			if !bytes.Equal(v, expHeaderSecVersion) {
+				// According to RFC6455:
+				//
+				// If this version does not match a version understood by the
+				// server, the server MUST abort the WebSocket handshake
+				// described in this section and instead send an appropriate
+				// HTTP error code (such as 426 Upgrade Required) and a
+				// |Sec-WebSocket-Version| header field indicating the
+				// version(s) the server is capable of understanding.
 				err = ErrBadSecVersion
 				code = http.StatusUpgradeRequired
 
@@ -404,15 +436,24 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	switch {
 	case err == nil && headerSeen != headerSeenAll:
 		switch {
-		case headerSeen & ^byte(headerSeenHost) == 0:
+		case headerSeen&headerSeenHost == 0:
 			err = ErrBadHost
-		case headerSeen & ^byte(headerSeenUpgrade) == 0:
+		case headerSeen&headerSeenUpgrade == 0:
 			err = ErrBadUpgrade
-		case headerSeen & ^byte(headerSeenConnection) == 0:
+		case headerSeen&headerSeenConnection == 0:
 			err = ErrBadConnection
-		case headerSeen & ^byte(headerSeenSecVersion) == 0:
+		case headerSeen&headerSeenSecVersion == 0:
+			// In cause of empty or not present version we do not send 426 status,
+			// because it does not meet the ABNF rules of RFC6455:
+			//
+			// version = DIGIT | (NZDIGIT DIGIT) |
+			// ("1" DIGIT DIGIT) | ("2" DIGIT DIGIT)
+			// ; Limited to 0-255 range, with no leading zeros
+			//
+			// That is, if version is really invalid – we sent 426 status as above, if it
+			// not present – it is 400.
 			err = ErrBadSecVersion
-		case headerSeen & ^byte(headerSeenSecKey) == 0:
+		case headerSeen&headerSeenSecKey == 0:
 			err = ErrBadSecKey
 		default:
 			panic("unknown headers state")
