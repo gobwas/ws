@@ -194,25 +194,22 @@ func canonicalizeHeaderKey(k []byte) {
 // return bytes slice that is valid only until next br.ReadLine() call. That
 // is, we could control that calls and do not need to make additional copy for
 // safety.
-func readLine(br *bufio.Reader) (line []byte, err error) {
-	var more bool
-	var bts []byte
+func readLine(br *bufio.Reader) ([]byte, error) {
+	var line []byte
 	for {
-		bts, more, err = br.ReadLine()
+		bts, more, err := br.ReadLine()
 		if err != nil {
-			return
+			return nil, err
 		}
-		// Avoid copying bytes to the nil slice.
-		if line == nil {
-			line = bts
-		} else {
-			line = append(line, bts...)
+		if line == nil && !more {
+			return bts, nil
 		}
+		line = append(line, bts...)
 		if !more {
 			break
 		}
 	}
-	return
+	return line, nil
 }
 
 // strEqualFold checks s to be case insensitive equal to p.

@@ -24,6 +24,11 @@ func TestReadLine(t *testing.T) {
 			in:      "hello, world!",
 			bufSize: 1024,
 		},
+		{
+			label:   "chunked",
+			in:      "hello, world! this is a long long line!",
+			bufSize: 16,
+		},
 	} {
 		t.Run(test.label, func(t *testing.T) {
 			br := bufio.NewReaderSize(strings.NewReader(test.in), test.bufSize)
