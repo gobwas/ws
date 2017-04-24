@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -11,6 +12,31 @@ import (
 )
 
 var compareWithStd = flag.Bool("std", false, "compare with standard library implementation (if exists)")
+
+func TestReadLine(t *testing.T) {
+	for _, test := range []struct {
+		label   string
+		in      string
+		bufSize int
+	}{
+		{
+			label:   "simple",
+			in:      "hello, world!",
+			bufSize: 1024,
+		},
+	} {
+		t.Run(test.label, func(t *testing.T) {
+			br := bufio.NewReaderSize(strings.NewReader(test.in), test.bufSize)
+			bts, err := readLine(br)
+			if err != nil {
+				t.Errorf("unexpected error: %s", err)
+			}
+			if act, exp := string(bts), test.in; act != exp {
+				t.Errorf("readLine() returned %#q; want %#q", act, exp)
+			}
+		})
+	}
+}
 
 func TestHasToken(t *testing.T) {
 	for i, test := range []struct {
