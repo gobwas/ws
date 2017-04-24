@@ -13,6 +13,12 @@ import (
 	"github.com/gobwas/pool/pbufio"
 )
 
+// Constans used by ConnUpgrader.
+const (
+	DefaultReadBufferSize  = 4096
+	DefaultWriteBufferSize = 1024
+)
+
 var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
 
 // DefaultUpgrader is upgrader that holds no options and is used by Upgrade function.
@@ -153,6 +159,15 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 }
 
 type ConnUpgrader struct {
+	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
+	// They used to read and write http data while upgrading to WebSocket.
+	// Allocated buffers are pooled with sync.Pool to avoid allocations.
+	//
+	// If *bufio.ReadWriter is given to Upgrade() no allocation will be made.
+	//
+	// If a size is zero then default value is used.
+	ReadBufferSize, WriteBufferSize int
+
 	// Protocol is a select function that is used to select subprotocol
 	// from list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
@@ -283,8 +298,18 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			headerSeenSecKey
 	)
 
-	br := pbufio.GetReader(conn, 512)
-	defer pbufio.PutReader(br, 512)
+	var (
+		br *bufio.Reader
+		bw *bufio.Writer
+	)
+	if brw, ok := conn.(*bufio.ReadWriter); ok {
+		br = brw.Reader
+		bw = brw.Writer
+	} else {
+		readBufSize := nonZero(u.ReadBufferSize, DefaultReadBufferSize)
+		br = pbufio.GetReader(conn, readBufSize)
+		defer pbufio.PutReader(br, readBufSize)
+	}
 
 	// Read HTTP request line like "GET /ws HTTP/1.1".
 	rl, err := readLine(br)
@@ -297,8 +322,10 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
-	bw := pbufio.GetWriter(conn, 512)
-	defer pbufio.PutWriter(bw)
+	if bw == nil {
+		bw = pbufio.GetWriter(conn, nonZero(u.WriteBufferSize, DefaultWriteBufferSize))
+		defer pbufio.PutWriter(bw)
+	}
 
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
@@ -483,7 +510,9 @@ func headerWriterSecVersion(w io.Writer) {
 	w.Write(btsErrorVersion)
 }
 
-func selectExtensions(h []string, ok func(string) bool) []string {
-	// TODO(gobwas): parse extensions with params
-	return nil
+func nonZero(a, b int) int {
+	if a != 0 {
+		return a
+	}
+	return b
 }
