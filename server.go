@@ -393,7 +393,10 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			if len(v) == 0 {
 				err = ErrBadHost
 			} else if onRequest := u.OnRequest; onRequest != nil {
-				err, code = onRequest(v, req.uri)
+				if e, c := onRequest(v, req.uri); e != nil {
+					err = e
+					code = c
+				}
 			}
 
 		case headerUpgrade:
@@ -461,7 +464,10 @@ func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		default:
 			if onHeader := u.OnHeader; onHeader != nil {
-				err, code = onHeader(k, v)
+				if e, c := onHeader(k, v); e != nil {
+					err = e
+					code = c
+				}
 			}
 		}
 	}

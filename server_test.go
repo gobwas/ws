@@ -26,6 +26,8 @@ type upgradeCase struct {
 
 	protocol  func(string) bool
 	extension func(httphead.Option) bool
+	onHeader  func(k, v []byte) (error, int)
+	onRequest func(h, u []byte) (error, int)
 
 	nonce        [nonceSize]byte
 	removeSecKey bool
@@ -183,6 +185,23 @@ var upgradeCases = []upgradeCase{
 		label: "bad_upgrade",
 		nonce: mustMakeNonce(),
 		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			"X-Custom-Header": []string{"value"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecVersion:  []string{"13"},
+		}),
+		onRequest: func(_, _ []byte) (error, int) {
+			return nil, 0
+		},
+		onHeader: func(k, v []byte) (error, int) {
+			return nil, 0
+		},
+		res: mustMakeErrResponse(400, ErrBadUpgrade, nil),
+		err: ErrBadUpgrade,
+	},
+	{
+		label: "bad_upgrade",
+		nonce: mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"not-websocket"},
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
@@ -333,6 +352,8 @@ func TestConnUpgrader(t *testing.T) {
 				Extension: func(e httphead.Option) bool {
 					return test.extension(e)
 				},
+				OnHeader:  test.onHeader,
+				OnRequest: test.onRequest,
 			}
 
 			// We use dumpRequest here because test.req.Write is always send
