@@ -16,7 +16,7 @@ import (
 // Constans used by ConnUpgrader.
 const (
 	DefaultReadBufferSize  = 4096
-	DefaultWriteBufferSize = 1024
+	DefaultWriteBufferSize = 512
 )
 
 var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
@@ -163,9 +163,15 @@ type ConnUpgrader struct {
 	// They used to read and write http data while upgrading to WebSocket.
 	// Allocated buffers are pooled with sync.Pool to avoid allocations.
 	//
-	// If *bufio.ReadWriter is given to Upgrade() no allocation will be made.
+	// If *bufio.ReadWriter is given to Upgrade() no allocation will be made
+	// and this sizes will not be used.
 	//
 	// If a size is zero then default value is used.
+	//
+	// Ususally it is useful to set read buffer size bigger than write buffer
+	// size because incoming request could contain long header values, such
+	// Cookie. Response, in other way, could be big only if user write multiple
+	// custom headers. Usually response takes less than 256 bytes.
 	ReadBufferSize, WriteBufferSize int
 
 	// Protocol is a select function that is used to select subprotocol
