@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/textproto"
 	"strings"
@@ -13,31 +14,78 @@ import (
 
 var compareWithStd = flag.Bool("std", false, "compare with standard library implementation (if exists)")
 
+var readLineCases = []struct {
+	label   string
+	in      string
+	line    []byte
+	err     error
+	bufSize int
+}{
+	{
+		label:   "simple",
+		in:      "hello, world!",
+		line:    []byte("hello, world!"),
+		err:     io.EOF,
+		bufSize: 1024,
+	},
+	{
+		label:   "simple",
+		in:      "hello, world!\r\n",
+		line:    []byte("hello, world!"),
+		bufSize: 1024,
+	},
+	{
+		label:   "simple",
+		in:      "hello, world!\n",
+		line:    []byte("hello, world!"),
+		bufSize: 1024,
+	},
+	{
+		// The case where "\r\n" straddles the buffer.
+		label:   "straddle",
+		in:      "hello, world!!!\r\n...",
+		line:    []byte("hello, world!!!"),
+		bufSize: 16,
+	},
+	{
+		label:   "chunked",
+		in:      "hello, world! this is a long long line!",
+		line:    []byte("hello, world! this is a long long line!"),
+		err:     io.EOF,
+		bufSize: 16,
+	},
+	{
+		label:   "chunked",
+		in:      "hello, world! this is a long long line!\r\n",
+		line:    []byte("hello, world! this is a long long line!"),
+		bufSize: 16,
+	},
+}
+
 func TestReadLine(t *testing.T) {
-	for _, test := range []struct {
-		label   string
-		in      string
-		bufSize int
-	}{
-		{
-			label:   "simple",
-			in:      "hello, world!",
-			bufSize: 1024,
-		},
-		{
-			label:   "chunked",
-			in:      "hello, world! this is a long long line!",
-			bufSize: 16,
-		},
-	} {
+	for _, test := range readLineCases {
 		t.Run(test.label, func(t *testing.T) {
 			br := bufio.NewReaderSize(strings.NewReader(test.in), test.bufSize)
 			bts, err := readLine(br)
-			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+			if err != test.err {
+				t.Errorf("unexpected error: %v; want %v", err, test.err)
 			}
-			if act, exp := string(bts), test.in; act != exp {
-				t.Errorf("readLine() returned %#q; want %#q", act, exp)
+			if act, exp := bts, test.line; !bytes.Equal(act, exp) {
+				t.Errorf("readLine() result is %#q; want %#q", act, exp)
+			}
+		})
+	}
+}
+
+func BenchmarkReadLine(b *testing.B) {
+	for _, test := range readLineCases {
+		sr := strings.NewReader(test.in)
+		br := bufio.NewReaderSize(sr, test.bufSize)
+		b.Run(test.label, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = readLine(br)
+				sr.Reset(test.in)
+				br.Reset(sr)
 			}
 		})
 	}
