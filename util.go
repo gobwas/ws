@@ -184,32 +184,54 @@ func canonicalizeHeaderKey(k []byte) {
 	}
 }
 
-// readLine is a wrapper around bufio.Reader.ReadLine(), it calls ReadLine()
-// until full line will be read.
+// readLine reads line from br. It reads until '\n' and returns bytes without
+// '\n' or '\r\n' at the end.
+// It returns err if and only if line does not end in '\n'. Note that read
+// bytes returned in any case of error.
 //
 // It is much like the textproto/Reader.ReadLine() except the thing that it
 // returns raw bytes, instead of string. That is, it avoids copying bytes read
 // from br.
-// textproto/Reader.ReadLineBytes() is also makes copy because br.ReadLine()
-// return bytes slice that is valid only until next br.ReadLine() call. That
-// is, we could control that calls and do not need to make additional copy for
-// safety.
+//
+// textproto/Reader.ReadLineBytes() is also makes copy of resulting bytes to be
+// safe with future I/O operations on br.
+//
+// We could control I/O operations on br and do not need to make additional
+// copy for safety.
 func readLine(br *bufio.Reader) ([]byte, error) {
 	var line []byte
 	for {
-		bts, more, err := br.ReadLine()
+		bts, err := br.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			// Copy bytes because next read will discard them.
+			line = append(line, bts...)
+			continue
+		}
+
+		// Avoid copy of single read.
+		if line == nil {
+			line = bts
+		} else {
+			line = append(line, bts...)
+		}
+
 		if err != nil {
-			return nil, err
+			return line, err
 		}
-		if line == nil && !more {
-			return bts, nil
+
+		// Size of line is at least 1.
+		// In other case bufio.ReadSlice() returns error.
+		n := len(line)
+
+		// Cut '\n' or '\r\n'.
+		if n > 1 && line[n-2] == '\r' {
+			line = line[:n-2]
+		} else {
+			line = line[:n-1]
 		}
-		line = append(line, bts...)
-		if !more {
-			break
-		}
+
+		return line, nil
 	}
-	return line, nil
 }
 
 // strEqualFold checks s to be case insensitive equal to p.
