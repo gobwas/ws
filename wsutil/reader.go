@@ -206,6 +206,7 @@ func (r *Reader) Next() (h ws.Header, err error) {
 			err = hi(h, rd)
 		}
 		if err == nil {
+			// Ensure that src is empty.
 			_, err = io.Copy(ioutil.Discard, src)
 		}
 		return
