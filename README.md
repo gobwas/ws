@@ -25,21 +25,31 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.Upgrade(r, w, nil)
 		if err != nil {
-			// Handle error some how.
+			log.Printf("upgrade error: %s", err)
+			return
 		}
-		
 		go func() {
+			defer conn.Close()
+
 			for {
 				f, err := ws.ReadFrame(conn)
 				if err != nil {
-					// Handle read frame error.
+					log.Printf("read frame error: %s", err)
+					return
 				}
+
+				if mask := f.Header.Mask; f.Header.Masked {
+					ws.Cipher(f.Payload, mask, 0)
+				}
+				log.Printf("received: %v", f.Payload)
+
 				err = ws.WriteFrame(conn, ws.NewTextFrame("hello there!"))
 				if err != nil {
-					// Handle write frame error.
+					log.Printf("write frame error: %s", err)
+					return
 				}
 			}
 		}()
