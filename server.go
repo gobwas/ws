@@ -256,6 +256,9 @@ type ConnUpgrader struct {
 	//
 	// Note that header writer callback will be called even if err is non-nil.
 	BeforeUpgrade func() (header func(io.Writer), err error, code int)
+
+	// TODO(gobwas): maybe use here io.WriterTo or something similar instead of
+	// error missing header callback?
 }
 
 var (
