@@ -1,6 +1,6 @@
 # ws
 
-[![GoDoc][godoc-image]][godoc-url] [![Build Status][travis-image]][travis-url]
+[![GoDoc][godoc-image]][godoc-url] 
 
 > [RFC6455][rfc-url] WebSocket implementation in Go.
 
@@ -82,6 +82,7 @@ func main() {
 		expectURI  = "/websocket"
 	)
 
+	var id int
 	reqID := []string{"0"}
 	header := http.Header{
 		"X-Request-ID": reqID,
@@ -124,7 +125,7 @@ func main() {
 		},
 	}
 
-	for id := 0;; id++ {
+	for ;; id++ {
 		conn, err := ln.Accept()
 		if err != nil {
 			log.Fatal(err)
