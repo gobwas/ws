@@ -90,7 +90,7 @@ func main() {
 		},
 	}
 
-	for ;; id++ {
+	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			log.Fatal(err)
