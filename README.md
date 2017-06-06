@@ -60,6 +60,58 @@ func main() {
 
 # Zero-copy upgrade
 
+Zero copy upgrade helps to avoid unnecessary allocations and copies while handling HTTP Upgrade request.
+
+Processing of all non-websocket headers is made in place with use of registered user callbacks, when arguments are only valid until callback returns.
+
+The simple example is looks like this:
+
+```go
+
+import (
+	"net"
+	"net/http"
+	"log"
+
+	"github.com/gobwas/ws"
+	"github.com/gobwas/httphead"
+)
+
+func main() {
+	ln, err := net.Listen("tcp", "localhost:8080")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	u := ws.ConnUpgrader{
+		OnHeader: func(key, value []byte) (err error, code int) {
+			log.Printf("non-websocket header: %q=%q", key, value)
+			return
+		},
+	}
+
+	for ;; id++ {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+		_, err := u.Upgrade(conn)
+		if err != nil {
+			log.Printf("upgrade error: %s", err)
+		}
+	}
+}
+```
+
+Use of zero-copy upgrader here brings ability to your application to control
+incoming connections on tcp level, and simply do not accept them by your custom
+logic.
+
+Zero copy upgrade are intended for high-load services with need to control many
+resources such as alive connections and their buffers.
+
+The real life example could be like this:
+
 ```go
 
 import (
