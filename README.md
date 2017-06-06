@@ -68,7 +68,7 @@ Zero copy upgrade helps to avoid unnecessary allocations and copies while handli
 
 Processing of all non-websocket headers is made in place with use of registered user callbacks, when arguments are only valid until callback returns.
 
-The simple example is looks like this:
+The simple example looks like this:
 
 ```go
 
@@ -197,14 +197,14 @@ func main() {
 # Why
 
 Current WebSocket implementations does not allows to use low-level
-optimizations such reusing buffers between multiple connections and so on.
+optimizations such as reusing buffers between multiple connections and so on.
 
 I was looking for tiny RFC6455 implementation that could be used like
 `ReadFrame()` or `WriteFrame()` but no libraries was found.
 
 # Status
 
-This implementation of RFC6455 is passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
+This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
 71.6% coverage.
 
 The library is not tagged as `v1.0.0` yet so it could be broken during some improvements
