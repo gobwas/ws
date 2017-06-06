@@ -11,6 +11,10 @@
 - Low-level API which allows to build your own packet handling and buffers
   reuse
 
+# Documentation
+
+[GoDoc][godoc-url].
+
 # Usage
 
 The non-optimized usage example could look like this:
