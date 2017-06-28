@@ -48,7 +48,7 @@ var (
 
 func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.Upgrade(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return
@@ -101,7 +101,7 @@ func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
 
 func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.Upgrade(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return

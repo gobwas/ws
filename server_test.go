@@ -279,7 +279,7 @@ var upgradeCases = []upgradeCase{
 	},
 }
 
-func TestUpgrader(t *testing.T) {
+func TestHTTPUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			if !test.removeSecKey {
@@ -293,7 +293,7 @@ func TestUpgrader(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 			}
 
-			u := Upgrader{
+			u := HTTPUpgrader{
 				Protocol:  test.protocol,
 				Extension: test.extension,
 			}
@@ -331,7 +331,7 @@ func TestUpgrader(t *testing.T) {
 	}
 }
 
-func TestConnUpgrader(t *testing.T) {
+func TestUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			if !test.removeSecKey {
@@ -345,7 +345,7 @@ func TestConnUpgrader(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 			}
 
-			u := ConnUpgrader{
+			u := Upgrader{
 				Protocol: func(p []byte) bool {
 					return test.protocol(string(p))
 				},
@@ -394,11 +394,11 @@ func TestConnUpgrader(t *testing.T) {
 	}
 }
 
-func BenchmarkUpgrader(b *testing.B) {
+func BenchmarkHTTPUpgrader(b *testing.B) {
 	for _, bench := range upgradeCases {
 		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
 
-		u := Upgrader{
+		u := HTTPUpgrader{
 			Protocol:  bench.protocol,
 			Extension: bench.extension,
 		}
@@ -423,11 +423,11 @@ func BenchmarkUpgrader(b *testing.B) {
 	}
 }
 
-func BenchmarkConnUpgrader(b *testing.B) {
+func BenchmarkUpgrader(b *testing.B) {
 	for _, bench := range upgradeCases {
 		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
 
-		u := ConnUpgrader{
+		u := Upgrader{
 			Protocol: func(p []byte) bool {
 				return bench.protocol(btsToString(p))
 			},

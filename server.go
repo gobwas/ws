@@ -21,23 +21,34 @@ const (
 
 var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
 
-// DefaultUpgrader is upgrader that holds no options and is used by Upgrade function.
-var DefaultUpgrader Upgrader
+// DefaultHTTPUpgrader is an HTTPUpgrader that holds no options and is used by
+// UpgradeHTTP function.
+var DefaultHTTPUpgrader HTTPUpgrader
 
-// Upgrade is like Upgrader{}.Upgrade.
-func Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
-	return DefaultUpgrader.Upgrade(r, w, h)
+// UpgradeHTTP is like HTTPUpgrader{}.Upgrade().
+func UpgradeHTTP(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+	return DefaultHTTPUpgrader.Upgrade(r, w, h)
 }
 
-// Upgrader contains options for upgrading http connection to websocket.
-type Upgrader struct {
-	// Protocol is the select function that is used to select subprotocol
-	// from list requested by client. If this field is set, then the first matched
+// DefaultUpgrader is an Upgrader that holds no options and is used by Upgrade
+// function.
+var DefaultUpgrader Upgrader
+
+// Upgrade is like Upgrader{}.Upgrade().
+func Upgrade(conn io.ReadWriter) (Handshake, error) {
+	return DefaultUpgrader.Upgrade(conn)
+}
+
+// HTTPUpgrader contains options for upgrading connection to websocket from
+// net/http Handler arguments.
+type HTTPUpgrader struct {
+	// Protocol is the select function that is used to select subprotocol from
+	// list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
 	Protocol func(string) bool
 
-	// Extension is the select function that is used to select extensions
-	// from list requested by client. If this field is set, then the all matched
+	// Extension is the select function that is used to select extensions from
+	// list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	Extension func(httphead.Option) bool
 }
@@ -47,7 +58,7 @@ type Upgrader struct {
 //
 // It hijacks net.Conn from w and returns recevied net.Conn and bufio.ReadWriter.
 // On successful handshake it returns Handshake struct describing handshake info.
-func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if r.Method != http.MethodGet {
@@ -158,7 +169,8 @@ func (u Upgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header)
 	return
 }
 
-type ConnUpgrader struct {
+// Upgrader contains options for upgrading connection to websocket.
+type Upgrader struct {
 	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
 	// They used to read and write http data while upgrading to WebSocket.
 	// Allocated buffers are pooled with sync.Pool to avoid allocations.
@@ -287,7 +299,9 @@ func (w headerWriter) flush(to io.Writer) {
 	}
 }
 
-func (u ConnUpgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
+// Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
+// as connection with incoming HTTP Upgrade request.
+func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
 	const (
