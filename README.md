@@ -135,7 +135,6 @@ func main() {
 
 				// Echo text frame back to client.
 				if header.OpCode == ws.OpText {
-					
 					err = ws.WriteHeader(conn, ws.Header{
 						Fin:    true,
 						OpCode: ws.OpText,
