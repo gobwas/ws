@@ -7,7 +7,7 @@
 # Features
 
 - Zero-copy upgrade
-- No intermediate allocations during IO
+- No intermediate allocations during I/O
 - Low-level API which allows to build your own packet handling and buffers
   reuse
 
@@ -15,58 +15,155 @@
 
 [GoDoc][godoc-url].
 
+# Why
+
+Existing WebSocket implementations does not allow to reuse I/O buffers between
+connections in clear way. This library aims to export lower-level interface for
+working with the protocol. Ideologically, the goal is not to force use patterns
+of WebSocket entities.
+
+By the way, if you want get the higher-level interface, you could use `wsutil`
+sub-package.
+
 # Usage
 
-The non-optimized usage example could look like this:
+The higher-level example of WebSocket echo server:
 
 ```go
-
 import (
 	"net/http"
 	
 	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
+	"github.com/gobwas/wsutil"
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.Upgrade(r, w, nil)
+	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
-			log.Printf("upgrade error: %s", err)
-			return
+			// handle error
 		}
+
 		go func() {
 			defer conn.Close()
 
+			state := ws.StateServer
+
+			// Note that you could use bufio.{Reader, Writer} to reduce
+			// syscalls.
+			reader := wsutil.NewReader(conn, state)
+			writer := wsutil.NewWriter(conn, ws.OpText, false)
+
 			for {
-				f, err := ws.ReadFrame(conn)
+				// Next() returns the next frame's header and makes reader
+				// ready to read that frame.
+				header, err := reader.Next()
 				if err != nil {
-					log.Printf("read frame error: %s", err)
-					return
+					// handle error
 				}
 
-				if mask := f.Header.Mask; f.Header.Masked {
-					ws.Cipher(f.Payload, mask, 0)
+				// Handle control frames as spec says.
+				if header.OpCode.IsControl() {
+					err = wsutil.ControlHandler(conn, state)(header, reader)
+					if err != nil {
+						// handle error
+					}
 				}
-				log.Printf("received: %v", f.Payload)
 
-				err = ws.WriteFrame(conn, ws.NewTextFrame("hello there!"))
-				if err != nil {
-					log.Printf("write frame error: %s", err)
-					return
+				// Discard binary frame.
+				if header.OpCode == ws.OpBinary {
+					io.Copy(ioutil.Discard, reader)
+					continue
+				}
+
+				// Otherwise echo text frame back to client (there are no more
+				// other possible operation codes here).
+				if _, err = io.Copy(writer, reader), err != nil {
+					// handle error
+				}
+				if err = w.Flush(); err != nil {
+					// handle error
 				}
 			}
 		}()
 	})
+}
+```
+
+The lower-level example:
+
+```go
+import (
+	"net/http"
+	
+	"github.com/gobwas/ws"
+)
+
+func main() {
+	ln, err := net.Listen("tcp", "localhost:8080")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			// handle error
+		}
+
+		_, err := ws.Upgrade(conn)
+		if err != nil {
+			// handle error
+		}
+
+		go func() {
+			defer conn.Close()
+
+			for {
+				header, err := ws.ReadHeader(conn)
+				if err != nil {
+					// handle error
+				}
+
+				data, err := ioutil.ReadAll(conn, header.Length)
+				if err != nil {
+					// handle error
+				}
+				if header.Masked {
+					ws.Cipher(data, header.Mask, 0)
+				}
+
+				// Echo text frame back to client.
+				if header.OpCode == ws.OpText {
+					
+					err = ws.WriteHeader(conn, ws.Header{
+						Fin:    true,
+						OpCode: ws.OpText,
+						Length: len(data),
+					})
+					if err == nil {
+						_, err = conn.Write(data)
+					}
+					if err != nil {
+						// handle error
+					}
+				}
+
+				// handle control frames
+			}
+		}()
+	}
 }
 
 ```
 
 # Zero-copy upgrade
 
-Zero copy upgrade helps to avoid unnecessary allocations and copies while handling HTTP Upgrade request.
+Zero copy upgrade helps to avoid unnecessary allocations and copies while
+handling HTTP Upgrade request.
 
-Processing of all non-websocket headers is made in place with use of registered user callbacks, when arguments are only valid until callback returns.
+Processing of all non-websocket headers is made in place with use of registered
+user callbacks, when arguments are only valid until callback returns.
 
 The simple example looks like this:
 
@@ -87,7 +184,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	u := ws.ConnUpgrader{
+	u := ws.Upgrader{
 		OnHeader: func(key, value []byte) (err error, code int) {
 			log.Printf("non-websocket header: %q=%q", key, value)
 			return
@@ -97,21 +194,21 @@ func main() {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatal(err)
+			// handle error
 		}
+
 		_, err := u.Upgrade(conn)
 		if err != nil {
-			log.Printf("upgrade error: %s", err)
+			// handle error
 		}
 	}
 }
 ```
 
-Use of zero-copy upgrader here brings ability to your application to control
-incoming connections on tcp level, and simply do not accept them by your custom
-logic.
+Use of `ws.Upgrader` here brings ability to control incoming connections on tcp
+level, and simply do not accept them by your custom logic.
 
-Zero copy upgrade are intended for high-load services with need to control many
+Zero-copy upgrade are intended for high-load services with need to control many
 resources such as alive connections and their buffers.
 
 The real life example could be like this:
@@ -130,7 +227,7 @@ import (
 func main() {
 	ln, err := net.Listen("tcp", "localhost:8080")
 	if err != nil {
-		log.Fatal(err)
+		// handle error
 	}
 
 	var (
@@ -144,7 +241,7 @@ func main() {
 		"X-Request-ID": reqID,
 	}
 
-	u := ws.ConnUpgrader{
+	u := ws.Upgrader{
 		OnRequest: func(host, uri []byte) (err error, code int) {
 			if !bytes.Equal(host, expectHost) {
 				return fmt.Errorf("unexpected host: %s", host), 403
@@ -193,14 +290,6 @@ func main() {
 	}
 }
 ```
-
-# Why
-
-Current WebSocket implementations does not allows to use low-level
-optimizations such as reusing buffers between multiple connections and so on.
-
-I was looking for tiny RFC6455 implementation that could be used like
-`ReadFrame()` or `WriteFrame()` but no libraries was found.
 
 # Status
 
