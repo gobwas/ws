@@ -65,6 +65,8 @@ func main() {
 			for {
 				// Next() returns the next frame's header and makes reader
 				// ready to read that frame.
+				//
+				// It takes care of unmasking (if needed) frames payload.
 				header, err := reader.Next()
 				if err != nil {
 					// handle error
@@ -138,6 +140,8 @@ func main() {
 					// handle error
 				}
 				if header.Masked {
+					// You could also use wsutil.CipherReader and
+					// wsutil.CipherWriter.
 					ws.Cipher(data, header.Mask, 0)
 				}
 
