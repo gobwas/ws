@@ -19,7 +19,8 @@
 
 Existing WebSocket implementations does not allow to reuse I/O buffers between
 connections in clear way. This library aims to export lower-level interface for
-working with the protocol without forcing only one way it could be used. 
+working with the protocol without forcing only one way it could be used. Also
+one more aim is performance.
 
 By the way, if you want get the higher-level interface, you could use `wsutil`
 sub-package.
