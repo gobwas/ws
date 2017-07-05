@@ -19,11 +19,18 @@
 
 Existing WebSocket implementations does not allow to reuse I/O buffers between
 connections in clear way. This library aims to export lower-level interface for
-working with the protocol. Ideologically, the goal is not to force use patterns
-of WebSocket entities.
+working with the protocol without forcing only one way it could be used. 
 
 By the way, if you want get the higher-level interface, you could use `wsutil`
 sub-package.
+
+# Status
+
+This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
+71.6% coverage.
+
+The library is not tagged as `v1.0.0` yet so it could be broken during some improvements
+or refactoring.
 
 # Usage
 
@@ -289,14 +296,6 @@ func main() {
 	}
 }
 ```
-
-# Status
-
-This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
-71.6% coverage.
-
-The library is not tagged as `v1.0.0` yet so it could be broken during some improvements
-or refactoring.
 
 
 
