@@ -10,7 +10,7 @@
 - No intermediate allocations during I/O
 - Low-level API which allows to build your own packet handling and buffers
   reuse logic
-- High-level wrappers and helpers around API in `wsutil` package, which allows
+- High-level wrappers and helpers around API in `wsutil` package, which allow
   to start fast without digging the protocol internals
 
 # Documentation
@@ -19,20 +19,20 @@
 
 # Why
 
-Existing WebSocket implementations does not allow to reuse I/O buffers between
+Existing WebSocket implementations do not allow users to reuse I/O buffers between
 connections in clear way. This library aims to export lower-level interface for
 working with the protocol without forcing only one way it could be used. Also
 one more aim is performance.
 
-By the way, if you want get the higher-level interface, you could use `wsutil`
+By the way, if you want get the higher-level interface, you can use `wsutil`
 sub-package.
 
 # Status
 
 This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
-71.6% coverage.
+71.6% coverage (see `example/autobahn` folder for details).
 
-The library is not tagged as `v1.0.0` yet so it could be broken during some improvements
+The library is not tagged as `v1.0.0` yet so it can be broken during some improvements
 or refactoring.
 
 # Usage
@@ -185,11 +185,11 @@ func main() {
 
 # Zero-copy upgrade
 
-Zero copy upgrade helps to avoid unnecessary allocations and copies while
+Zero-copy upgrade helps to avoid unnecessary allocations and copies while
 handling HTTP Upgrade request.
 
 Processing of all non-websocket headers is made in place with use of registered
-user callbacks, when arguments are only valid until callback returns.
+user callbacks whose arguments are only valid until callback returns.
 
 The simple example looks like this:
 
@@ -231,11 +231,11 @@ func main() {
 }
 ```
 
-Use of `ws.Upgrader` here brings ability to control incoming connections on tcp
-level, and simply do not accept them by your custom logic.
+Usage of `ws.Upgrader` here brings ability to control incoming connections on tcp
+level and simply not to accept them by some logic.
 
-Zero-copy upgrade are intended for high-load services with need to control many
-resources such as alive connections and their buffers.
+Zero-copy upgrade is for high-load services which have to control many
+resources such as connections buffers.
 
 The real life example could be like this:
 

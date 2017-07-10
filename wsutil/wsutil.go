@@ -1,7 +1,6 @@
 /*
-Package wsutil exports tools and helpers to simplify the work with WebSocket
-protocol. The main purpose of this subpackage is to provide helpers that are
-easy to use as possible.
+Package wsutil exports tools to simplify the work with WebSocket protocol.
+The main purpose of this subpackage is to export easy to use tools.
 
 Overview:
 
@@ -40,7 +39,7 @@ Or even simplest:
 	  // handle err
   }
 
-Pacakge provides also tool for buffered writing:
+Package is also exports tools for buffered writing:
 
   // Create buffered writer, that will buffer output bytes and send them as
   // 128-length fragments (with exception on large writes, see the doc).
