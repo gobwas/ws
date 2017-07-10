@@ -19,7 +19,9 @@ var (
 	// Writer.FlushFragment() to make buffer empty.
 	ErrNotEmpty = fmt.Errorf("writer not empty")
 
-	//
+	// ErrControlOverflow is returned by ControlWriter.Write() to indicate that
+	// no more data could be written to the underyling io.Writer because
+	// MaxControlFramePayloadSize limit is reached.
 	ErrControlOverflow = fmt.Errorf("control frame payload overflow")
 )
 

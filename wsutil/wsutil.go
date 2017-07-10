@@ -3,7 +3,7 @@ Package wsutil exports tools and helpers to simplify the work with WebSocket
 protocol. The main purpose of this subpackage is to provide helpers that are
 easy to use as possible.
 
-Overview
+Overview:
 
   // Read masked text message from peer and check utf8 encoding.
   header, err := ws.ReadHeader(conn)

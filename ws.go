@@ -5,13 +5,39 @@ specified in RFC 6455.
 The main purpose of this package is to provide simple low-level API for
 efficient work with protocol.
 
-Overview
+Overview.
 
-  // Upgrade raw net.Conn (or even io.ReadWriter) in zero-copy manner.
+Upgrade to WebSocket connection could be done in two ways.
+
+First, by upgrading http request from `net/http` package:
+
+  http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	  conn, handshake, rwbuf, err := ws.UpgradeHTTP(r, w, nil)
+  })
+
+Second, and most efficient, is so-called zero-copy upgrade. It avoids redundant
+allocations for not used headers and other request data, and bring full control
+over data copying:
+
+  ln, err := net.Listen("tcp", ":8080")
+  if err != nil {
+	  // handle error
+  }
+
+  conn, err := ln.Accept()
+  if err != nil {
+	  // handle error
+  }
+
   handshake, err := ws.Upgrade(conn)
   if err != nil {
-      // handle error
+	  // handle error
   }
+
+For customization details see `ws.Upgrader` documentation.
+
+After connection upgrade, you could work with connection in multiple ways. That
+is, `ws` does not force the way you could work with WebSocket:
 
   header, err := ws.ReadHeader(conn)
   if err != nil {
@@ -35,7 +61,7 @@ As you can see, it could be stream friendly:
 
   ws.WriteHeader(ws.Header{
 	  Fin:    true,
-	  Length: 42,
+	  Length: N,
 	  OpCode: ws.OpBinary,
   })
 
