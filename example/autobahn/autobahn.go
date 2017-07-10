@@ -29,10 +29,10 @@ func main() {
 	log.Printf("static dir is set to: %s", *static)
 
 	http.HandleFunc("/", handlerIndex())
-	http.HandleFunc("/ws", handlerEcho())
-	http.HandleFunc("/wsutil", handlerEcho2())
-	http.HandleFunc("/helpers", handlerEcho3())
-	http.HandleFunc("/helpers2", handlerEcho4())
+	http.HandleFunc("/ws", wsHandler())
+	http.HandleFunc("/wsutil", wsutilHandler())
+	http.HandleFunc("/helpers/low", helpersLowLevelHandler())
+	http.HandleFunc("/helpers/high", helpersHighLevelHandler())
 	http.Handle("/reports/", http.StripPrefix("/reports/", http.FileServer(http.Dir(*reports))))
 
 	log.Printf("ready to listen on %s", *addr)
@@ -48,7 +48,7 @@ var (
 	)
 )
 
-func handlerEcho4() func(w http.ResponseWriter, r *http.Request) {
+func helpersHighLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
@@ -72,7 +72,7 @@ func handlerEcho4() func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerEcho3() func(w http.ResponseWriter, r *http.Request) {
+func helpersLowLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
@@ -108,7 +108,7 @@ func handlerEcho3() func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
+func wsutilHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(resp http.ResponseWriter, req *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(req, resp, nil)
 		if err != nil {
@@ -155,7 +155,7 @@ func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
+func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {

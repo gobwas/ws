@@ -11,12 +11,12 @@
          "url":   "ws://127.0.0.1:9001/wsutil"
       },
       {
-		 "agent": "helpers",
-         "url":   "ws://127.0.0.1:9001/helpers"
+		 "agent": "helpers/low",
+         "url":   "ws://127.0.0.1:9001/helpers/low"
       },
       {
-		 "agent": "helpers2",
-         "url":   "ws://127.0.0.1:9001/helpers2"
+		 "agent": "helpers/high",
+         "url":   "ws://127.0.0.1:9001/helpers/high"
       }
    ],
    "cases": ["*"],
