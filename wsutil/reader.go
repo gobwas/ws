@@ -3,223 +3,193 @@ package wsutil
 import (
 	"io"
 	"io/ioutil"
-	"strconv"
 
-	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
 )
 
-type FrameHandler func(h ws.Header, r io.Reader) error
-
-func PingHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
-		var p []byte
-		if h.Length != 0 {
-			// int(h.Length) is safe here because control frame could be < 125
-			// bytes length by RFC.
-			p = pbytes.GetBufLen(int(h.Length))
-			defer pbytes.PutBuf(p)
-
-			_, err = io.ReadFull(rd, p)
-			if err != nil {
-				return
-			}
-		}
-
-		f := ws.NewPongFrame(p)
-		if state.Is(ws.StateClientSide) {
-			f = ws.MaskFrameInplace(f)
-		}
-
-		return ws.WriteFrame(w, f)
-	}
-}
-
-func PongHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
-		if h.Length == 0 {
-			return nil
-		}
-
-		// int(h.Length) is safe here because control frame could be < 125
-		// bytes length by RFC.
-		buf := pbytes.GetBufLen(int(h.Length))
-		defer pbytes.PutBuf(buf)
-
-		// Discard pong message according to the RFC6455:
-		// A Pong frame MAY be sent unsolicited. This serves as a
-		// unidirectional heartbeat. A response to an unsolicited Pong frame
-		// is not expected.
-		_, err = io.CopyBuffer(ioutil.Discard, rd, buf)
-
-		return
-	}
-}
-
-func CloseHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
-		var (
-			f      ws.Frame
-			code   ws.StatusCode
-			reason string
-		)
-		if h.Length == 0 {
-			f = ws.CloseFrame
-			code = ws.StatusNoStatusRcvd
-		} else {
-			// int(h.Length) is safe here because control frame could be < 125
-			// bytes length by RFC.
-			p := pbytes.GetBufLen(int(h.Length))
-			defer pbytes.PutBuf(p)
-
-			_, err = io.ReadFull(rd, p)
-			if err != nil {
-				return
-			}
-
-			code, reason = ws.ParseCloseFrameData(p)
-
-			if e := ws.CheckCloseFrameData(code, reason); e != nil {
-				f = ws.NewCloseFrame(ws.StatusProtocolError, e.Error())
-			} else {
-				// RFC6455#5.5.1:
-				// If an endpoint receives a Close frame and did not previously
-				// send a Close frame, the endpoint MUST send a Close frame in
-				// response. (When sending a Close frame in response, the endpoint
-				// typically echos the status code it received.)
-				f = ws.NewCloseFrame(code, "")
-			}
-		}
-
-		if state.Is(ws.StateClientSide) {
-			f = ws.MaskFrameInplace(f)
-		}
-
-		if err = ws.WriteFrame(w, f); err == nil {
-			err = ClosedError{code, reason}
-		}
-
-		return
-	}
-}
-
-func ControlHandler(w io.Writer, state ws.State) FrameHandler {
-	pingHandler := PingHandler(w, state)
-	pongHandler := PongHandler(w, state)
-	closeHandler := CloseHandler(w, state)
-
-	return func(h ws.Header, rd io.Reader) (err error) {
-		switch h.OpCode {
-		case ws.OpPing:
-			return pingHandler(h, rd)
-		case ws.OpPong:
-			return pongHandler(h, rd)
-		case ws.OpClose:
-			return closeHandler(h, rd)
-		}
-		return
-	}
-}
-
-func NextReader(r io.Reader, s ws.State) (h ws.Header, rd *Reader, err error) {
-	rd = NewReader(r, s)
-	h, err = rd.Next()
-	return
-}
-
-type handler struct {
-	continuation FrameHandler
-	intermediate FrameHandler
-}
-
+// Reader is a wrapper around source io.Reader which represents WebSocket
+// connection. It contains options for reading messages from source.
+//
+// Reader implements io.Reader, which Read() method reads payload of incoming
+// WebSocket frames. It also takes care on fragmented frames and possibly
+// intermediate control frames between them.
+//
+// Note that Reader's methods are not goroutine safe.
 type Reader struct {
-	src     io.Reader
-	state   ws.State
-	payload io.Reader
-	handler handler
-}
+	Source io.Reader
+	State  ws.State
 
-type ClosedError struct {
-	code   ws.StatusCode
-	reason string
-}
+	// SkipHeaderCheck disables checking header bits to be RFC6455 compliant.
+	SkipHeaderCheck bool
 
-func (err ClosedError) Error() string {
-	return "ws closed: " + strconv.FormatUint(uint64(err.code), 10) + " " + err.reason
-}
+	// CheckUTF8 enables UTF-8 checks for text frames payload. If incoming
+	// bytes are not valid UTF-8 sequence, ErrInvalidUTF8 returned.
+	CheckUTF8 bool
 
-func (err ClosedError) Reason() string {
-	return err.reason
-}
+	OnContinuation FrameHandler
+	OnIntermediate FrameHandler
 
-func (err ClosedError) Code() ws.StatusCode {
-	return err.code
+	header ws.Header // Current frame header.
+	frame  io.Reader // Used to as frame reader.
+	raw    io.Reader // Used to discard frames without cipher.
+	utf8   UTF8Reader
 }
 
 func NewReader(r io.Reader, s ws.State) *Reader {
 	return &Reader{
-		src:   r,
-		state: s,
+		Source: r,
+		State:  s,
 	}
 }
 
-func (r *Reader) HandleContinuation(h FrameHandler) { r.handler.continuation = h }
-func (r *Reader) HandleIntermediate(h FrameHandler) { r.handler.intermediate = h }
-
+// Read implements io.Reader. It reads the next message payload into p. It
+// takes care on fragmented messages.
+//
+// You could get the initial message header with Header() call. Note that it
+// should be done after Read().
 func (r *Reader) Read(p []byte) (n int, err error) {
-	if r.payload == nil {
-		_, err = r.Next()
-		if err != nil || r.payload == nil {
-			return
+	if r.frame == nil {
+		// NextFrame set for us r.frame and r.raw with next frame io.Reader. It
+		// also could change r.State fragmented bit.
+		_, err := r.NextFrame()
+		if err != nil {
+			return 0, err
+		}
+		if r.frame == nil {
+			// We handled intermediate control and now got nothing to read.
+			return 0, nil
 		}
 	}
 
-	n, err = r.payload.Read(p)
+	n, err = r.frame.Read(p)
 
 	if err == io.EOF {
-		r.payload = nil
-		if r.state.Is(ws.StateFragmented) {
+		r.frame = nil
+		r.raw = nil
+
+		if r.State.Is(ws.StateFragmented) {
 			err = nil
+		} else if r.CheckUTF8 && r.header.OpCode == ws.OpText && !r.utf8.Valid() {
+			err = ErrInvalidUtf8
 		}
 	}
 
 	return
 }
 
-func (r *Reader) Next() (h ws.Header, err error) {
-	h, err = ws.ReadHeader(r.src)
+// Discard discards current message payload.
+func (r *Reader) Discard() error {
+	if !r.State.Is(ws.StateFragmented) && r.raw == nil {
+		// Nothing to discard.
+		return nil
+	}
+	for {
+		if _, err := io.Copy(ioutil.Discard, r.raw); err != nil {
+			return err
+		}
+		if !r.State.Is(ws.StateFragmented) {
+			return nil
+		}
+		if _, err := r.NextFrame(); err != nil {
+			return err
+		}
+	}
+}
+
+// Header returns last read message header. That is, it intended to be called
+// right after Read() done, to get the meta info about read bytes. Next call to
+// Read() will destroy previously saved Header value.
+func (r *Reader) Header() ws.Header {
+	return r.header
+}
+
+// NextFrame prepares r to read next message. It returns received frame header
+// and non-nil error on failure.
+//
+// Note that next NextFrame() call should be done after whole message read with
+// r.Read() or discard with r.Discard().
+//
+// If you do not need to check frame header, you could use Read() directly,
+// that will take care on all things. Eventually, after read message bytes you
+// could call r.Header() to get the received message header.
+func (r *Reader) NextFrame() (hdr ws.Header, err error) {
+	hdr, err = ws.ReadHeader(r.Source)
 	if err != nil {
 		return
 	}
-	if err = ws.CheckHeader(h, r.state); err != nil {
-		return
+	if !r.SkipHeaderCheck {
+		err = ws.CheckHeader(hdr, r.State)
+		if err != nil {
+			return
+		}
+	}
+	if !r.State.Is(ws.StateFragmented) {
+		// We got initial frame header (not continuation of previous) so we
+		// could save its header for further Header() call.
+		r.header = hdr
 	}
 
-	src := io.LimitReader(r.src, h.Length)
-	rd := src
-	if h.Masked {
-		rd = NewCipherReader(rd, h.Mask)
+	// Save raw io.Reader to use it on discarding frame without ciphering.
+	raw := io.LimitReader(r.Source, hdr.Length)
+
+	frame := raw
+	if hdr.Masked {
+		frame = NewCipherReader(frame, hdr.Mask)
 	}
 
-	if r.state.Is(ws.StateFragmented) && h.OpCode.IsControl() {
-		if hi := r.handler.intermediate; hi != nil {
-			err = hi(h, rd)
+	if r.State.Is(ws.StateFragmented) && hdr.OpCode.IsControl() {
+		if cb := r.OnIntermediate; cb != nil {
+			err = cb(hdr, frame)
 		}
 		if err == nil {
 			// Ensure that src is empty.
-			_, err = io.Copy(ioutil.Discard, src)
+			_, err = io.Copy(ioutil.Discard, raw)
 		}
 		return
 	}
 
-	if h.OpCode == ws.OpContinuation {
-		if hc := r.handler.continuation; hc != nil {
-			err = hc(h, rd)
+	if r.CheckUTF8 && r.header.OpCode == ws.OpText {
+		r.utf8.Source = frame
+		frame = &r.utf8
+	}
+	r.frame = frame
+	r.raw = raw
+
+	if hdr.OpCode == ws.OpContinuation {
+		if cb := r.OnContinuation; cb != nil {
+			err = cb(hdr, frame)
 		}
 	}
 
-	r.state = r.state.SetOrClearIf(!h.Fin, ws.StateFragmented)
-	r.payload = rd
+	r.State = r.State.SetOrClearIf(!hdr.Fin, ws.StateFragmented)
 
 	return
+}
+
+// NextReader prepares next message read from r. It returns header that
+// describes the message and io.Reader to read message's payload. It returns
+// non-nil error when it is not possible to read message's iniital frame.
+//
+// Note that next NextReader() on the same r should be done after reading all
+// bytes from previously returned io.Reader. For more performant way to discard
+// message use Reader and its Discard() method.
+//
+// Note that it will not handle any "intermediate" frames, that possibly could
+// be received between text/binary continuation frames. That is, if peer sent
+// text/binary frame with fin flag "false", then it could send ping frame, and
+// eventually remaining part of text/binary frame with fin "true" – with
+// ReadMessage() the ping frame will be dropped without any notice. To handle
+// this rare, but possible situation (and if you do not know exactly which
+// frames peer could send), you could use Reader with OnIntermediate field set.
+func NextReader(r io.Reader, s ws.State) (ws.Header, io.Reader, error) {
+	rd := &Reader{
+		Source: r,
+		State:  s,
+	}
+	header, err := rd.NextFrame()
+	if err != nil {
+		return header, nil, err
+	}
+
+	return header, rd, nil
 }

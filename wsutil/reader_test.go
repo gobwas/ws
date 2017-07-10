@@ -6,9 +6,41 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
+	"unicode/utf8"
 
 	. "github.com/gobwas/ws"
 )
+
+// TODO(gobwas): test continuation discard.
+//				 test discard when NextFrame().
+
+func TestReaderUTF8(t *testing.T) {
+	yo := []byte("Ё")
+	if !utf8.ValidString(string(yo)) {
+		panic("bad fixture")
+	}
+
+	var buf bytes.Buffer
+	WriteFrame(&buf,
+		NewFrame(OpText, false, yo[:1]),
+	)
+	WriteFrame(&buf,
+		NewFrame(OpContinuation, true, yo[1:]),
+	)
+
+	r := Reader{
+		Source:    &buf,
+		CheckUTF8: true,
+	}
+
+	bts, err := ioutil.ReadAll(&r)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !bytes.Equal(bts, yo) {
+		t.Errorf("ReadAll(r) = %v; want %v", bts, yo)
+	}
+}
 
 func TestReader(t *testing.T) {
 	for i, test := range []struct {
