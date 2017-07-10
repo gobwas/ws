@@ -8,6 +8,11 @@ import (
 )
 
 const (
+	MaxHeaderSize = 14
+	MinHeaderSize = 2
+)
+
+const (
 	bit0 = 0x80
 	bit1 = 0x40
 	bit2 = 0x20
@@ -17,9 +22,29 @@ const (
 	bit6 = 0x02
 	bit7 = 0x01
 
+	len7  = int64(125)
 	len16 = int64(^(uint16(0)))
 	len64 = int64(^(uint64(0)) >> 1)
 )
+
+// HeaderSize returns number of bytes that are needed to encode given header.
+// It returns -1 if header is malformed.
+func HeaderSize(h Header) (n int) {
+	switch {
+	case h.Length < 126:
+		n = 2
+	case h.Length <= len16:
+		n = 4
+	case h.Length <= len64:
+		n = 10
+	default:
+		return -1
+	}
+	if h.Masked {
+		n += len(h.Mask)
+	}
+	return n
+}
 
 func WriteHeader(w io.Writer, h Header) error {
 	// Make slice of bytes with capacity 14 that could hold any header.
@@ -29,9 +54,13 @@ func WriteHeader(w io.Writer, h Header) error {
 	// Using stack based slice is safe here, cause golang docs for io.Writer
 	// says that "Implementations must not retain p".
 	// See https://golang.org/pkg/io/#Writer
-	var b [14]byte
+	var b [MaxHeaderSize]byte
 	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{Data: bp, Len: 14, Cap: 14}
+	bh := &reflect.SliceHeader{
+		Data: bp,
+		Len:  MaxHeaderSize,
+		Cap:  MaxHeaderSize,
+	}
 	bts := *(*[]byte)(unsafe.Pointer(bh))
 
 	if h.Fin {
@@ -42,7 +71,7 @@ func WriteHeader(w io.Writer, h Header) error {
 
 	var n int
 	switch {
-	case h.Length < 126:
+	case h.Length <= len7:
 		bts[1] = byte(h.Length)
 		n = 2
 

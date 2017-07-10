@@ -31,9 +31,9 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 	// Using stack based slice is safe here, cause golang docs for io.Reader
 	// says that "Implementations must not retain p".
 	// See https://golang.org/pkg/io/#Reader
-	var b [12]byte
+	var b [MaxHeaderSize - 2]byte
 	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{Data: bp, Len: 2, Cap: 12}
+	bh := &reflect.SliceHeader{Data: bp, Len: 2, Cap: MaxHeaderSize - 2}
 	bts := *(*[]byte)(unsafe.Pointer(bh))
 
 	// Prepare to hold first 2 bytes to choose size of next read.
