@@ -10,7 +10,7 @@
 - No intermediate allocations during I/O
 - Low-level API which allows to build your own packet handling and buffers
   reuse logic
-- High-level wrappers and helpers around API in `wsutil` pacakge, which allows
+- High-level wrappers and helpers around API in `wsutil` package, which allows
   to start fast without digging the protocol internals
 
 # Documentation
