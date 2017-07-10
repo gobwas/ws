@@ -8,28 +8,26 @@ import (
 var ErrInvalidUtf8 = fmt.Errorf("invalid utf8")
 
 type UTF8Reader struct {
-	r     io.Reader
+	Source io.Reader
+
 	state uint32
 	codep uint32
-	buf   []byte
 }
 
 func NewUTF8Reader(r io.Reader) *UTF8Reader {
-	return &UTF8Reader{r: r}
+	return &UTF8Reader{
+		Source: r,
+	}
 }
 
 func (u *UTF8Reader) Reset(r io.Reader) {
+	u.Source = r
 	u.state = 0
 	u.codep = 0
-	u.SetSource(r)
-}
-
-func (u *UTF8Reader) SetSource(r io.Reader) {
-	u.r = r
 }
 
 func (u *UTF8Reader) Read(p []byte) (n int, err error) {
-	n, err = u.r.Read(p)
+	n, err = u.Source.Read(p)
 
 	s, c := u.state, u.codep
 	for i := 0; i < n; i++ {
@@ -41,18 +39,13 @@ func (u *UTF8Reader) Read(p []byte) (n int, err error) {
 	}
 	u.state, u.codep = s, c
 
-	if err == io.EOF && u.state != utf8Accept {
-		err = ErrInvalidUtf8
-	}
-
 	return
 }
 
-func (u *UTF8Reader) Close() error {
-	if u.state != utf8Accept {
-		return ErrInvalidUtf8
-	}
-	return nil
+// Valid checks current reader state. It returns true if all read bytes are
+// valid UTF-8 sequences, and false if not.
+func (u *UTF8Reader) Valid() bool {
+	return u.state == utf8Accept
 }
 
 // Below is port of UTF-8 decoder from http://bjoern.hoehrmann.de/utf-8/decoder/dfa/

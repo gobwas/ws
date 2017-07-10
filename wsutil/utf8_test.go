@@ -11,34 +11,36 @@ import (
 
 func TestUTF8ReaderReadFull(t *testing.T) {
 	for i, test := range []struct {
-		hex      string
-		errRead  bool
-		errClose bool
-		n        int
-		chop     int
+		hex   string
+		err   bool
+		valid bool
+		n     int
+		chop  int
 	}{
 		{
-			hex:      "cebae1bdb9cf83cebcceb5eda080656469746564",
-			errClose: true,
-			errRead:  true,
-			n:        12,
+			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
+			err:   true,
+			valid: false,
+			n:     12,
 		},
 		{
-			hex:      "cebae1bdb9cf83cebcceb5eda080656469746564",
-			errRead:  true,
-			errClose: true,
-			n:        12,
-			chop:     1,
+			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
+			valid: false,
+			err:   true,
+			n:     12,
+			chop:  1,
 		},
 		{
-			hex:      "7f7f7fdf",
-			errRead:  false,
-			errClose: true,
-			n:        4,
+			hex:   "7f7f7fdf",
+			valid: false,
+			err:   false,
+			n:     4,
 		},
 		{
-			hex: "dfbf",
-			n:   2,
+			hex:   "dfbf",
+			n:     2,
+			valid: true,
+			err:   false,
 		},
 	} {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
@@ -53,27 +55,22 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			}
 
 			src := bytes.NewReader(bts)
-			r := NewUTF8Reader(chopReader{src, chop})
+			r := NewUTF8Reader(src)
 
 			p := make([]byte, src.Len())
 			n, err := io.ReadFull(r, p)
 
-			if test.errRead && err == nil {
+			if test.err && err == nil {
 				t.Errorf("expected read error; got nil")
 			}
-			if !test.errRead && err != nil {
+			if !test.err && err != nil {
 				t.Errorf("unexpected read error: %s", err)
 			}
 			if n != test.n {
 				t.Errorf("ReadFull() read %d; want %d", n, test.n)
 			}
-
-			err = r.Close()
-			if test.errClose && err == nil {
-				t.Errorf("expected close error; got nil")
-			}
-			if !test.errClose && err != nil {
-				t.Errorf("unexpected close error: %s", err)
+			if act, exp := r.Valid(), test.valid; act != exp {
+				t.Errorf("Valid() = %v; want %v", act, exp)
 			}
 		})
 	}
@@ -89,28 +86,33 @@ func TestUTF8Reader(t *testing.T) {
 
 		chop int
 
-		err bool
-		at  int
+		err   bool
+		valid bool
+		at    int
 	}{
 		{
-			data: []byte("hello, world!"),
-			chop: 2,
+			data:  []byte("hello, world!"),
+			valid: true,
+			chop:  2,
 		},
 		{
-			data: []byte{0x7f, 0xf0},
-			err:  true,
-			at:   2,
-			chop: 1,
+			data:  []byte{0x7f, 0xf0, 0x00},
+			valid: false,
+			err:   true,
+			at:    2,
+			chop:  1,
 		},
 		{
-			data: []byte{0x7f, 0xf0},
-			err:  true,
-			at:   2,
-			chop: 1,
+			hex:   "48656c6c6f2dc2b540c39fc3b6c3a4c3bcc3a0c3a12d5554462d382121",
+			valid: true,
+			chop:  1,
 		},
 		{
-			hex:  "48656c6c6f2dc2b540c39fc3b6c3a4c3bcc3a0c3a12d5554462d382121",
-			chop: 1,
+			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
+			valid: false,
+			err:   true,
+			at:    12,
+			chop:  1,
 		},
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
@@ -146,9 +148,6 @@ func TestUTF8Reader(t *testing.T) {
 					break
 				}
 			}
-			if err == nil {
-				err = r.Close()
-			}
 			if test.err && err == nil {
 				t.Errorf("want error; got nil")
 				return
@@ -159,6 +158,10 @@ func TestUTF8Reader(t *testing.T) {
 			}
 			if test.err && err == ErrInvalidUtf8 && i != test.at {
 				t.Errorf("received error at %d; want at %d", i, test.at)
+				return
+			}
+			if act, exp := r.Valid(), test.valid; act != exp {
+				t.Errorf("Valid() = %v; want %v", act, exp)
 				return
 			}
 			if !test.err && !bytes.Equal(bts, data) {
