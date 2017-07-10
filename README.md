@@ -55,43 +55,13 @@ func main() {
 		go func() {
 			defer conn.Close()
 
-			state := ws.StateServer
-
-			// Note that you could use bufio.{Reader, Writer} to reduce
-			// syscalls.
-			reader := wsutil.NewReader(conn, state)
-			writer := wsutil.NewWriter(conn, ws.OpText, false)
-
 			for {
-				// Next() returns the next frame's header and makes reader
-				// ready to read that frame.
-				//
-				// It takes care of unmasking (if needed) frames payload.
-				header, err := reader.Next()
+				msg, op, err := wsutil.ReadClientData(conn)
 				if err != nil {
 					// handle error
 				}
-
-				// Handle control frames as spec says.
-				if header.OpCode.IsControl() {
-					err = wsutil.ControlHandler(conn, state)(header, reader)
-					if err != nil {
-						// handle error
-					}
-				}
-
-				// Discard binary frame.
-				if header.OpCode == ws.OpBinary {
-					io.Copy(ioutil.Discard, reader)
-					continue
-				}
-
-				// Otherwise echo text frame back to client (there are no more
-				// other possible operation codes here).
-				if _, err = io.Copy(writer, reader), err != nil {
-					// handle error
-				}
-				if err = w.Flush(); err != nil {
+				err = wsutil.WriteServerMessage(conn, op, msg)
+				if err != nil {
 					// handle error
 				}
 			}
@@ -100,7 +70,55 @@ func main() {
 }
 ```
 
-The lower-level example:
+Lower-level, but still high-level example:
+
+
+```go
+import (
+	"net/http"
+	
+	"github.com/gobwas/ws"
+	"github.com/gobwas/wsutil"
+)
+
+func main() {
+	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		if err != nil {
+			// handle error
+		}
+
+		go func() {
+			defer conn.Close()
+
+			var (
+				state  = ws.StateServerSide
+				reader = wsutil.NewReader(conn, state)
+				writer = wsutil.NewWriter(conn, state, ws.OpText)
+			)
+			for {
+				header, err := reader.NextFrame()
+				if err != nil {
+					// handle error
+				}
+
+				// Reset writer to write frame with right operation code.
+				writer.Reset(conn, state, header.OpCode)
+
+				if _, err = io.Copy(writer, reader), err != nil {
+					// handle error
+				}
+
+				if err = writer.Flush(); err != nil {
+					// handle error
+				}
+			}
+		}()
+	})
+}
+```
+
+The lower-level example without `wsutil`:
 
 ```go
 import (
@@ -134,33 +152,28 @@ func main() {
 				if err != nil {
 					// handle error
 				}
-
-				data, err := ioutil.ReadAll(conn, header.Length)
+				payload, err := ioutil.ReadAll(conn, header.Length)
 				if err != nil {
 					// handle error
 				}
 				if header.Masked {
-					// You could also use wsutil.CipherReader and
-					// wsutil.CipherWriter.
-					ws.Cipher(data, header.Mask, 0)
+					ws.Cipher(payload, header.Mask, 0)
 				}
 
-				// Echo text frame back to client.
-				if header.OpCode == ws.OpText {
-					err = ws.WriteHeader(conn, ws.Header{
-						Fin:    true,
-						OpCode: ws.OpText,
-						Length: len(data),
-					})
-					if err == nil {
-						_, err = conn.Write(data)
-					}
-					if err != nil {
-						// handle error
-					}
+				// Reset the Masked flag, server frames must not be masked as
+				// RFC6455 says.
+				header.Masked = false
+
+				if err := ws.WriteHeader(conn, header); err != nil {
+					// handle error
+				}
+				if err := conn.Write(payload); err != nil {
+					// handle error
 				}
 
-				// handle control frames
+				if header.OpCode == ws.OpClose {
+					return
+				}
 			}
 		}()
 	}
@@ -241,55 +254,36 @@ func main() {
 		// handle error
 	}
 
-	var (
-		expectHost = "github.com"
-		expectURI  = "/websocket"
-	)
-
-	var id int
-	reqID := []string{"0"}
 	header := http.Header{
-		"X-Request-ID": reqID,
+		"X-Go-Version": []string{runtime.Version()},
 	}
 
 	u := ws.Upgrader{
 		OnRequest: func(host, uri []byte) (err error, code int) {
-			if !bytes.Equal(host, expectHost) {
+			if string(host) == "github.com" {
 				return fmt.Errorf("unexpected host: %s", host), 403
 			}
-			if !bytes.Equal(uri, expectURI) {
-				return fmt.Errorf("unexpected uri: %s", uri), 403
-			}
-			return // Continue upgrade.
+			return 
 		},
 		OnHeader: func(key, value []byte) (err error, code int) {
-			if !bytes.Equal(key, headerCookie) {
+			if string(key) != "Cookie" {
 				return
 			}
-			cookieOK := httphead.ScanCookie(value, func(key, value []byte) bool {
+			ok := httphead.ScanCookie(value, func(key, value []byte) bool {
 				// Check session here or do some other stuff with cookies.
 				// Maybe copy some values for future use.
 			})
-			if !cookieOK {
+			if !ok {
 				return fmt.Errorf("bad cookie"), 400
 			}
 			return
 		},
 		BeforeUpgrade: func() (headerWriter func(io.Writer), err error, code int) {
-			// Final checks here before return 101 Continue.
-			
-			reqID[0], err = strconv.FormatInt(id, 10)
-			if err != nil {
-				return nil, err, 500
-			}
-			
-			return func(w io.Writer) {
-				header.Write(w)
-			}, nil, 0
+			return ws.HeaderWriter(header)
 		},
 	}
 
-	for ;; id++ {
+	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			log.Fatal(err)
