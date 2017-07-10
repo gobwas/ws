@@ -29,8 +29,10 @@ func main() {
 	log.Printf("static dir is set to: %s", *static)
 
 	http.HandleFunc("/", handlerIndex())
-	http.HandleFunc("/library", handlerEcho())
-	http.HandleFunc("/utils", handlerEcho2())
+	http.HandleFunc("/ws", handlerEcho())
+	http.HandleFunc("/wsutil", handlerEcho2())
+	http.HandleFunc("/helpers", handlerEcho3())
+	http.HandleFunc("/helpers2", handlerEcho4())
 	http.Handle("/reports/", http.StripPrefix("/reports/", http.FileServer(http.Dir(*reports))))
 
 	log.Printf("ready to listen on %s", *addr)
@@ -46,7 +48,7 @@ var (
 	)
 )
 
-func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
+func handlerEcho4() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
@@ -55,44 +57,98 @@ func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
 		}
 		defer conn.Close()
 
-		ch := wsutil.ControlHandler(conn, 0)
-
-		rd := wsutil.NewReader(conn, ws.StateServerSide)
-		rd.HandleIntermediate(ch)
-
 		for {
-			var r io.Reader = rd
-			var ur *wsutil.UTF8Reader
-
-			h, err := rd.Next()
+			bts, op, err := wsutil.ReadClientData(conn)
 			if err != nil {
-				log.Printf("next reader error: %s", err)
+				log.Printf("read message error: %v", err)
 				return
 			}
+			err = wsutil.WriteServerMessage(conn, op, bts)
+			if err != nil {
+				log.Printf("write message error: %v", err)
+				return
+			}
+		}
+	}
+}
 
-			switch {
-			case h.OpCode.IsControl():
-				if err = ch(h, rd); err != nil {
-					log.Print(err)
+func handlerEcho3() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		if err != nil {
+			log.Printf("upgrade error: %s", err)
+			return
+		}
+		defer conn.Close()
+
+		msg := make([]wsutil.Message, 0, 4)
+
+		for {
+			msg, err = wsutil.ReadClientMessage(conn, msg[:0])
+			if err != nil {
+				log.Printf("read message error: %v", err)
+				return
+			}
+			for _, m := range msg {
+				if m.OpCode.IsControl() {
+					err := wsutil.HandleClientControl(conn, m.OpCode, m.Payload)
+					if err != nil {
+						log.Printf("handle control error: %v", err)
+						return
+					}
+					continue
+				}
+				err := wsutil.WriteServerMessage(conn, m.OpCode, m.Payload)
+				if err != nil {
+					log.Printf("write message error: %v", err)
+					return
+				}
+			}
+		}
+	}
+}
+
+func handlerEcho2() func(w http.ResponseWriter, r *http.Request) {
+	return func(resp http.ResponseWriter, req *http.Request) {
+		conn, _, _, err := ws.UpgradeHTTP(req, resp, nil)
+		if err != nil {
+			log.Printf("upgrade error: %s", err)
+			return
+		}
+		defer conn.Close()
+
+		state := ws.StateServerSide
+
+		ch := wsutil.ControlHandler(conn, state)
+		r := &wsutil.Reader{
+			Source:         conn,
+			State:          state,
+			CheckUTF8:      true,
+			OnIntermediate: ch,
+		}
+		w := wsutil.NewWriter(conn, state, 0)
+
+		for {
+			h, err := r.NextFrame()
+			if err != nil {
+				log.Printf("next frame error: %v", err)
+				return
+			}
+			if h.OpCode.IsControl() {
+				if err = ch(h, r); err != nil {
+					log.Printf("handle control error: %v", err)
 					return
 				}
 				continue
-
-			case h.OpCode == ws.OpText:
-				ur = wsutil.NewUTF8Reader(r)
-				r = ur
 			}
 
-			wr := wsutil.NewWriter(conn, h.OpCode, false)
-			_, err = io.Copy(wr, r)
-			if err == nil && ur != nil {
-				err = ur.Close()
-			}
-			if err == nil {
-				err = wr.Flush()
+			w.Reset(conn, state, h.OpCode)
+
+			if _, err = io.Copy(w, r); err == nil {
+				err = w.Flush()
 			}
 			if err != nil {
-				log.Printf("copy error: %s", err)
+				log.Printf("echo error: %s", err)
 				return
 			}
 		}
@@ -126,14 +182,14 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			var r io.Reader
 			cipherReader.Reset(
 				io.LimitReader(conn, header.Length),
 				header.Mask,
 			)
-			r = cipherReader
 
 			var utf8Fin bool
+			var r io.Reader = cipherReader
+
 			switch header.OpCode {
 			case ws.OpPing:
 				header.OpCode = ws.OpPong
@@ -151,7 +207,7 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 
 			case ws.OpContinuation:
 				if textPending {
-					utf8Reader.SetSource(cipherReader)
+					utf8Reader.Source = cipherReader
 					r = utf8Reader
 				}
 				if header.Fin {
@@ -179,8 +235,8 @@ func handlerEcho() func(w http.ResponseWriter, r *http.Request) {
 
 			payload := make([]byte, header.Length)
 			_, err = io.ReadFull(r, payload)
-			if err == nil && utf8Fin {
-				err = utf8Reader.Close()
+			if err == nil && utf8Fin && !utf8Reader.Valid() {
+				err = wsutil.ErrInvalidUtf8
 			}
 			if err != nil {
 				log.Printf("read payload error: %s", err)

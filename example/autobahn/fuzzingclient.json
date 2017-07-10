@@ -3,12 +3,20 @@
    "outdir": "./example/autobahn/reports/servers",
    "servers": [
       {
-		 "agent": "Library",
-         "url":   "ws://127.0.0.1:9001/library"
+		 "agent": "ws",
+         "url":   "ws://127.0.0.1:9001/ws"
       },
       {
-		 "agent": "Utils",
-         "url":   "ws://127.0.0.1:9001/utils"
+		 "agent": "wsutil",
+         "url":   "ws://127.0.0.1:9001/wsutil"
+      },
+      {
+		 "agent": "helpers",
+         "url":   "ws://127.0.0.1:9001/helpers"
+      },
+      {
+		 "agent": "helpers2",
+         "url":   "ws://127.0.0.1:9001/helpers2"
       }
    ],
    "cases": ["*"],
