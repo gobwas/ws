@@ -8,7 +8,8 @@ import (
 
 // Constants defined by specification.
 const (
-	MaxControlFramePayloadSize = 125 // All control frames must have a payload length of 125 bytes or less.
+	// All control frames MUST have a payload length of 125 bytes or less and MUST NOT be fragmented.
+	MaxControlFramePayloadSize = 125
 )
 
 // OpCode represents operation code.
@@ -272,7 +273,7 @@ func PutCloseFrameData(p []byte, code StatusCode, reason string) int {
 
 // MaskFrame masks frame and returns frame with masked payload and Mask header's field set.
 // Note that it copies f payload to prevent collisions.
-// For less allocations you could use MaskFrameInplace or construct frame manually.
+// For less allocations you could use MaskFrameInPlace or construct frame manually.
 func MaskFrame(f Frame) Frame {
 	return MaskFrameWith(f, NewMask())
 }
@@ -280,24 +281,25 @@ func MaskFrame(f Frame) Frame {
 // MaskFrameWith masks frame with given mask and returns frame
 // with masked payload and Mask header's field set.
 // Note that it copies f payload to prevent collisions.
-// For less allocations you could use MaskFrameInplaceWith or construct frame manually.
+// For less allocations you could use MaskFrameInPlaceWith or construct frame manually.
 func MaskFrameWith(f Frame, mask [4]byte) Frame {
+	// TODO(gobwas): check CopyCipher ws copy() Cipher().
 	p := make([]byte, len(f.Payload))
 	copy(p, f.Payload)
 	f.Payload = p
-	return MaskFrameInplaceWith(f, mask)
+	return MaskFrameInPlaceWith(f, mask)
 }
 
 // MaskFrame masks frame and returns frame with masked payload and Mask header's field set.
 // Note that it applies xor cipher to f.Payload without copying, that is, it modifies f.Payload inplace.
-func MaskFrameInplace(f Frame) Frame {
-	return MaskFrameInplaceWith(f, NewMask())
+func MaskFrameInPlace(f Frame) Frame {
+	return MaskFrameInPlaceWith(f, NewMask())
 }
 
-// MaskFrameInplaceWith masks frame with given mask and returns frame
+// MaskFrameInPlaceWith masks frame with given mask and returns frame
 // with masked payload and Mask header's field set.
 // Note that it applies xor cipher to f.Payload without copying, that is, it modifies f.Payload inplace.
-func MaskFrameInplaceWith(f Frame, m [4]byte) Frame {
+func MaskFrameInPlaceWith(f Frame, m [4]byte) Frame {
 	f.Header.Masked = true
 	f.Header.Mask = m
 	Cipher(f.Payload, m, 0)
