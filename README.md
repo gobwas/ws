@@ -9,7 +9,9 @@
 - Zero-copy upgrade
 - No intermediate allocations during I/O
 - Low-level API which allows to build your own packet handling and buffers
-  reuse
+  reuse logic
+- High-level wrappers and helpers around API in `wsutil` pacakge, which allows
+  to start fast without digging the protocol internals
 
 # Documentation
 
