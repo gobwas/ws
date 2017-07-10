@@ -5,39 +5,248 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"testing"
+	"unsafe"
 
-	. "github.com/gobwas/ws"
+	"github.com/gobwas/ws"
 )
+
+// TODO(gobwas): test ReadFrom from Reader with intermediate frames.
+// TODO(gobwas): test NewWriterSize on edge cases for offset.
+
+func TestControlWriter(t *testing.T) {
+	const (
+		server = ws.StateServerSide
+		client = ws.StateClientSide
+	)
+	for _, test := range []struct {
+		name  string
+		size  int
+		write []byte
+		state ws.State
+		op    ws.OpCode
+		exp   ws.Frame
+		err   bool
+	}{
+		{
+			state: server,
+			op:    ws.OpPing,
+			exp:   ws.PingFrame,
+		},
+		{
+			write: []byte("0123456789"),
+			state: server,
+			op:    ws.OpPing,
+			exp:   ws.NewPingFrame([]byte("0123456789")),
+		},
+		{
+			size:  10 + reserve(server, 10),
+			write: []byte("0123456789"),
+			state: server,
+			op:    ws.OpPing,
+			exp:   ws.NewPingFrame([]byte("0123456789")),
+		},
+		{
+			size:  10 + reserve(server, 10),
+			write: []byte("0123456789a"),
+			state: server,
+			op:    ws.OpPing,
+			err:   true,
+		},
+		{
+			write: bytes.Repeat([]byte{'x'}, ws.MaxControlFramePayloadSize+1),
+			state: server,
+			op:    ws.OpPing,
+			err:   true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			var w *ControlWriter
+			if n := test.size; n == 0 {
+				w = NewControlWriter(&buf, test.state, test.op)
+			} else {
+				p := make([]byte, n)
+				w = NewControlWriterBuffer(&buf, test.state, test.op, p)
+			}
+
+			_, err := w.Write(test.write)
+			if err == nil {
+				err = w.Flush()
+			}
+			if test.err {
+				if err == nil {
+					t.Errorf("want error")
+				}
+				return
+			}
+			if !test.err && err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
+			act, err := ws.ReadFrame(&buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			act = omitMask(act)
+			exp := omitMask(test.exp)
+			if !reflect.DeepEqual(act, exp) {
+				t.Errorf("unexpected frame:\nflushed: %v\nwant: %v", pretty(act), pretty(exp))
+			}
+		})
+	}
+}
+
+type reserveTestCase struct {
+	name      string
+	buf       int
+	state     ws.State
+	expOffset int
+	panic     bool
+}
+
+func genReserveTestCases(s ws.State, n, m, exp int) []reserveTestCase {
+	ret := make([]reserveTestCase, m-n)
+	for i := n; i < m; i++ {
+		var suffix string
+		if s.Is(ws.StateClientSide) {
+			suffix = " masked"
+		}
+
+		ret[i-n] = reserveTestCase{
+			name:      "gen " + strconv.Itoa(i) + suffix,
+			buf:       i,
+			state:     s,
+			expOffset: exp,
+		}
+	}
+	return ret
+}
+
+func fakeMake(n int) []byte {
+	sh := &reflect.SliceHeader{Len: n, Cap: n}
+	return *(*[]byte)(unsafe.Pointer(sh))
+}
+
+var reserveTestCases = []reserveTestCase{
+	{
+		name:      "small",
+		buf:       len7 + 2,
+		expOffset: 2,
+	},
+	{
+		name:      "len16",
+		buf:       len16 + 4,
+		expOffset: 4,
+	},
+	{
+		name:      "len64",
+		buf:       len64,
+		expOffset: 10,
+	},
+	{
+		name:      "small masked",
+		buf:       len7 + 6,
+		state:     ws.StateClientSide,
+		expOffset: 6,
+	},
+	{
+		name:      "len16 masked",
+		buf:       len16 + 8,
+		state:     ws.StateClientSide,
+		expOffset: 8,
+	},
+	{
+		name:      "len64 masked",
+		buf:       len64,
+		state:     ws.StateClientSide,
+		expOffset: 14,
+	},
+	{
+		name:      "split case",
+		buf:       128,
+		expOffset: 4,
+	},
+}
+
+func TestNewWriterBuffer(t *testing.T) {
+	cases := append(
+		reserveTestCases,
+		reserveTestCase{
+			name:  "panic",
+			buf:   2,
+			panic: true,
+		},
+		reserveTestCase{
+			name:  "panic",
+			buf:   6,
+			state: ws.StateClientSide,
+			panic: true,
+		},
+	)
+	cases = append(cases, genReserveTestCases(0, len7-2, len7+2, 2)...)
+	cases = append(cases, genReserveTestCases(0, len16-4, len16+4, 4)...)
+	cases = append(cases, genReserveTestCases(0, len64-10, len64, 10)...)
+
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, len7-6, len7+6, 6)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, len16-8, len16+8, 8)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, len64-14, len64, 14)...)
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			defer func() {
+				thePanic := recover()
+				if test.panic && thePanic == nil {
+					t.Errorf("expected panic")
+				}
+				if !test.panic && thePanic != nil {
+					t.Errorf("unexpected panic: %v", thePanic)
+				}
+			}()
+			w := NewWriterBuffer(nil, test.state, 0, fakeMake(test.buf))
+			if act, exp := len(w.raw)-len(w.buf), test.expOffset; act != exp {
+				t.Errorf(
+					"NewWriteBuffer(%d bytes) has offset %d; want %d",
+					test.buf, act, exp,
+				)
+			}
+		})
+	}
+}
 
 func TestWriter(t *testing.T) {
 	for i, test := range []struct {
 		label  string
 		size   int
-		masked bool
+		state  ws.State
 		data   [][]byte
-		expFrm []Frame
+		expFrm []ws.Frame
 		expBts []byte
 	}{
+		// No Write(), no frames.
 		{},
+
 		{
 			data: [][]byte{
 				[]byte{},
 			},
-			expBts: MustCompileFrame(NewTextFrame("")),
+			expBts: ws.MustCompileFrame(ws.NewTextFrame("")),
 		},
 		{
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
-			expBts: MustCompileFrame(NewTextFrame("hello, world!")),
+			expBts: ws.MustCompileFrame(ws.NewTextFrame("hello, world!")),
 		},
 		{
-			masked: true,
+			state: ws.StateClientSide,
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
-			expFrm: []Frame{MaskFrame(NewTextFrame("hello, world!"))},
+			expFrm: []ws.Frame{ws.MaskFrame(ws.NewTextFrame("hello, world!"))},
 		},
 		{
 			size: 5,
@@ -48,26 +257,26 @@ func TestWriter(t *testing.T) {
 			},
 			expBts: bytes.Join(
 				bts(
-					MustCompileFrame(Frame{
-						Header: Header{
+					ws.MustCompileFrame(ws.Frame{
+						Header: ws.Header{
 							Fin:    false,
-							OpCode: OpText,
+							OpCode: ws.OpText,
 							Length: 5,
 						},
 						Payload: []byte("hello"),
 					}),
-					MustCompileFrame(Frame{
-						Header: Header{
+					ws.MustCompileFrame(ws.Frame{
+						Header: ws.Header{
 							Fin:    false,
-							OpCode: OpContinuation,
+							OpCode: ws.OpContinuation,
 							Length: 5,
 						},
 						Payload: []byte(", wor"),
 					}),
-					MustCompileFrame(Frame{
-						Header: Header{
+					ws.MustCompileFrame(ws.Frame{
+						Header: ws.Header{
 							Fin:    true,
-							OpCode: OpContinuation,
+							OpCode: ws.OpContinuation,
 							Length: 3,
 						},
 						Payload: []byte("ld!"),
@@ -83,18 +292,18 @@ func TestWriter(t *testing.T) {
 			},
 			expBts: bytes.Join(
 				bts(
-					MustCompileFrame(Frame{
-						Header: Header{
+					ws.MustCompileFrame(ws.Frame{
+						Header: ws.Header{
 							Fin:    false,
-							OpCode: OpText,
+							OpCode: ws.OpText,
 							Length: 13,
 						},
 						Payload: []byte("hello, world!"),
 					}),
-					MustCompileFrame(Frame{
-						Header: Header{
+					ws.MustCompileFrame(ws.Frame{
+						Header: ws.Header{
 							Fin:    true,
-							OpCode: OpContinuation,
+							OpCode: ws.OpContinuation,
 							Length: 0,
 						},
 					}),
@@ -105,7 +314,7 @@ func TestWriter(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			w := NewWriterSize(buf, OpText, test.masked, test.size)
+			w := NewWriterSize(buf, test.state, ws.OpText, test.size)
 
 			for _, p := range test.data {
 				_, err := w.Write(p)
@@ -120,18 +329,18 @@ func TestWriter(t *testing.T) {
 				if bts := buf.Bytes(); !bytes.Equal(test.expBts, bts) {
 					t.Errorf(
 						"wrote bytes:\nact:\t%#x\nexp:\t%#x\nacth:\t%s\nexph:\t%s\n", bts, test.expBts,
-						pretty(frames(bts)), pretty(frames(test.expBts)),
+						pretty(frames(bts)...), pretty(frames(test.expBts)...),
 					)
 				}
 			}
 			if test.expFrm != nil {
-				act := omitMask(frames(buf.Bytes()))
-				exp := omitMask(test.expFrm)
+				act := omitMasks(frames(buf.Bytes()))
+				exp := omitMasks(test.expFrm)
 
 				if !reflect.DeepEqual(act, exp) {
 					t.Errorf(
 						"wrote frames (mask omitted):\nact:\t%s\nexp:\t%s\n",
-						pretty(act), pretty(exp),
+						pretty(act...), pretty(exp...),
 					)
 				}
 			}
@@ -145,21 +354,21 @@ func TestWriterReadFrom(t *testing.T) {
 		chop  int
 		size  int
 		data  []byte
-		exp   []Frame
+		exp   []ws.Frame
 		n     int64
 	}{
 		{
 			chop: 1,
 			size: 1,
 			data: []byte("golang"),
-			exp: []Frame{
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpText}, Payload: []byte{'g'}},
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpContinuation}, Payload: []byte{'o'}},
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpContinuation}, Payload: []byte{'l'}},
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpContinuation}, Payload: []byte{'a'}},
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpContinuation}, Payload: []byte{'n'}},
-				Frame{Header: Header{Fin: false, Length: 1, OpCode: OpContinuation}, Payload: []byte{'g'}},
-				Frame{Header: Header{Fin: true, Length: 0, OpCode: OpContinuation}},
+			exp: []ws.Frame{
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpText}, Payload: []byte{'g'}},
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpContinuation}, Payload: []byte{'o'}},
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpContinuation}, Payload: []byte{'l'}},
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpContinuation}, Payload: []byte{'a'}},
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpContinuation}, Payload: []byte{'n'}},
+				{Header: ws.Header{Fin: false, Length: 1, OpCode: ws.OpContinuation}, Payload: []byte{'g'}},
+				{Header: ws.Header{Fin: true, Length: 0, OpCode: ws.OpContinuation}},
 			},
 			n: 6,
 		},
@@ -167,24 +376,24 @@ func TestWriterReadFrom(t *testing.T) {
 			chop: 1,
 			size: 4,
 			data: []byte("golang"),
-			exp: []Frame{
-				Frame{Header: Header{Fin: false, Length: 4, OpCode: OpText}, Payload: []byte("gola")},
-				Frame{Header: Header{Fin: true, Length: 2, OpCode: OpContinuation}, Payload: []byte("ng")},
+			exp: []ws.Frame{
+				{Header: ws.Header{Fin: false, Length: 4, OpCode: ws.OpText}, Payload: []byte("gola")},
+				{Header: ws.Header{Fin: true, Length: 2, OpCode: ws.OpContinuation}, Payload: []byte("ng")},
 			},
 			n: 6,
 		},
 		{
 			size: 64,
 			data: []byte{},
-			exp: []Frame{
-				Frame{Header: Header{Fin: true, Length: 0, OpCode: OpText}},
+			exp: []ws.Frame{
+				{Header: ws.Header{Fin: true, Length: 0, OpCode: ws.OpText}},
 			},
 			n: 0,
 		},
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			dst := &bytes.Buffer{}
-			wr := NewWriterSize(dst, OpText, false, test.size)
+			wr := NewWriterSize(dst, 0, ws.OpText, test.size)
 
 			chop := test.chop
 			if chop == 0 {
@@ -203,16 +412,83 @@ func TestWriterReadFrom(t *testing.T) {
 				t.Errorf("ReadFrom() read out %d; want %d", n, test.n)
 			}
 			if frames := frames(dst.Bytes()); !reflect.DeepEqual(frames, test.exp) {
-				t.Errorf("ReadFrom() read frames:\n\tact:\t%s\n\texp:\t%s\n", pretty(frames), pretty(test.exp))
+				t.Errorf("ReadFrom() read frames:\n\tact:\t%s\n\texp:\t%s\n", pretty(frames...), pretty(test.exp...))
 			}
 		})
 	}
 }
 
-func frames(p []byte) (ret []Frame) {
+func TestWriterWriteCount(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		cap   int
+		exp   int
+		write []int // For ability to avoid large write inside Write()'s "if".
+	}{
+		{
+			name:  "one frame",
+			cap:   10,
+			write: []int{10},
+			exp:   1,
+		},
+		{
+			name:  "two frames",
+			cap:   10,
+			write: []int{5, 7},
+			exp:   2,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			n := writeCounter{}
+			w := NewWriterSize(&n, 0, ws.OpText, test.cap)
+
+			for _, n := range test.write {
+				text := bytes.Repeat([]byte{'x'}, n)
+				if _, err := w.Write(text); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := w.Flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			if act, exp := n.n, test.exp; act != exp {
+				t.Errorf("made %d Write() calls to dest writer; want %d", act, exp)
+			}
+		})
+	}
+}
+
+func TestWriterNoPreemtiveFlush(t *testing.T) {
+	n := writeCounter{}
+	w := NewWriterSize(&n, 0, 0, 10)
+
+	// Fill buffer.
+	if _, err := w.Write([]byte("0123456789")); err != nil {
+		t.Fatal(err)
+	}
+	if n.n != 0 {
+		t.Fatal(
+			"after filling up Writer got %d writes to the dest; want 0",
+			n.n,
+		)
+	}
+}
+
+type writeCounter struct {
+	n int
+}
+
+func (w *writeCounter) Write(p []byte) (int, error) {
+	w.n++
+	return len(p), nil
+}
+
+func frames(p []byte) (ret []ws.Frame) {
 	r := bytes.NewReader(p)
 	for stop := false; !stop; {
-		f, err := ReadFrame(r)
+		f, err := ws.ReadFrame(r)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -224,7 +500,7 @@ func frames(p []byte) (ret []Frame) {
 	return
 }
 
-func pretty(f []Frame) string {
+func pretty(f ...ws.Frame) string {
 	str := "\n"
 	for _, f := range f {
 		str += fmt.Sprintf("\t%#v\n\t%#x (%s)\n\t----\n", f.Header, f.Payload, f.Payload)
@@ -232,12 +508,22 @@ func pretty(f []Frame) string {
 	return str
 }
 
-func omitMask(f []Frame) []Frame {
+func omitMask(f ws.Frame) ws.Frame {
+	if f.Header.Masked {
+		p := make([]byte, int(f.Header.Length))
+		copy(p, f.Payload)
+
+		ws.Cipher(p, f.Header.Mask, 0)
+
+		f.Header.Mask = [4]byte{0, 0, 0, 0}
+		f.Payload = p
+	}
+	return f
+}
+
+func omitMasks(f []ws.Frame) []ws.Frame {
 	for i := 0; i < len(f); i++ {
-		if f[i].Header.Masked {
-			Cipher(f[i].Payload, f[i].Header.Mask, 0)
-			f[i].Header.Mask = [4]byte{0, 0, 0, 0}
-		}
+		f[i] = omitMask(f[i])
 	}
 	return f
 }
