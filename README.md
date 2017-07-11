@@ -182,7 +182,7 @@ func main() {
 
 # Zero-copy upgrade
 
-Zero-copy upgrade helps to avoid unnecessary allocations and copies while
+Zero-copy upgrade helps to avoid unnecessary allocations and copying while
 handling HTTP Upgrade request.
 
 Processing of all non-websocket headers is made in place with use of registered
