@@ -8,8 +8,7 @@
 
 - Zero-copy upgrade
 - No intermediate allocations during I/O
-- Low-level API which allows to build your own packet handling and buffers
-  reuse logic
+- Low-level API which allows to build your own logic of packet handling and buffers reuse
 - High-level wrappers and helpers around API in `wsutil` package, which allow
   to start fast without digging the protocol internals
 
@@ -20,20 +19,18 @@
 # Why
 
 Existing WebSocket implementations do not allow users to reuse I/O buffers between
-connections in clear way. This library aims to export lower-level interface for
-working with the protocol without forcing only one way it could be used. Also
-one more aim is performance.
+connections in clear way. This library aims to export efficient low-level interface for
+working with the protocol without forcing only one way it could be used. 
 
-By the way, if you want get the higher-level interface, you can use `wsutil`
-sub-package.
+By the way, if you want get the higher-level tools, you can use `wsutil` sub-package.
 
 # Status
 
 This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
 71.6% coverage (see `example/autobahn` folder for details).
 
-The library is not tagged as `v1.0.0` yet so it can be broken during some improvements
-or refactoring.
+The library is not tagged as `v1.0.0` yet so it can be broken during some
+improvements or refactoring.
 
 # Usage
 
