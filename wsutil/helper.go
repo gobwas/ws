@@ -44,10 +44,24 @@ func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
 	return append(m, Message{rd.Header().OpCode, bts}), nil
 }
 
+// ReadClientMessage reads next message from r, considering that caller
+// represents server side.
+// It is a shortcut for ReadMessage(r, ws.StateServerSide, m)
+func ReadClientMessage(r io.Reader, m []Message) ([]Message, error) {
+	return ReadMessage(r, ws.StateServerSide, m)
+}
+
+// ReadServerMessage reads next message from r, considering that caller
+// represents client side.
+// It is a shortcut for ReadMessage(r, ws.StateClientSide, m)
+func ReadServerMessage(r io.Reader, m []Message) ([]Message, error) {
+	return ReadMessage(r, ws.StateClientSide, m)
+}
+
 // ReadData is a helper function that reads next data (non-control) message
 // from rw.
-// It takes care on handling all control frames. It will send response on
-// control frame to write part of given rw. It blocks until some data frame
+// It takes care on handling all control frames. It will write response on
+// control frames to the write part of rw. It blocks until some data frame
 // will be received.
 func ReadData(rw io.ReadWriter, s ws.State) ([]byte, ws.OpCode, error) {
 	return readData(rw, s, ws.OpText|ws.OpBinary)
@@ -95,18 +109,6 @@ func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpBinary)
 	return p, err
-}
-
-// ReadClientMessage reads next message from r, considering that caller
-// represents server side.
-func ReadClientMessage(r io.Reader, m []Message) ([]Message, error) {
-	return ReadMessage(r, ws.StateServerSide, m)
-}
-
-// ReadServerMessage reads next message from r, considering that caller
-// represents client side.
-func ReadServerMessage(r io.Reader, m []Message) ([]Message, error) {
-	return ReadMessage(r, ws.StateClientSide, m)
 }
 
 // WriteMessage is a helper function that writes message to the w. It

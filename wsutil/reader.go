@@ -178,7 +178,7 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 // be received between text/binary continuation frames. That is, if peer sent
 // text/binary frame with fin flag "false", then it could send ping frame, and
 // eventually remaining part of text/binary frame with fin "true" – with
-// ReadMessage() the ping frame will be dropped without any notice. To handle
+// NextReader() the ping frame will be dropped without any notice. To handle
 // this rare, but possible situation (and if you do not know exactly which
 // frames peer could send), you could use Reader with OnIntermediate field set.
 func NextReader(r io.Reader, s ws.State) (ws.Header, io.Reader, error) {
