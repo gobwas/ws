@@ -37,15 +37,17 @@ improvements or refactoring.
 The higher-level example of WebSocket echo server:
 
 ```go
+package main 
+
 import (
 	"net/http"
 	
 	"github.com/gobwas/ws"
-	"github.com/gobwas/wsutil"
+	"github.com/gobwas/ws/wsutil"
 )
 
 func main() {
-	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+	http.ListenAndServe(":8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
 			// handle error
@@ -65,7 +67,7 @@ func main() {
 				}
 			}
 		}()
-	})
+	}))
 }
 ```
 
@@ -77,11 +79,11 @@ import (
 	"net/http"
 	
 	"github.com/gobwas/ws"
-	"github.com/gobwas/wsutil"
+	"github.com/gobwas/ws/wsutil"
 )
 
 func main() {
-	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+	http.ListenAndServe(":8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
 		if err != nil {
 			// handle error
@@ -104,7 +106,7 @@ func main() {
 				// Reset writer to write frame with right operation code.
 				writer.Reset(conn, state, header.OpCode)
 
-				if _, err = io.Copy(writer, reader), err != nil {
+				if _, err = io.Copy(writer, reader); err != nil {
 					// handle error
 				}
 
@@ -113,13 +115,15 @@ func main() {
 				}
 			}
 		}()
-	})
+	}))
 }
 ```
 
 The lower-level example without `wsutil`:
 
 ```go
+package main 
+
 import (
 	"net/http"
 	
@@ -137,8 +141,7 @@ func main() {
 		if err != nil {
 			// handle error
 		}
-
-		_, err := ws.Upgrade(conn)
+		_, err = ws.Upgrade(conn)
 		if err != nil {
 			// handle error
 		}
@@ -151,7 +154,9 @@ func main() {
 				if err != nil {
 					// handle error
 				}
-				payload, err := ioutil.ReadAll(conn, header.Length)
+
+				payload := make([]byte, header.Length)
+				_, err = io.ReadFull(conn, payload)
 				if err != nil {
 					// handle error
 				}
@@ -166,7 +171,7 @@ func main() {
 				if err := ws.WriteHeader(conn, header); err != nil {
 					// handle error
 				}
-				if err := conn.Write(payload); err != nil {
+				if _, err := conn.Write(payload); err != nil {
 					// handle error
 				}
 
@@ -177,7 +182,6 @@ func main() {
 		}()
 	}
 }
-
 ```
 
 # Zero-copy upgrade
@@ -191,6 +195,7 @@ user callbacks whose arguments are only valid until callback returns.
 The simple example looks like this:
 
 ```go
+package main 
 
 import (
 	"net"
@@ -237,14 +242,18 @@ resources such as connections buffers.
 The real life example could be like this:
 
 ```go
+package main 
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
-	"log"
+	"runtime"
 
-	"github.com/gobwas/ws"
 	"github.com/gobwas/httphead"
+	"github.com/gobwas/ws"
 )
 
 func main() {
@@ -262,7 +271,7 @@ func main() {
 			if string(host) == "github.com" {
 				return fmt.Errorf("unexpected host: %s", host), 403
 			}
-			return 
+			return
 		},
 		OnHeader: func(key, value []byte) (err error, code int) {
 			if string(key) != "Cookie" {
@@ -271,6 +280,7 @@ func main() {
 			ok := httphead.ScanCookie(value, func(key, value []byte) bool {
 				// Check session here or do some other stuff with cookies.
 				// Maybe copy some values for future use.
+				return true
 			})
 			if !ok {
 				return fmt.Errorf("bad cookie"), 400
@@ -278,7 +288,7 @@ func main() {
 			return
 		},
 		BeforeUpgrade: func() (headerWriter func(io.Writer), err error, code int) {
-			return ws.HeaderWriter(header)
+			return ws.HeaderWriter(header), nil, 0
 		},
 	}
 
@@ -287,7 +297,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		_, err := u.Upgrade(conn)
+		_, err = u.Upgrade(conn)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 		}
