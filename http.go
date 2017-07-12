@@ -120,6 +120,7 @@ func httpParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 	}
 
 	k = btrim(line[:colon])
+	// TODO(gobwas): maybe use just lower here?
 	canonicalizeHeaderKey(k)
 
 	v = btrim(line[colon+1:])

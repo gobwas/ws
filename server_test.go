@@ -55,6 +55,20 @@ var upgradeCases = []upgradeCase{
 		}),
 	},
 	{
+		label:    "lowercase",
+		protocol: func(sub string) bool { return true },
+		nonce:    mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			strings.ToLower(headerUpgrade):    []string{"websocket"},
+			strings.ToLower(headerConnection): []string{"Upgrade"},
+			strings.ToLower(headerSecVersion): []string{"13"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+		}),
+	},
+	{
 		label:    "uppercase",
 		protocol: func(sub string) bool { return true },
 		nonce:    mustMakeNonce(),
@@ -293,13 +307,21 @@ func TestHTTPUpgrader(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
 			}
 
+			// Need to emulate http server read request for truth test.
+			var rbuf bytes.Buffer
+			test.req.Write(&rbuf)
+			req, err := http.ReadRequest(bufio.NewReader(&rbuf))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			res := newRecorder()
+
 			u := HTTPUpgrader{
 				Protocol:  test.protocol,
 				Extension: test.extension,
 			}
-
-			res := newRecorder()
-			_, _, hs, err := u.Upgrade(test.req, res, nil)
+			_, _, hs, err := u.Upgrade(req, res, nil)
 			if test.err != err {
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
