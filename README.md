@@ -225,7 +225,7 @@ func main() {
 			// handle error
 		}
 
-		_, err := u.Upgrade(conn)
+		_, err = u.Upgrade(conn)
 		if err != nil {
 			// handle error
 		}
