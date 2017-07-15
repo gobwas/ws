@@ -20,7 +20,7 @@ func Cipher(payload []byte, mask [4]byte, offset int) {
 
 	// Calculate position in mask due to previously processed bytes number.
 	mpos := offset % 4
-	// Count number of bytes will processed one by one from the begining of payload.
+	// Count number of bytes will processed one by one from the beginning of payload.
 	ln := remain[mpos]
 	// Count number of bytes will processed one by one from the end of payload.
 	// This is done to process payload by 8 bytes in each iteration of main loop.
