@@ -75,7 +75,7 @@ func ReadClientData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 
 // ReadClientText reads next text message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
-// It discards recieved binary messages.
+// It discards received binary messages.
 func ReadClientText(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateServerSide, ws.OpText)
 	return p, err
@@ -83,7 +83,7 @@ func ReadClientText(rw io.ReadWriter) ([]byte, error) {
 
 // ReadClientBinary reads next binary message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
-// It discards recieved text messages.
+// It discards received text messages.
 func ReadClientBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateServerSide, ws.OpBinary)
 	return p, err
@@ -97,7 +97,7 @@ func ReadServerData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 
 // ReadServerText reads next text message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
-// It discards recieved binary messages.
+// It discards received binary messages.
 func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpText)
 	return p, err
@@ -105,7 +105,7 @@ func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 
 // ReadServerBinary reads next binary message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
-// It discards recieved text messages.
+// It discards received text messages.
 func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpBinary)
 	return p, err

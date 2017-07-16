@@ -263,7 +263,7 @@ func NewCloseFrameData(code StatusCode, reason string) []byte {
 }
 
 // PutCloseFrameData encodes code and reason into buf and returns the number of bytes written.
-// If the buffer is too small to accomodate at least code, PutCloseFrameData will panic.
+// If the buffer is too small to accommodate at least code, PutCloseFrameData will panic.
 // Note that it does not checks maximum control frame payload size limit.
 func PutCloseFrameData(p []byte, code StatusCode, reason string) int {
 	binary.BigEndian.PutUint16(p, uint16(code))

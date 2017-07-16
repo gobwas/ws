@@ -13,7 +13,7 @@ import (
 	"github.com/gobwas/pool/pbufio"
 )
 
-// Constans used by ConnUpgrader.
+// Constants used by ConnUpgrader.
 const (
 	DefaultReadBufferSize  = 4096
 	DefaultWriteBufferSize = 512
@@ -180,7 +180,7 @@ type Upgrader struct {
 	//
 	// If a size is zero then default value is used.
 	//
-	// Ususally it is useful to set read buffer size bigger than write buffer
+	// Usually it is useful to set read buffer size bigger than write buffer
 	// size because incoming request could contain long header values, such
 	// Cookie. Response, in other way, could be big only if user write multiple
 	// custom headers. Usually response takes less than 256 bytes.
