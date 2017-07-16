@@ -1,6 +1,6 @@
 # ws
 
-[![GoDoc][godoc-image]][godoc-url] 
+[![GoDoc][godoc-image]][godoc-url]
 
 > [RFC6455][rfc-url] WebSocket implementation in Go.
 
@@ -20,7 +20,7 @@
 
 Existing WebSocket implementations do not allow users to reuse I/O buffers between
 connections in clear way. This library aims to export efficient low-level interface for
-working with the protocol without forcing only one way it could be used. 
+working with the protocol without forcing only one way it could be used.
 
 By the way, if you want get the higher-level tools, you can use `wsutil` sub-package.
 
@@ -37,11 +37,11 @@ improvements or refactoring.
 The higher-level example of WebSocket echo server:
 
 ```go
-package main 
+package main
 
 import (
 	"net/http"
-	
+
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
@@ -77,7 +77,8 @@ Lower-level, but still high-level example:
 ```go
 import (
 	"net/http"
-	
+	"io"
+
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
@@ -122,11 +123,12 @@ func main() {
 The lower-level example without `wsutil`:
 
 ```go
-package main 
+package main
 
 import (
-	"net/http"
-	
+	"net"
+	"io"
+
 	"github.com/gobwas/ws"
 )
 
@@ -195,15 +197,13 @@ user callbacks whose arguments are only valid until callback returns.
 The simple example looks like this:
 
 ```go
-package main 
+package main
 
 import (
 	"net"
-	"net/http"
 	"log"
 
 	"github.com/gobwas/ws"
-	"github.com/gobwas/httphead"
 )
 
 func main() {
@@ -242,7 +242,7 @@ resources such as connections buffers.
 The real life example could be like this:
 
 ```go
-package main 
+package main
 
 import (
 	"fmt"
