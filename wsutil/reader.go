@@ -26,6 +26,8 @@ type Reader struct {
 	// bytes are not valid UTF-8 sequence, ErrInvalidUTF8 returned.
 	CheckUTF8 bool
 
+	// TODO(gobwas): add max frame size limit here.
+
 	OnContinuation FrameHandler
 	OnIntermediate FrameHandler
 
