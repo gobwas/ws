@@ -32,9 +32,11 @@ This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/c
 The library is not tagged as `v1.0.0` yet so it can be broken during some
 improvements or refactoring.
 
-# Usage
+# Examples
 
 Example applications using `ws` are developed in separate repository [ws-examples](https://github.com/gobwas/ws-examples).
+
+# Usage
 
 The higher-level example of WebSocket echo server:
 
