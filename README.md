@@ -34,6 +34,8 @@ improvements or refactoring.
 
 # Usage
 
+Example applications using `ws` are developed in separate repository [ws-examples](https://github.com/gobwas/ws-examples).
+
 The higher-level example of WebSocket echo server:
 
 ```go
