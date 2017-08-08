@@ -1,6 +1,7 @@
 # ws
 
 [![GoDoc][godoc-image]][godoc-url]
+[![Travis][travis-image]][travis-url]
 
 > [RFC6455][rfc-url] WebSocket implementation in Go.
 
