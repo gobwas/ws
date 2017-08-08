@@ -308,9 +308,12 @@ func TestHTTPUpgrader(t *testing.T) {
 			}
 
 			// Need to emulate http server read request for truth test.
-			var rbuf bytes.Buffer
-			test.req.Write(&rbuf)
-			req, err := http.ReadRequest(bufio.NewReader(&rbuf))
+			//
+			// We use dumpRequest here because test.req.Write is always send
+			// http/1.1 proto version, that does not fits all our testing
+			// cases.
+			reqBytes := dumpRequest(test.req)
+			req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(reqBytes)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -323,7 +326,10 @@ func TestHTTPUpgrader(t *testing.T) {
 			}
 			_, _, hs, err := u.Upgrade(req, res, nil)
 			if test.err != err {
-				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
+				t.Errorf(
+					"expected error to be '%v', got '%v';\non request:\n====\n%s\n====",
+					test.err, err, dumpRequest(req),
+				)
 				return
 			}
 

@@ -47,8 +47,8 @@ func (c *CipherWriter) Reset(w io.Writer, mask [4]byte) {
 }
 
 func (c *CipherWriter) Write(p []byte) (n int, err error) {
-	cp := pbytes.GetBufLen(len(p))
-	defer pbytes.PutBuf(cp)
+	cp := pbytes.GetLen(len(p))
+	defer pbytes.Put(cp)
 
 	copy(cp, p)
 	ws.Cipher(cp, c.mask, c.pos)

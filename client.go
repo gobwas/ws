@@ -247,7 +247,7 @@ func (d Dialer) handshake(req *request, resp Response) (protocol string, extensi
 type readerPool int
 
 func (n readerPool) Get(r io.Reader) *bufio.Reader { return pbufio.GetReader(r, int(n)) }
-func (n readerPool) Put(r *bufio.Reader)           { pbufio.PutReader(r, int(n)) }
+func (n readerPool) Put(r *bufio.Reader)           { pbufio.PutReader(r) }
 
 type writerPool int
 

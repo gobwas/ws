@@ -329,9 +329,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		br = brw.Reader
 		bw = brw.Writer
 	} else {
-		readBufSize := nonZero(u.ReadBufferSize, DefaultReadBufferSize)
-		br = pbufio.GetReader(conn, readBufSize)
-		defer pbufio.PutReader(br, readBufSize)
+		n := nonZero(u.ReadBufferSize, DefaultReadBufferSize)
+		br = pbufio.GetReader(conn, n)
+		defer pbufio.PutReader(br)
 	}
 
 	// Read HTTP request line like "GET /ws HTTP/1.1".

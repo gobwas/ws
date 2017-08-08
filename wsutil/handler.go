@@ -42,12 +42,12 @@ func PingHandler(w io.Writer, state ws.State) FrameHandler {
 		// In other way reply with Pong frame with copied payload.
 		// Note that int(h.Length) is safe here because control frame i
 		// could be <= 125 bytes length by RFC.
-		p := pbytes.GetBufLen(int(h.Length) + ws.HeaderSize(ws.Header{
+		p := pbytes.GetLen(int(h.Length) + ws.HeaderSize(ws.Header{
 			Length: h.Length,
 			OpCode: ws.OpPong,
 			Masked: state.Is(ws.StateClientSide),
 		}))
-		defer pbytes.PutBuf(p)
+		defer pbytes.Put(p)
 
 		w := NewControlWriterBuffer(w, state, ws.OpPong, p)
 		_, err = io.Copy(w, rd)
@@ -67,8 +67,8 @@ func PongHandler(w io.Writer, state ws.State) FrameHandler {
 
 		// int(h.Length) is safe here because control frame could be < 125
 		// bytes length by RFC.
-		buf := pbytes.GetBufLen(int(h.Length))
-		defer pbytes.PutBuf(buf)
+		buf := pbytes.GetLen(int(h.Length))
+		defer pbytes.Put(buf)
 
 		// Discard pong message according to the RFC6455:
 		// A Pong frame MAY be sent unsolicited. This serves as a
@@ -93,8 +93,8 @@ func CloseHandler(w io.Writer, state ws.State) FrameHandler {
 		} else {
 			// int(h.Length) is safe here because control frame could be < 125
 			// bytes length by RFC.
-			p := pbytes.GetBufLen(int(h.Length))
-			defer pbytes.PutBuf(p)
+			p := pbytes.GetLen(int(h.Length))
+			defer pbytes.Put(p)
 
 			_, err = io.ReadFull(rd, p)
 			if err != nil {

@@ -433,8 +433,8 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	var frame ws.Frame
 	if s.Is(ws.StateClientSide) {
 		// Should copy bytes to prevent corruption of caller data.
-		payload := pbytes.GetBufLen(len(p))
-		defer pbytes.PutBuf(payload)
+		payload := pbytes.GetLen(len(p))
+		defer pbytes.Put(payload)
 
 		copy(payload, p)
 
