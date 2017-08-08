@@ -12,3 +12,4 @@ install:
   - go get github.com/gobwas/pool
   - go get github.com/gobwas/httphead
 
+script: make test
