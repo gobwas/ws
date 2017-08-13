@@ -15,6 +15,11 @@ import (
 // TODO(gobwas): test ReadFrom from Reader with intermediate frames.
 // TODO(gobwas): test NewWriterSize on edge cases for offset.
 
+const (
+	bitsize = 32 << (^uint(0) >> 63)
+	maxint  = int(^uint(1 << (bitsize - 1)))
+)
+
 func TestControlWriter(t *testing.T) {
 	const (
 		server = ws.StateServerSide
@@ -133,35 +138,35 @@ func fakeMake(n int) []byte {
 
 var reserveTestCases = []reserveTestCase{
 	{
-		name:      "small",
-		buf:       len7 + 2,
+		name:      "len7",
+		buf:       int(len7) + 2,
 		expOffset: 2,
 	},
 	{
 		name:      "len16",
-		buf:       len16 + 4,
+		buf:       int(len16) + 4,
 		expOffset: 4,
 	},
 	{
-		name:      "len64",
-		buf:       len64,
+		name:      "maxint",
+		buf:       maxint,
 		expOffset: 10,
 	},
 	{
-		name:      "small masked",
-		buf:       len7 + 6,
+		name:      "len7 masked",
+		buf:       int(len7) + 6,
 		state:     ws.StateClientSide,
 		expOffset: 6,
 	},
 	{
 		name:      "len16 masked",
-		buf:       len16 + 8,
+		buf:       int(len16) + 8,
 		state:     ws.StateClientSide,
 		expOffset: 8,
 	},
 	{
-		name:      "len64 masked",
-		buf:       len64,
+		name:      "maxint masked",
+		buf:       maxint,
 		state:     ws.StateClientSide,
 		expOffset: 14,
 	},
@@ -187,13 +192,13 @@ func TestNewWriterBuffer(t *testing.T) {
 			panic: true,
 		},
 	)
-	cases = append(cases, genReserveTestCases(0, len7-2, len7+2, 2)...)
-	cases = append(cases, genReserveTestCases(0, len16-4, len16+4, 4)...)
-	cases = append(cases, genReserveTestCases(0, len64-10, len64, 10)...)
+	cases = append(cases, genReserveTestCases(0, int(len7)-2, int(len7)+2, 2)...)
+	cases = append(cases, genReserveTestCases(0, int(len16)-4, int(len16)+4, 4)...)
+	cases = append(cases, genReserveTestCases(0, maxint-10, maxint, 10)...)
 
-	cases = append(cases, genReserveTestCases(ws.StateClientSide, len7-6, len7+6, 6)...)
-	cases = append(cases, genReserveTestCases(ws.StateClientSide, len16-8, len16+8, 8)...)
-	cases = append(cases, genReserveTestCases(ws.StateClientSide, len64-14, len64, 14)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len7)-6, int(len7)+6, 6)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len16)-8, int(len16)+8, 8)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, maxint-14, maxint, 14)...)
 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -469,7 +474,7 @@ func TestWriterNoPreemtiveFlush(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n.n != 0 {
-		t.Fatal(
+		t.Fatalf(
 			"after filling up Writer got %d writes to the dest; want 0",
 			n.n,
 		)

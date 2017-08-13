@@ -25,6 +25,13 @@ var (
 	ErrControlOverflow = fmt.Errorf("control frame payload overflow")
 )
 
+// Constants which are represent frame length ranges.
+const (
+	len7  = int64(125) // 126 and 127 are reserved values
+	len16 = int64(^uint16(0))
+	len64 = int64((^uint64(0)) >> 1)
+)
+
 // ControlWriter is a wrapper around Writer that contains some guards for
 // buffered writes of control frames.
 type ControlWriter struct {
@@ -196,13 +203,6 @@ func NewWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *
 	}
 }
 
-// Constants which are represent frame length ranges.
-const (
-	len7  = int(125) // 126 and 127 are reserved values
-	len16 = int(^uint16(0))
-	len64 = int((^uint64(0)) >> 1)
-)
-
 func reserve(state ws.State, n int) (offset int) {
 	var mask int
 	if state.Is(ws.StateClientSide) {
@@ -210,9 +210,9 @@ func reserve(state ws.State, n int) (offset int) {
 	}
 
 	switch {
-	case n <= len7+mask+2:
+	case n <= int(len7)+mask+2:
 		return mask + 2
-	case n <= len16+mask+4:
+	case n <= int(len16)+mask+4:
 		return mask + 4
 	default:
 		return mask + 10
