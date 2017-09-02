@@ -168,7 +168,106 @@ func TestDialerHandshake(t *testing.T) {
 
 			_, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
 			if test.err != err {
-				t.Errorf("unexpected error: %v;\n\twant %v", err, test.err)
+				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
+			}
+		})
+	}
+}
+
+func TestDialerCancelation(t *testing.T) {
+	var (
+		ioErrDeadlineExceeded = fmt.Errorf("stub deadline exceeded")
+	)
+	for _, test := range []struct {
+		name           string
+		dialDelay      time.Duration
+		ctxTimeout     time.Duration
+		ctxCancelAfter time.Duration
+		err            error
+	}{
+		{
+			ctxTimeout: time.Millisecond * 100,
+			err:        ioErrDeadlineExceeded,
+		},
+		{
+			ctxCancelAfter: time.Millisecond * 100,
+			err:            ioErrDeadlineExceeded,
+		},
+		{
+			ctxTimeout: time.Millisecond * 100,
+			dialDelay:  time.Millisecond * 200,
+			err:        context.DeadlineExceeded,
+		},
+		{
+			ctxCancelAfter: time.Millisecond * 100,
+			dialDelay:      time.Millisecond * 200,
+			err:            context.Canceled,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var ts []*time.Timer
+			deadline := make(chan error, 10)
+			conn := &stubConn{
+				setDeadline: func(t time.Time) error {
+					if t.IsZero() {
+						for _, t := range ts {
+							t.Stop()
+						}
+						return nil
+					}
+
+					d := t.Sub(time.Now())
+					if d < 0 {
+						deadline <- ioErrDeadlineExceeded
+					} else {
+						ts = append(ts, time.AfterFunc(d, func() {
+							deadline <- ioErrDeadlineExceeded
+						}))
+					}
+
+					return nil
+				},
+				read: func(p []byte) (int, error) {
+					if err := <-deadline; err != nil {
+						return 0, err
+					}
+					return len(p), nil
+				},
+				write: func(p []byte) (int, error) {
+					if err := <-deadline; err != nil {
+						return 0, err
+					}
+					return len(p), nil
+				},
+			}
+
+			d := Dialer{
+				NetDial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					if t := test.dialDelay; t != 0 {
+						delay := time.After(t)
+						select {
+						case <-delay:
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						}
+					}
+					return conn, nil
+				},
+			}
+
+			ctx := context.Background()
+			if t := test.ctxTimeout; t != 0 {
+				ctx, _ = context.WithTimeout(ctx, t)
+			}
+			if t := test.ctxCancelAfter; t != 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				time.AfterFunc(t, cancel)
+			}
+
+			_, _, err := d.Dial(ctx, "ws://gobwas.com", nil)
+			if err != test.err {
+				t.Fatalf("unexpected error: %v; want %v", err, test.err)
 			}
 		})
 	}
@@ -202,19 +301,37 @@ func TestHostPortResolve(t *testing.T) {
 }
 
 type stubConn struct {
-	read  func([]byte) (int, error)
-	write func([]byte) (int, error)
-	close func() error
+	read             func([]byte) (int, error)
+	write            func([]byte) (int, error)
+	close            func() error
+	setDeadline      func(time.Time) error
+	setWriteDeadline func(time.Time) error
+	setReadDeadline  func(time.Time) error
 }
 
-func (s stubConn) Read(p []byte) (int, error)         { return s.read(p) }
-func (s stubConn) Write(p []byte) (int, error)        { return s.write(p) }
-func (s stubConn) Close() error                       { return s.close() }
-func (s stubConn) LocalAddr() net.Addr                { return nil }
-func (s stubConn) RemoteAddr() net.Addr               { return nil }
-func (s stubConn) SetDeadline(t time.Time) error      { return nil }
-func (s stubConn) SetReadDeadline(t time.Time) error  { return nil }
-func (s stubConn) SetWriteDeadline(t time.Time) error { return nil }
+func (s stubConn) Read(p []byte) (int, error)  { return s.read(p) }
+func (s stubConn) Write(p []byte) (int, error) { return s.write(p) }
+func (s stubConn) Close() error                { return s.close() }
+func (s stubConn) LocalAddr() net.Addr         { return nil }
+func (s stubConn) RemoteAddr() net.Addr        { return nil }
+func (s stubConn) SetDeadline(t time.Time) error {
+	if s.setDeadline != nil {
+		return s.setDeadline(t)
+	}
+	return nil
+}
+func (s stubConn) SetReadDeadline(t time.Time) error {
+	if s.setReadDeadline != nil {
+		return s.setReadDeadline(t)
+	}
+	return nil
+}
+func (s stubConn) SetWriteDeadline(t time.Time) error {
+	if s.setWriteDeadline != nil {
+		return s.setWriteDeadline(t)
+	}
+	return nil
+}
 
 func makeNonceFrom(bts []byte) (ret [nonceSize]byte) {
 	base64.StdEncoding.Encode(ret[:], bts)

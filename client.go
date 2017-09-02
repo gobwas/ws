@@ -139,11 +139,16 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 	return nd.DialContext(ctx, "tcp", addr)
 }
 
+var (
+	// This variables are set like in net/net.go.
+	// noDeadline is just zero value for readability.
+	noDeadline = time.Time{}
+	// aLongTimeAgo is a non-zero time, far in the past, used for immediate
+	// cancelation of dials.
+	aLongTimeAgo = time.Unix(42, 0)
+)
+
 func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *http.Response, err error) {
-	type respAndError struct {
-		resp *http.Response
-		err  error
-	}
 	var (
 		wp WriterPool
 		rp ReaderPool
@@ -155,9 +160,38 @@ func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *ht
 		rp = defaultReaderPool
 	}
 
+	if deadline, _ := ctx.Deadline(); !deadline.IsZero() {
+		conn.SetDeadline(deadline)
+		defer conn.SetDeadline(noDeadline)
+	}
+	// If ctx is not a background, then it could be canceled. So we need to
+	// handle this cancelation properly.
+	if ctx != context.Background() {
+		var (
+			done      = make(chan struct{})
+			interrupt = make(chan error, 1)
+		)
+		defer func() {
+			close(done)
+			if ctxErr := <-interrupt; ctxErr != nil && err == nil {
+				err = ctxErr
+				resp = nil
+			}
+		}()
+		go func() {
+			select {
+			case <-done:
+				interrupt <- nil
+			case <-ctx.Done():
+				// Cancel io immediately.
+				conn.SetDeadline(aLongTimeAgo)
+				interrupt <- ctx.Err()
+			}
+		}()
+	}
+
 	bw := wp.Get(conn)
 	defer wp.Put(bw)
-
 	if err = req.Write(bw); err != nil {
 		return
 	}
@@ -167,22 +201,9 @@ func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *ht
 
 	br := rp.Get(conn)
 	defer rp.Put(br)
+	resp, err = http.ReadResponse(br, nil)
 
-	if deadline, ok := ctx.Deadline(); ok {
-		ch := make(chan respAndError, 2)
-		time.AfterFunc(deadline.Sub(time.Now()), func() {
-			ch <- respAndError{nil, timeoutError{}}
-		})
-		go func() {
-			resp, err = http.ReadResponse(br, nil)
-			ch <- respAndError{resp, err}
-		}()
-		r := <-ch
-		resp, err = r.resp, r.err
-		return
-	}
-
-	return http.ReadResponse(br, nil)
+	return
 }
 
 func (d Dialer) handshake(req *request, resp Response) (protocol string, extensions []httphead.Option, err error) {
