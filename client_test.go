@@ -16,8 +16,10 @@ import (
 )
 
 func TestDialerHandshake(t *testing.T) {
-	for i, test := range []struct {
+	for _, test := range []struct {
+		name      string
 		res       *http.Response
+		frames    []Frame
 		accept    bool
 		protocols []string
 		err       error
@@ -47,6 +49,21 @@ func TestDialerHandshake(t *testing.T) {
 			},
 			protocols: []string{"xml", "json", "soap"},
 			accept:    true,
+		},
+		{
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: true,
+			frames: []Frame{
+				NewTextFrame("hello, gopherizer!"),
+			},
 		},
 		{
 			res: &http.Response{
@@ -112,13 +129,16 @@ func TestDialerHandshake(t *testing.T) {
 			err:    ErrBadSubProtocol,
 		},
 	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			rb := &bytes.Buffer{}
 			wb := &bytes.Buffer{}
 			wbuf := bufio.NewReader(wb)
 
 			sig := make(chan struct{})
 			go func() {
+				// This routine is our fake web-server. It reads request after
+				// client wrote it. Then it optinally could send some frames
+				// set in test case.
 				<-sig
 				req, err := http.ReadRequest(wbuf)
 				if err != nil {
@@ -137,6 +157,12 @@ func TestDialerHandshake(t *testing.T) {
 				test.res.Header.Set(headerSecAccept, accept)
 				test.res.Request = req
 				test.res.Write(rb)
+
+				for _, f := range test.frames {
+					if err := WriteFrame(rb, f); err != nil {
+						t.Fatal(err)
+					}
+				}
 
 				sig <- struct{}{}
 			}()
@@ -166,9 +192,28 @@ func TestDialerHandshake(t *testing.T) {
 				WriterPool: &pw,
 			}
 
-			_, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
+			c, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
 			if test.err != err {
 				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
+			}
+
+			for i, exp := range test.frames {
+				act, err := ReadFrame(c)
+				if err != nil {
+					t.Fatalf("can not read %d-th frame: %v", i, err)
+				}
+				if act.Header != exp.Header {
+					t.Fatalf(
+						"unexpected %d-th frame header: %v; want %v",
+						i, act.Header, exp.Header,
+					)
+				}
+				if !bytes.Equal(act.Payload, exp.Payload) {
+					t.Fatalf(
+						"unexpected %d-th frame payload:\n%v\nwant:\n%v",
+						i, act.Payload, exp.Payload,
+					)
+				}
 			}
 		})
 	}
