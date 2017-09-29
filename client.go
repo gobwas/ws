@@ -93,7 +93,7 @@ type Dialer struct {
 
 // Dial connects to the url host and handshakes connection to websocket.
 // Set of additional headers could be passed to be sent with the request.
-func (d Dialer) Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, err error) {
+func (d Dialer) Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, fb []byte, err error) {
 	req := getRequest()
 	defer putRequest(req)
 
@@ -107,12 +107,11 @@ func (d Dialer) Dial(ctx context.Context, urlstr string, h http.Header) (conn ne
 		return
 	}
 
-	resp.Response, err = d.send(ctx, conn, req)
+	resp.Response, fb, err = d.do(ctx, conn, req)
 	if err != nil {
 		return
 	}
-
-	resp.Protocol, resp.Extensions, err = d.handshake(req, resp)
+	resp.Protocol, resp.Extensions, err = d.checkHandshake(req, resp)
 
 	return
 }
@@ -148,7 +147,10 @@ var (
 	aLongTimeAgo = time.Unix(42, 0)
 )
 
-func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *http.Response, err error) {
+// do sends request to the given connection and reads a request.
+// It returns response and some bytes which could be written by the peer right
+// after response and be caught by us during buffered read.
+func (d Dialer) do(ctx context.Context, conn net.Conn, req *request) (resp *http.Response, fb []byte, err error) {
 	var (
 		wp WriterPool
 		rp ReaderPool
@@ -176,8 +178,10 @@ func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *ht
 			if ctxErr := <-interrupt; ctxErr != nil && err == nil {
 				err = ctxErr
 				resp = nil
+				fb = nil
 			}
 		}()
+		// TODO(gobwas): use goroutine pool here maybe?
 		go func() {
 			select {
 			case <-done:
@@ -203,10 +207,17 @@ func (d Dialer) send(ctx context.Context, conn net.Conn, req *request) (resp *ht
 	defer rp.Put(br)
 	resp, err = http.ReadResponse(br, nil)
 
+	if err == nil && br.Buffered() != 0 {
+		// Server has written frame bytes to the connection.
+		// To not loose them we must read them.
+		fb = make([]byte, br.Buffered())
+		_, err = br.Read(fb)
+	}
+
 	return
 }
 
-func (d Dialer) handshake(req *request, resp Response) (protocol string, extensions []httphead.Option, err error) {
+func (d Dialer) checkHandshake(req *request, resp Response) (protocol string, extensions []httphead.Option, err error) {
 	if resp.StatusCode != 101 {
 		err = ErrBadStatus
 		return
