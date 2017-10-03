@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 
 	"github.com/gobwas/httphead"
@@ -19,6 +20,7 @@ const (
 	textUpgradeRequired = "HTTP/1.1 426 Upgrade Required\r\n" + textErrorContent
 	crlf                = "\r\n"
 	colonAndSpace       = ": "
+	commaAndSpace       = ", "
 )
 
 var (
@@ -70,6 +72,12 @@ type httpRequestLine struct {
 	major, minor int
 }
 
+type httpResponseLine struct {
+	major, minor int
+	status       int
+	reason       []byte
+}
+
 // httpParseRequestLine parses http request line like "GET / HTTP/1.0".
 func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	var proto []byte
@@ -83,6 +91,28 @@ func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	}
 
 	return
+}
+
+func httpParseResponseLine(line []byte) (resp httpResponseLine, err error) {
+	var (
+		proto  []byte
+		status []byte
+	)
+	proto, status, resp.reason = bsplit3(line, ' ')
+
+	var ok bool
+	resp.major, resp.minor, ok = httpParseVersion(proto)
+	if !ok {
+		return resp, ErrMalformedHttpResponse
+	}
+
+	var convErr error
+	resp.status, convErr = asciiToInt(status)
+	if convErr != nil {
+		return resp, ErrMalformedHttpResponse
+	}
+
+	return resp, nil
 }
 
 // httpParseVersion parses major and minor version of HTTP protocol. It returns
@@ -198,9 +228,51 @@ func httpWriteHeader(bw *bufio.Writer, key, value string) {
 	bw.WriteString(crlf)
 }
 
+func httpWriteHeaderBts(bw *bufio.Writer, key string, value []byte) {
+	httpWriteHeaderKey(bw, key)
+	bw.Write(value)
+	bw.WriteString(crlf)
+}
+
 func httpWriteHeaderKey(bw *bufio.Writer, key string) {
 	bw.WriteString(key)
 	bw.WriteString(colonAndSpace)
+}
+
+func httpWriteUpgradeRequest(bw *bufio.Writer, u *url.URL, nonce [nonceSize]byte, protocols []string, extensions []httphead.Option, hw func(io.Writer)) {
+	bw.WriteString("GET ")
+	bw.WriteString(u.RequestURI())
+	bw.WriteString(" HTTP/1.1\r\n")
+
+	httpWriteHeader(bw, headerHost, u.Host)
+
+	httpWriteHeaderBts(bw, headerUpgrade, specHeaderValueUpgrade)
+	httpWriteHeaderBts(bw, headerConnection, specHeaderValueConnection)
+	httpWriteHeaderBts(bw, headerSecVersion, specHeaderValueSecVersion)
+	httpWriteHeaderBts(bw, headerSecKey, nonce[:])
+
+	if len(protocols) > 0 {
+		httpWriteHeaderKey(bw, headerSecProtocol)
+		for i, p := range protocols {
+			if i > 0 {
+				bw.WriteString(commaAndSpace)
+			}
+			bw.WriteString(p)
+		}
+		bw.WriteString(crlf)
+	}
+
+	if len(extensions) > 0 {
+		httpWriteHeaderKey(bw, headerSecExtensions)
+		httphead.WriteOptions(bw, extensions)
+		bw.WriteString(crlf)
+	}
+
+	if hw != nil {
+		hw(bw)
+	}
+
+	bw.WriteString(crlf)
 }
 
 func httpWriteResponseUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, hw func(io.Writer)) {
