@@ -8,14 +8,9 @@ import (
 	"hash"
 	"io"
 	"math/rand"
-	"net/http"
-	"net/url"
 	"reflect"
-	"strings"
 	"sync"
 	"unsafe"
-
-	"github.com/gobwas/httphead"
 )
 
 const (
@@ -38,87 +33,6 @@ var ErrBadNonce = fmt.Errorf("nonce size is not %d", nonceSize)
 
 var WebSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
-type request struct {
-	http.Request
-	Nonce      [nonceSize]byte
-	Protocols  []string
-	Extensions []httphead.Option
-}
-
-func (req *request) Reset(urlstr string, headers http.Header, protocols []string, extensions []httphead.Option) error {
-	u, err := url.ParseRequestURI(urlstr)
-	if err != nil {
-		return err
-	}
-
-	req.URL = u
-
-	newNonce(req.Nonce[:])
-	req.Header.Set(headerSecKey, string(req.Nonce[:]))
-
-	req.Protocols = protocols
-	if protocols != nil {
-		req.Header.Set(headerSecProtocol, strings.Join(protocols, ", "))
-	}
-
-	req.Extensions = extensions
-	if extensions != nil {
-		buf := bytes.Buffer{}
-		httphead.WriteOptions(&buf, extensions)
-		req.Header.Set(headerSecExtensions, buf.String())
-	}
-
-	req.Header.Set("User-Agent", "") // Disable default user-agent header.
-
-	if headers != nil {
-		for k, v := range headers {
-			req.Header[k] = v
-		}
-	}
-
-	return nil
-}
-
-var requestPool sync.Pool
-
-func getRequest() *request {
-	if req := requestPool.Get(); req != nil {
-		return req.(*request)
-	}
-	return newCommonRequest()
-}
-
-func putRequest(req *request) {
-	req.URL = nil
-	req.Protocols = nil
-	req.Extensions = nil
-
-	for k := range req.Header {
-		switch k {
-		case headerUpgrade, headerConnection, headerSecVersion:
-			// leave common headers
-		default:
-			delete(req.Header, k)
-		}
-	}
-
-	requestPool.Put(req)
-}
-
-func newCommonRequest() *request {
-	req := &request{
-		Request: http.Request{
-			Header: make(http.Header),
-		},
-	}
-
-	req.Header.Set(headerUpgrade, "websocket")
-	req.Header.Set(headerConnection, "Upgrade")
-	req.Header.Set(headerSecVersion, "13")
-
-	return req
-}
-
 var sha1Pool sync.Pool
 
 func acquireSha1() hash.Hash {
@@ -133,8 +47,8 @@ func releaseSha1(h hash.Hash) {
 	sha1Pool.Put(h)
 }
 
-// todo bench put expect to req as array
-func checkNonce(accept string, nonce [nonceSize]byte) bool {
+// TODO(gobwas): bench put expect to req as array
+func checkNonce(accept []byte, nonce [nonceSize]byte) bool {
 	if len(accept) != acceptSize {
 		return false
 	}
@@ -142,7 +56,7 @@ func checkNonce(accept string, nonce [nonceSize]byte) bool {
 	var expect [acceptSize]byte
 	putAccept(nonce, expect[:])
 
-	return btsToString(expect[:]) == accept
+	return bytes.Equal(expect[:], accept)
 }
 
 //const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
