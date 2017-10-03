@@ -29,7 +29,7 @@ var (
 	ErrMalformedHttpRequest  = fmt.Errorf("malformed HTTP request")
 	ErrMalformedHttpResponse = fmt.Errorf("malformed HTTP response")
 
-	ErrBadHttpRequestProto  = fmt.Errorf("bad HTTP request protocol version")
+	ErrBadHttpProto         = fmt.Errorf("bad HTTP protocol version")
 	ErrBadHttpRequestMethod = fmt.Errorf("bad HTTP request method")
 
 	ErrBadHost       = fmt.Errorf("bad %q header", headerHost)
@@ -50,6 +50,13 @@ var (
 	headerSecExtensions = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Extensions")
 	headerSecKey        = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Key")
 	headerSecAccept     = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Accept")
+)
+
+var (
+	specHeaderValueUpgrade         = []byte("websocket")
+	specHeaderValueConnection      = []byte("Upgrade")
+	specHeaderValueConnectionLower = []byte("upgrade")
+	specHeaderValueSecVersion      = []byte("13")
 )
 
 var (
