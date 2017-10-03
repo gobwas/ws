@@ -173,7 +173,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 type Upgrader struct {
 	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
 	// They used to read and write http data while upgrading to WebSocket.
-	// Allocated buffers are pooled with sync.Pool to avoid allocations.
+	// Allocated buffers are pooled with sync.Pool to avoid extra allocations.
 	//
 	// If *bufio.ReadWriter is given to Upgrade() no allocation will be made
 	// and this sizes will not be used.
@@ -347,7 +347,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	}
 
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
-	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
+	// The method of the request MUST be GET, and the HTTP version MUST be at
+	// least 1.1.
 	if btsToString(req.method) != http.MethodGet {
 		err = ErrBadHttpRequestMethod
 		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
