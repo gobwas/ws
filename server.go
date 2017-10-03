@@ -15,8 +15,8 @@ import (
 
 // Constants used by ConnUpgrader.
 const (
-	DefaultReadBufferSize  = 4096
-	DefaultWriteBufferSize = 512
+	DefaultServerReadBufferSize  = 4096
+	DefaultServerWriteBufferSize = 512
 )
 
 var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
@@ -67,7 +67,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 		return
 	}
 	if r.ProtoMajor < 1 || (r.ProtoMajor == 1 && r.ProtoMinor < 1) {
-		err = ErrBadHttpRequestProto
+		err = ErrBadHttpProto
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -273,13 +273,6 @@ type Upgrader struct {
 	// error missing header callback?
 }
 
-var (
-	expHeaderUpgrade         = []byte("websocket")
-	expHeaderConnection      = []byte("Upgrade")
-	expHeaderConnectionLower = []byte("upgrade")
-	expHeaderSecVersion      = []byte("13")
-)
-
 type headerWriter struct {
 	cb [3]func(io.Writer)
 	n  int
@@ -329,8 +322,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		br = brw.Reader
 		bw = brw.Writer
 	} else {
-		n := nonZero(u.ReadBufferSize, DefaultReadBufferSize)
-		br = pbufio.GetReader(conn, n)
+		br = pbufio.GetReader(conn,
+			nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
+		)
 		defer pbufio.PutReader(br)
 	}
 
@@ -346,7 +340,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	}
 
 	if bw == nil {
-		bw = pbufio.GetWriter(conn, nonZero(u.WriteBufferSize, DefaultWriteBufferSize))
+		bw = pbufio.GetWriter(conn,
+			nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
+		)
 		defer pbufio.PutWriter(bw)
 	}
 
@@ -359,7 +355,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 	if req.major < 1 || (req.major == 1 && req.minor < 1) {
-		err = ErrBadHttpRequestProto
+		err = ErrBadHttpProto
 		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
 		bw.Flush()
 		return
@@ -418,13 +414,13 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		case headerUpgrade:
 			headerSeen |= headerSeenUpgrade
-			if !bytes.Equal(v, expHeaderUpgrade) && !btsEqualFold(v, expHeaderUpgrade) {
+			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
 				err = ErrBadUpgrade
 			}
 
 		case headerConnection:
 			headerSeen |= headerSeenConnection
-			if !bytes.Equal(v, expHeaderConnection) && !btsHasToken(v, expHeaderConnectionLower) {
+			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
 				err = ErrBadConnection
 			}
 
@@ -438,7 +434,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		case headerSecVersion:
 			headerSeen |= headerSeenSecVersion
-			if !bytes.Equal(v, expHeaderSecVersion) {
+			if !bytes.Equal(v, specHeaderValueSecVersion) {
 				// According to RFC6455:
 				//
 				// If this version does not match a version understood by the
