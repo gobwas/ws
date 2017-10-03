@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,16 +14,149 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/gobwas/httphead"
 )
+
+func TestDialerRequest(t *testing.T) {
+	for _, test := range []struct {
+		dialer Dialer
+		url    string
+		exp    *http.Request
+		err    bool
+	}{
+		{
+			url: "wss://example.org/chat",
+			exp: setHttpProto(1, 1,
+				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
+					headerUpgrade:    []string{"websocket"},
+					headerConnection: []string{"Upgrade"},
+					headerSecVersion: []string{"13"},
+					headerSecKey:     []string{"some key"},
+				}),
+			),
+		},
+		{
+			dialer: Dialer{
+				Protocols: []string{"foo", "bar"},
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+				Header: func(w io.Writer) {
+					http.Header{
+						"Origin": []string{"who knows"},
+					}.Write(w)
+				},
+			},
+			url: "wss://example.org/chat",
+			exp: setHttpProto(1, 1,
+				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
+					headerUpgrade:    []string{"websocket"},
+					headerConnection: []string{"Upgrade"},
+					headerSecVersion: []string{"13"},
+					headerSecKey:     []string{"some key"},
+
+					headerSecProtocol:   []string{"foo, bar"},
+					headerSecExtensions: []string{"foo;bar=1,baz"},
+
+					headerOrigin: []string{"who knows"},
+				}),
+			),
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			u, err := url.ParseRequestURI(test.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var ErrStub = errors.New("stub")
+			var buf bytes.Buffer
+			conn := stubConn{
+				read: func(p []byte) (int, error) {
+					return 0, ErrStub
+				},
+				write: func(p []byte) (int, error) {
+					return buf.Write(p)
+				},
+			}
+
+			_, _, err = test.dialer.request(context.Background(), &conn, u)
+			if err == ErrStub {
+				err = nil
+			}
+			if test.err && err == nil {
+				t.Errorf("expected error; got nil")
+			}
+			if !test.err && err != nil {
+				t.Errorf("unexpected error: %s", err)
+			}
+			if test.err {
+				return
+			}
+
+			act := buf.Bytes()
+			exp := dumpRequest(test.exp)
+
+			act = sortHeaders(maskHeader(act, headerSecKey, "<masked>"))
+			exp = sortHeaders(maskHeader(exp, headerSecKey, "<masked>"))
+
+			if !bytes.Equal(act, exp) {
+				t.Errorf("unexpected request:\nact:\n%s\nexp:\n%s\n", act, exp)
+			}
+			if _, err := http.ReadRequest(bufio.NewReader(&buf)); err != nil {
+				t.Errorf("read request error: %s", err)
+				return
+			}
+		})
+	}
+}
+
+func makeAccept(nonce [nonceSize]byte) []byte {
+	accept := make([]byte, acceptSize)
+	putAccept(nonce, accept)
+	return accept
+}
+
+func BenchmarkPutAccept(b *testing.B) {
+	var nonce [nonceSize]byte
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+	p := make([]byte, acceptSize)
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		putAccept(nonce, p)
+	}
+}
+
+func BenchmarkCheckNonce(b *testing.B) {
+	var nonce [nonceSize]byte
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	accept := makeAccept(nonce)
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_ = checkNonce(accept, nonce)
+	}
+}
 
 func TestDialerHandshake(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		res       *http.Response
-		frames    []Frame
-		accept    bool
-		protocols []string
-		err       error
+		name   string
+		dialer Dialer
+		res    *http.Response
+		frames []Frame
+		accept bool
+		err    error
 	}{
 		{
 			res: &http.Response{
@@ -37,6 +171,9 @@ func TestDialerHandshake(t *testing.T) {
 			accept: true,
 		},
 		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+			},
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -47,8 +184,22 @@ func TestDialerHandshake(t *testing.T) {
 					headerSecProtocol: []string{"json"},
 				},
 			},
-			protocols: []string{"xml", "json", "soap"},
-			accept:    true,
+			accept: true,
+		},
+		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: true,
 		},
 		{
 			res: &http.Response{
@@ -65,6 +216,21 @@ func TestDialerHandshake(t *testing.T) {
 				NewTextFrame("hello, gopherizer!"),
 			},
 		},
+
+		// Error cases.
+
+		{
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+				},
+			},
+			accept: true,
+			err:    ErrBadUpgrade,
+		},
 		{
 			res: &http.Response{
 				StatusCode: 400,
@@ -75,7 +241,7 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			err: ErrBadStatus,
+			err: statusError{400, http.StatusText(400)},
 		},
 		{
 			res: &http.Response{
@@ -83,11 +249,12 @@ func TestDialerHandshake(t *testing.T) {
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
-					headerConnection: []string{"Error"},
+					headerConnection: []string{"oops!"},
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			err: ErrBadConnection,
+			accept: true,
+			err:    ErrBadConnection,
 		},
 		{
 			res: &http.Response{
@@ -96,10 +263,11 @@ func TestDialerHandshake(t *testing.T) {
 				ProtoMinor: 1,
 				Header: http.Header{
 					headerConnection: []string{"Upgrade"},
-					headerUpgrade:    []string{"iproto"},
+					headerUpgrade:    []string{"oops!"},
 				},
 			},
-			err: ErrBadUpgrade,
+			accept: true,
+			err:    ErrBadUpgrade,
 		},
 		{
 			res: &http.Response{
@@ -122,7 +290,7 @@ func TestDialerHandshake(t *testing.T) {
 				Header: http.Header{
 					headerConnection:  []string{"Upgrade"},
 					headerUpgrade:     []string{"websocket"},
-					headerSecProtocol: []string{"oops"},
+					headerSecProtocol: []string{"oops!"},
 				},
 			},
 			accept: true,
@@ -154,7 +322,7 @@ func TestDialerHandshake(t *testing.T) {
 				}
 
 				accept := makeAccept(strToNonce(nonce))
-				test.res.Header.Set(headerSecAccept, accept)
+				test.res.Header.Set(headerSecAccept, string(accept))
 				test.res.Request = req
 				test.res.Write(rb)
 
@@ -180,25 +348,20 @@ func TestDialerHandshake(t *testing.T) {
 				close: func() error { return nil },
 			}
 
-			pr := stubReadPool{}
-			pw := stubWritePool{}
-
-			d := Dialer{
-				Protocol: test.protocols,
-				NetDial: func(_ context.Context, _, _ string) (net.Conn, error) {
-					return conn, nil
-				},
-				ReaderPool: &pr,
-				WriterPool: &pw,
+			test.dialer.NetDial = func(_ context.Context, _, _ string) (net.Conn, error) {
+				return conn, nil
 			}
 
-			c, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
+			_, br, _, err := test.dialer.Dial(context.Background(), "ws://gobwas.com")
 			if test.err != err {
 				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
 			}
 
+			if len(test.frames) > 0 && br == nil {
+				t.Fatalf("can not read frames because Dial() returned empty bufio.Reader")
+			}
 			for i, exp := range test.frames {
-				act, err := ReadFrame(c)
+				act, err := ReadFrame(br)
 				if err != nil {
 					t.Fatalf("can not read %d-th frame: %v", i, err)
 				}
@@ -310,36 +473,9 @@ func TestDialerCancelation(t *testing.T) {
 				time.AfterFunc(t, cancel)
 			}
 
-			_, _, err := d.Dial(ctx, "ws://gobwas.com", nil)
+			_, _, _, err := d.Dial(ctx, "ws://gobwas.com")
 			if err != test.err {
 				t.Fatalf("unexpected error: %v; want %v", err, test.err)
-			}
-		})
-	}
-}
-
-func TestHostPortResolve(t *testing.T) {
-	for _, test := range []struct {
-		url *url.URL
-		ret string
-	}{
-		{
-			url: &url.URL{Host: "example.com", Scheme: "ws"},
-			ret: "example.com:80",
-		},
-		{
-			url: &url.URL{Host: "example.com", Scheme: "wss"},
-			ret: "example.com:443",
-		},
-		{
-			url: &url.URL{Host: "example.com:3000", Scheme: "wss"},
-			ret: "example.com:3000",
-		},
-	} {
-		t.Run(test.url.String(), func(t *testing.T) {
-			ret := hostport(test.url)
-			if test.ret != ret {
-				t.Errorf("expected %s; got %s", test.ret, ret)
 			}
 		})
 	}

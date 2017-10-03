@@ -2,17 +2,24 @@ package ws
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gobwas/httphead"
 	"github.com/gobwas/pool/pbufio"
+)
+
+// Constants used by Dialer.
+const (
+	DefaultClientReadBufferSize  = 4096
+	DefaultClientWriteBufferSize = 4096
 )
 
 // ReaderPool describes object that manages reuse of bufio.Reader instances.
@@ -29,23 +36,12 @@ type WriterPool interface {
 
 // Handshake represents handshake result.
 type Handshake struct {
-	// Protocol is the selected during handshake subprotocol.
+	// Protocol is the subprotocol selected during handshake.
 	Protocol string
 
 	// Extensions is the list of negotiated extensions.
 	Extensions []httphead.Option
 }
-
-// Response represents result of dialing.
-type Response struct {
-	*http.Response
-	Handshake
-}
-
-var (
-	defaultWriterPool = writerPool(512)
-	defaultReaderPool = readerPool(512)
-)
 
 // Errors used by the websocket client.
 var (
@@ -58,84 +54,129 @@ var (
 var DefaultDialer Dialer
 
 // Dial is like Dialer{}.Dial().
-func Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, err error) {
-	return DefaultDialer.Dial(ctx, urlstr, h)
+func Dial(ctx context.Context, urlstr string) (net.Conn, *bufio.Reader, Handshake, error) {
+	return DefaultDialer.Dial(ctx, urlstr)
 }
 
 // Dialer contains options for establishing websocket connection to an url.
 type Dialer struct {
-	// Protocol is the list of subprotocol names the client wishes to speak, ordered by preference.
-	// See https://tools.ietf.org/html/rfc6455#section-4.1
-	Protocol []string
+	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
+	// They used to read and write http data while upgrading to WebSocket.
+	// Allocated buffers are pooled with sync.Pool to avoid extra allocations.
+	//
+	// If a size is zero then default value is used.
+	ReadBufferSize, WriteBufferSize int
 
-	// Extensions is the list of extensions, that client wishes to speak.
+	// WriterPool is used to reuse bufio.Writers.
+	// If non-nil, then WriteBufferSize option is ignored.
+	WriterPool WriterPool
+
+	// Protocols is the list of subprotocols that the client wants to speak,
+	// ordered by preference.
+	//
+	// See https://tools.ietf.org/html/rfc6455#section-4.1
+	Protocols []string
+
+	// Extensions is the list of extensions that client wants to speak.
+	//
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// See https://tools.ietf.org/html/rfc6455#section-9.1
 	Extensions []httphead.Option
+
+	// Header is the callback that will be called with io.Writer.
+	// Write() calls to the given writer will put data in a request http
+	// headers section.
+	//
+	// It used instead of http.Header mapping to avoid allocations in user land.
+	Header func(io.Writer)
+
+	// OnHeader is the callback that will be called after successful parsing of
+	// header, that is not used during WebSocket handshake procedure. That is,
+	// it will be called with non-websocket headers, which could be relevant
+	// for application-level logic.
+	//
+	// The arguments are only valid until the callback returns.
+	//
+	// Returned value could be used to prevent processing response.
+	OnHeader func(key, value []byte) (err error)
 
 	// NetDial is the function that is used to get plain tcp connection.
 	// If it is not nil, then it is used instead of net.Dialer.
 	NetDial func(ctx context.Context, network, addr string) (net.Conn, error)
 
-	// NetDialTLS is the function that is used to get plain tcp connection with tls encryption.
-	// If it is not nil, then it is used instead of tls.DialWithDialer.
-	NetDialTLS func(ctx context.Context, network, addr string) (net.Conn, error)
-
 	// TLSConfig is passed to tls.DialWithDialer.
 	TLSConfig *tls.Config
-
-	// WriterPool is used to reuse bufio.Writers.
-	WriterPool WriterPool
-
-	// ReaderPool is used to reuse bufio.Readers.
-	ReaderPool ReaderPool
 }
 
 // Dial connects to the url host and handshakes connection to websocket.
 // Set of additional headers could be passed to be sent with the request.
-func (d Dialer) Dial(ctx context.Context, urlstr string, h http.Header) (conn net.Conn, resp Response, fb []byte, err error) {
-	req := getRequest()
-	defer putRequest(req)
-
-	err = req.Reset(urlstr, h, d.Protocol, d.Extensions)
+//
+// Note that Dialer does not implement IDNA (RFC5895) logic as net/http does.
+// If you want to dial non-ascii host name, take care of its name serialization
+// avoiding bad request issues. For more info see net/http Request.Write()
+// implementation, especially cleanHost() function.
+//
+// If and only if dialer has read more than just HTTP upgrade response headers
+// (e.g. immediately sent frames from the server) Dial() returns non-nil
+// bufio.Reader which contains unprocessed buffered data from the server.
+// In other cases returned bufio.Reader is always nil.
+// For better memory efficiency received non-nil bufio.Reader must be returned
+// to the inner ws pool via PutReader() function.
+func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs Handshake, err error) {
+	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
 		return
 	}
-
-	conn, err = d.dial(ctx, req.URL)
-	if err != nil {
+	if conn, err = d.dial(ctx, u); err != nil {
 		return
 	}
-
-	resp.Response, fb, err = d.do(ctx, conn, req)
-	if err != nil {
-		return
-	}
-	resp.Protocol, resp.Extensions, err = d.checkHandshake(req, resp)
-
+	br, hs, err = d.request(ctx, conn, u)
 	return
 }
 
+var zeroDialer net.Dialer
+var emptyTLSConfig tls.Config
+
+func defaultTLSConfig() *tls.Config {
+	return &emptyTLSConfig
+}
+
 func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error) {
-	addr := hostport(u)
+	var addr string
+	// We use here fast split2 func instead of net.SplitHostPort() because we
+	// do not want to validate host value here.
+	host, port := split2(u.Host, ':')
+	switch {
+	case port != "":
+		// Port were forced, do nothing.
+		addr = u.Host
+	case u.Scheme == "wss":
+		addr = host + ":443"
+	default:
+		addr = host + ":80"
+	}
+	dial := d.NetDial
+	if dial == nil {
+		dial = zeroDialer.DialContext
+	}
+	conn, err = dial(ctx, "tcp", addr)
+	if err != nil {
+		return
+	}
 	if u.Scheme == "wss" {
-		if nd := d.NetDialTLS; nd != nil {
-			return nd(ctx, "tcp", addr)
+		config := d.TLSConfig
+		if config == nil {
+			config = defaultTLSConfig()
 		}
-
-		var nd net.Dialer
-		if deadline, ok := ctx.Deadline(); ok {
-			nd.Deadline = deadline
+		if config.ServerName == "" {
+			config = config.Clone()
+			config.ServerName = host
 		}
-		return tls.DialWithDialer(&nd, "tcp", addr, d.TLSConfig)
+		// Do not make conn.Handshake() here because downstairs we will prepare
+		// i/o on this conn with proper context's timeout handling.
+		conn = tls.Client(conn, config)
 	}
-
-	if nd := d.NetDial; nd != nil {
-		return nd(ctx, "tcp", addr)
-	}
-
-	var nd net.Dialer
-	return nd.DialContext(ctx, "tcp", addr)
+	return
 }
 
 var (
@@ -147,20 +188,24 @@ var (
 	aLongTimeAgo = time.Unix(42, 0)
 )
 
-// do sends request to the given connection and reads a request.
+// request sends request to the given connection and reads a request.
 // It returns response and some bytes which could be written by the peer right
 // after response and be caught by us during buffered read.
-func (d Dialer) do(ctx context.Context, conn net.Conn, req *request) (resp *http.Response, fb []byte, err error) {
-	var (
-		wp WriterPool
-		rp ReaderPool
+func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *bufio.Reader, hs Handshake, err error) {
+	// headerSeen constants helps to report whether or not some header was seen
+	// during reading request bytes.
+	const (
+		headerSeenUpgrade = 1 << iota
+		headerSeenConnection
+		headerSeenSecAccept
+
+		// headerSeenAll is the value that we expect to receive at the end of
+		// headers read/parse loop.
+		headerSeenAll = 0 |
+			headerSeenUpgrade |
+			headerSeenConnection |
+			headerSeenSecAccept
 	)
-	if wp = d.WriterPool; wp == nil {
-		wp = defaultWriterPool
-	}
-	if rp = d.ReaderPool; rp == nil {
-		rp = defaultReaderPool
-	}
 
 	if deadline, _ := ctx.Deadline(); !deadline.IsZero() {
 		conn.SetDeadline(deadline)
@@ -177,8 +222,10 @@ func (d Dialer) do(ctx context.Context, conn net.Conn, req *request) (resp *http
 			close(done)
 			if ctxErr := <-interrupt; ctxErr != nil && err == nil {
 				err = ctxErr
-				resp = nil
-				fb = nil
+				if br != nil {
+					pbufio.PutReader(br)
+					br = nil
+				}
 			}
 		}()
 		// TODO(gobwas): use goroutine pool here maybe?
@@ -194,100 +241,180 @@ func (d Dialer) do(ctx context.Context, conn net.Conn, req *request) (resp *http
 		}()
 	}
 
-	bw := wp.Get(conn)
-	defer wp.Put(bw)
-	if err = req.Write(bw); err != nil {
-		return
-	}
+	bw := pbufio.GetWriter(conn,
+		nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize),
+	)
+	defer pbufio.PutWriter(bw)
+
+	var nonce [nonceSize]byte
+	newNonce(nonce[:])
+
+	httpWriteUpgradeRequest(bw, u, nonce, d.Protocols, d.Extensions, d.Header)
 	if err = bw.Flush(); err != nil {
 		return
 	}
 
-	br := rp.Get(conn)
-	defer rp.Put(br)
-	resp, err = http.ReadResponse(br, nil)
-
-	if err == nil && br.Buffered() != 0 {
-		// Server has written frame bytes to the connection.
-		// To not loose them we must read them.
-		fb = make([]byte, br.Buffered())
-		_, err = br.Read(fb)
-	}
-
-	return
-}
-
-func (d Dialer) checkHandshake(req *request, resp Response) (protocol string, extensions []httphead.Option, err error) {
-	if resp.StatusCode != 101 {
-		err = ErrBadStatus
+	br = pbufio.GetReader(conn,
+		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
+	)
+	defer func() {
+		if err != nil || br.Buffered() == 0 {
+			// Server does not wrote additional bytes to the connection or
+			// error occured. That is, no reason to return buffer.
+			pbufio.PutReader(br)
+			br = nil
+		}
+	}()
+	// Read HTTP response line like "HTTP/1.1 101 Switching Protocols".
+	rl, err := readLine(br)
+	if err != nil {
 		return
 	}
-	if u := resp.Header.Get(headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
-		err = ErrBadUpgrade
+	// Begin validation of the response.
+	// See https://tools.ietf.org/html/rfc6455#section-4.2.2
+	// Parse request line data like HTTP version, uri and method.
+	resp, err := httpParseResponseLine(rl)
+	if err != nil {
 		return
 	}
-	if c := resp.Header.Get(headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
-		err = ErrBadConnection
+	if resp.major < 1 || (resp.major == 1 && resp.minor < 1) {
+		err = ErrBadHttpProto
 		return
 	}
-	if !checkNonce(resp.Header.Get(headerSecAccept), req.Nonce) {
-		err = ErrBadSecAccept
+	if resp.status != 101 {
+		err = statusError{resp.status, string(resp.reason)}
 		return
 	}
+	var headerSeen byte
+	for {
+		line, e := readLine(br)
+		if e != nil {
+			err = e
+			return
+		}
+		// Blank line, no more lines to read.
+		if len(line) == 0 {
+			break
+		}
 
-	for _, ext := range resp.Header[headerSecExtensions] {
-		var ok bool
-		extensions, ok = httphead.ParseOptions([]byte(ext), extensions)
+		k, v, ok := httpParseHeaderLine(line)
 		if !ok {
 			err = ErrMalformedHttpResponse
 			return
 		}
-	}
-	for _, ext := range extensions {
-		var ok bool
-		for _, want := range req.Extensions {
-			if ext.Equal(want) {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			err = ErrBadExtensions
-			return
-		}
-	}
 
-	// We check single value of Sec-Websocket-Protocol header according to this:
-	// RFC6455 1.3:  "The server selects one or none of the acceptable protocols and echoes
-	// that value in its handshake to indicate that it has selected that
-	// protocol."
-	if protocol = resp.Header.Get(headerSecProtocol); protocol != "" {
-		var has bool
-		for _, p := range req.Protocols {
-			if has = p == protocol; has {
-				break
+		switch btsToString(k) {
+		case headerUpgrade:
+			headerSeen |= headerSeenUpgrade
+			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
+				err = ErrBadUpgrade
+				return
+			}
+
+		case headerConnection:
+			headerSeen |= headerSeenConnection
+			// Note that as RFC6455 says:
+			//   > A |Connection| header field with value "Upgrade".
+			// That is, in server side, "Connection" header could contain
+			// multiple token. But in response it must contains exactly one.
+			if !bytes.Equal(v, specHeaderValueConnection) && !btsEqualFold(v, specHeaderValueConnection) {
+				err = ErrBadConnection
+				return
+			}
+
+		case headerSecAccept:
+			headerSeen |= headerSeenSecAccept
+			if !checkNonce(v, nonce) {
+				err = ErrBadSecAccept
+				return
+			}
+
+		case headerSecProtocol:
+			// RFC6455 1.3:
+			//   "The server selects one or none of the acceptable protocols
+			//   and echoes that value in its handshake to indicate that it has
+			//   selected that protocol."
+			for _, want := range d.Protocols {
+				if string(v) == want {
+					hs.Protocol = want
+					break
+				}
+			}
+			if hs.Protocol == "" {
+				// Server echoed subprotocol that is not present in client
+				// requested protocols.
+				err = ErrBadSubProtocol
+				return
+			}
+
+		case headerSecExtensions:
+			var ok bool
+			n := len(hs.Extensions)
+			// NOTE: we can try to increase performance here by scanning
+			// options and appending to the hs.Extensions not the parsed
+			// option, but option from d.Extensions – that is, like in
+			// headerSecProtocol section we avoid copying of a header value.
+			hs.Extensions, ok = httphead.ParseOptions(v, hs.Extensions)
+			if !ok {
+				err = ErrMalformedHttpResponse
+				return
+			}
+			// Check newly parsed extensions to be present in client requested
+			// extensions.
+		check:
+			for i := n; i < len(hs.Extensions); i++ {
+				for _, want := range d.Extensions {
+					if hs.Extensions[i].Equal(want) {
+						continue check
+					}
+				}
+				err = ErrBadExtensions
+				return
+			}
+
+		default:
+			if onHeader := d.OnHeader; onHeader != nil {
+				if e := onHeader(k, v); e != nil {
+					err = e
+					return
+				}
 			}
 		}
-		if !has {
-			err = ErrBadSubProtocol
-			return
+	}
+	if err == nil && headerSeen != headerSeenAll {
+		switch {
+		case headerSeen&headerSeenUpgrade == 0:
+			err = ErrBadUpgrade
+		case headerSeen&headerSeenConnection == 0:
+			err = ErrBadConnection
+		case headerSeen&headerSeenSecAccept == 0:
+			err = ErrBadSecAccept
+		default:
+			panic("unknown headers state")
 		}
 	}
 	return
 }
 
-type readerPool int
-
-func (n readerPool) Get(r io.Reader) *bufio.Reader { return pbufio.GetReader(r, int(n)) }
-func (n readerPool) Put(r *bufio.Reader)           { pbufio.PutReader(r) }
-
-type writerPool int
-
-func (n writerPool) Get(w io.Writer) *bufio.Writer { return pbufio.GetWriter(w, int(n)) }
-func (n writerPool) Put(w *bufio.Writer)           { pbufio.PutWriter(w) }
+// PutReader returns bufio.Reader instance to the inner reuse pool.
+// It is useful in rare cases, when Dialer.Dial() returns non-nil buffer which
+// contains unprocessed buffered data, that was sent by the server quickly
+// right after handshake.
+func PutReader(br *bufio.Reader) {
+	pbufio.PutReader(br)
+}
 
 type timeoutError struct{}
 
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 func (timeoutError) Error() string   { return "client timeout" }
+
+type statusError struct {
+	status int
+	reason string
+}
+
+func (s statusError) Error() string {
+	return "unexpected HTTP response status: " + strconv.Itoa(s.status) + " " + s.reason
+}
