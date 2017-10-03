@@ -171,8 +171,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		})),
-		res: mustMakeErrResponse(400, ErrBadHttpRequestProto, nil),
-		err: ErrBadHttpRequestProto,
+		res: mustMakeErrResponse(400, ErrBadHttpProto, nil),
+		err: ErrBadHttpProto,
 	},
 	{
 		label: "bad_host",
@@ -304,7 +304,7 @@ func TestHTTPUpgrader(t *testing.T) {
 				test.req.Header.Set(headerSecKey, string(nonce))
 			}
 			if test.err == nil {
-				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+				test.res.Header.Set(headerSecAccept, string(makeAccept(test.nonce)))
 			}
 
 			// Need to emulate http server read request for truth test.
@@ -370,7 +370,7 @@ func TestUpgrader(t *testing.T) {
 				test.req.Header.Set(headerSecKey, string(nonce))
 			}
 			if test.err == nil {
-				test.res.Header.Set(headerSecAccept, makeAccept(test.nonce))
+				test.res.Header.Set(headerSecAccept, string(makeAccept(test.nonce)))
 			}
 
 			u := Upgrader{
@@ -617,6 +617,17 @@ type headersBytes [][]byte
 func (h headersBytes) Len() int           { return len(h) }
 func (h headersBytes) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h headersBytes) Less(i, j int) bool { return bytes.Compare(h[i], h[j]) == -1 }
+
+func maskHeader(bts []byte, key, mask string) []byte {
+	lines := bytes.Split(bts, []byte("\r\n"))
+	for i, line := range lines {
+		pair := bytes.Split(line, []byte(": "))
+		if string(pair[0]) == key {
+			lines[i] = []byte(key + ": " + mask)
+		}
+	}
+	return bytes.Join(lines, []byte("\r\n"))
+}
 
 func sortHeaders(bts []byte) []byte {
 	lines := bytes.Split(bts, []byte("\r\n"))
