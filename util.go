@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"net/url"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -97,17 +96,6 @@ func pow(a, b int) int {
 		a *= a
 	}
 	return p
-}
-
-func hostport(u *url.URL) string {
-	host, port := split2(u.Host, ':')
-	if port != "" {
-		return u.Host
-	}
-	if u.Scheme == "wss" {
-		return host + ":443"
-	}
-	return host + ":80"
 }
 
 func split2(s string, sep byte) (a, b string) {
