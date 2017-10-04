@@ -9,7 +9,7 @@ func cloneTLSConfig(c *tls.Config) *tls.Config {
 	// without calling inner c.initOnceServer somehow because we only could get
 	// here from the ws.Dialer code, which is obviously a client and makes
 	// tls.Client() when it gets new net.Conn.
-	return &Config{
+	return &tls.Config{
 		Rand:                        c.Rand,
 		Time:                        c.Time,
 		Certificates:                c.Certificates,
