@@ -169,7 +169,7 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 			config = defaultTLSConfig()
 		}
 		if config.ServerName == "" {
-			config = config.Clone()
+			config = cloneTLSConfig(config)
 			config.ServerName = host
 		}
 		// Do not make conn.Handshake() here because downstairs we will prepare
