@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -62,7 +63,7 @@ func TestDialerRequest(t *testing.T) {
 					headerSecProtocol:   []string{"foo, bar"},
 					headerSecExtensions: []string{"foo;bar=1,baz"},
 
-					headerOrigin: []string{"who knows"},
+					"Origin": []string{"who knows"},
 				}),
 			),
 		},
@@ -150,13 +151,19 @@ func BenchmarkCheckNonce(b *testing.B) {
 }
 
 func TestDialerHandshake(t *testing.T) {
+	const (
+		acceptNo = iota
+		acceptInvalid
+		acceptValid
+	)
 	for _, test := range []struct {
-		name   string
-		dialer Dialer
-		res    *http.Response
-		frames []Frame
-		accept bool
-		err    error
+		name       string
+		dialer     Dialer
+		res        *http.Response
+		frames     []Frame
+		accept     int
+		err        error
+		wantBuffer bool
 	}{
 		{
 			res: &http.Response{
@@ -168,7 +175,7 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 		},
 		{
 			dialer: Dialer{
@@ -184,7 +191,7 @@ func TestDialerHandshake(t *testing.T) {
 					headerSecProtocol: []string{"json"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 		},
 		{
 			dialer: Dialer{
@@ -199,7 +206,71 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo;bar=1"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecProtocol:   []string{"json"},
+					headerSecExtensions: []string{"foo;bar=1"},
+				},
+			},
+			accept: acceptValid,
 		},
 		{
 			res: &http.Response{
@@ -211,15 +282,68 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 			frames: []Frame{
 				NewTextFrame("hello, gopherizer!"),
 			},
+			wantBuffer: true,
+		},
+		{
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+				Body:          ioutil.NopCloser(bytes.NewReader([]byte(`hello, gopher!`))),
+				ContentLength: 14,
+			},
+			accept:     acceptValid,
+			wantBuffer: true,
 		},
 
 		// Error cases.
 
 		{
+			name: "bad proto",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 2,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+			},
+			err: ErrBadHttpProto,
+		},
+		{
+			name: "bad status",
+			res: &http.Response{
+				StatusCode: 400,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+			},
+			err:        StatusError{400, http.StatusText(400)},
+			wantBuffer: true,
+		},
+		{
+			name: "bad status with body",
+			res: &http.Response{
+				StatusCode: 400,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+				Body: ioutil.NopCloser(bytes.NewReader(
+					[]byte(`<error description here>`),
+				)),
+				ContentLength: 24,
+			},
+			err:        StatusError{400, http.StatusText(400)},
+			wantBuffer: true,
+		},
+		{
+			name: "bad upgrade",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -228,22 +352,38 @@ func TestDialerHandshake(t *testing.T) {
 					headerConnection: []string{"Upgrade"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 			err:    ErrBadUpgrade,
 		},
 		{
+			name: "bad upgrade",
 			res: &http.Response{
-				StatusCode: 400,
+				StatusCode: 101,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
 					headerConnection: []string{"Upgrade"},
-					headerUpgrade:    []string{"websocket"},
+					headerUpgrade:    []string{"oops"},
 				},
 			},
-			err: statusError{400, http.StatusText(400)},
+			accept: acceptValid,
+			err:    ErrBadUpgrade,
 		},
 		{
+			name: "bad connection",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerUpgrade: []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadConnection,
+		},
+		{
+			name: "bad connection",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -253,23 +393,11 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 			err:    ErrBadConnection,
 		},
 		{
-			res: &http.Response{
-				StatusCode: 101,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header: http.Header{
-					headerConnection: []string{"Upgrade"},
-					headerUpgrade:    []string{"oops!"},
-				},
-			},
-			accept: true,
-			err:    ErrBadUpgrade,
-		},
-		{
+			name: "bad accept",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -279,10 +407,25 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: false,
+			accept: acceptInvalid,
 			err:    ErrBadSecAccept,
 		},
 		{
+			name: "bad accept",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptNo,
+			err:    ErrBadSecAccept,
+		},
+		{
+			name: "bad subprotocol",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -293,8 +436,45 @@ func TestDialerHandshake(t *testing.T) {
 					headerSecProtocol: []string{"oops!"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 			err:    ErrBadSubProtocol,
+		},
+		{
+			name: "bad extensions",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo,bar;baz=1"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadExtensions,
+		},
+		{
+			name: "bad extensions",
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo;bar=2"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadExtensions,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -312,19 +492,22 @@ func TestDialerHandshake(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				var nonce string
-				if test.accept {
-					nonce = req.Header.Get(headerSecKey)
-				} else {
+
+				switch test.accept {
+				case acceptInvalid:
 					k := make([]byte, nonceSize)
 					rand.Read(k)
-					nonce = string(k)
+					nonce := string(k)
+					accept := makeAccept(strToNonce(nonce))
+					test.res.Header.Set(headerSecAccept, string(accept))
+				case acceptValid:
+					nonce := req.Header.Get(headerSecKey)
+					accept := makeAccept(strToNonce(nonce))
+					test.res.Header.Set(headerSecAccept, string(accept))
 				}
 
-				accept := makeAccept(strToNonce(nonce))
-				test.res.Header.Set(headerSecAccept, string(accept))
 				test.res.Request = req
-				test.res.Write(rb)
+				rb.Write(dumpResponse(test.res))
 
 				for _, f := range test.frames {
 					if err := WriteFrame(rb, f); err != nil {
@@ -357,8 +540,11 @@ func TestDialerHandshake(t *testing.T) {
 				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
 			}
 
-			if len(test.frames) > 0 && br == nil {
-				t.Fatalf("can not read frames because Dial() returned empty bufio.Reader")
+			if test.wantBuffer && br == nil {
+				t.Fatalf("Dial() returned empty bufio.Reader")
+			}
+			if !test.wantBuffer && br != nil {
+				t.Fatalf("Dial() returned non-empty bufio.Reader")
 			}
 			for i, exp := range test.frames {
 				act, err := ReadFrame(br)

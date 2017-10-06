@@ -111,17 +111,19 @@ type Dialer struct {
 // Dial connects to the url host and handshakes connection to websocket.
 // Set of additional headers could be passed to be sent with the request.
 //
+// It could return non-nil bufio.Reader which contains unprocessed data from
+// the server. If err is nil, it could be the frames sent by the server right
+// after successful handshake. If err type is StatusError, then buffer may
+// contain request data (with headers part) except the first so called
+// status-line (which was read to detect non-101 status error). In other cases
+// returned bufio.Reader is always nil. For better memory efficiency received
+// non-nil bufio.Reader must be returned to the inner pool via PutReader()
+// function.
+//
 // Note that Dialer does not implement IDNA (RFC5895) logic as net/http does.
 // If you want to dial non-ascii host name, take care of its name serialization
 // avoiding bad request issues. For more info see net/http Request.Write()
 // implementation, especially cleanHost() function.
-//
-// If and only if dialer has read more than just HTTP upgrade response headers
-// (e.g. immediately sent frames from the server) Dial() returns non-nil
-// bufio.Reader which contains unprocessed buffered data from the server.
-// In other cases returned bufio.Reader is always nil.
-// For better memory efficiency received non-nil bufio.Reader must be returned
-// to the inner ws pool via PutReader() function.
 func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs Handshake, err error) {
 	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
@@ -134,8 +136,13 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	return
 }
 
-var zeroDialer net.Dialer
-var emptyTLSConfig tls.Config
+var (
+	// emptyDialer is a net.Dialer without options, used in Dialer.dial() if
+	// Dialer.NetDial is not provided.
+	emptyDialer net.Dialer
+	// emptyTLSConfig is an empty tls.Config used as default one.
+	emptyTLSConfig tls.Config
+)
 
 func defaultTLSConfig() *tls.Config {
 	return &emptyTLSConfig
@@ -157,7 +164,7 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 	}
 	dial := d.NetDial
 	if dial == nil {
-		dial = zeroDialer.DialContext
+		dial = emptyDialer.DialContext
 	}
 	conn, err = dial(ctx, "tcp", addr)
 	if err != nil {
@@ -247,7 +254,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	defer pbufio.PutWriter(bw)
 
 	var nonce [nonceSize]byte
-	newNonce(nonce[:])
+	putNewNonce(nonce[:])
 
 	httpWriteUpgradeRequest(bw, u, nonce, d.Protocols, d.Extensions, d.Header)
 	if err = bw.Flush(); err != nil {
@@ -258,33 +265,39 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
 	)
 	defer func() {
-		if err != nil || br.Buffered() == 0 {
+		if br.Buffered() == 0 || (err != nil && !IsStatusError(err)) {
 			// Server does not wrote additional bytes to the connection or
 			// error occured. That is, no reason to return buffer.
 			pbufio.PutReader(br)
 			br = nil
 		}
 	}()
-	// Read HTTP response line like "HTTP/1.1 101 Switching Protocols".
-	rl, err := readLine(br)
+	// Read HTTP status line like "HTTP/1.1 101 Switching Protocols".
+	sl, err := readLine(br)
 	if err != nil {
 		return
 	}
 	// Begin validation of the response.
 	// See https://tools.ietf.org/html/rfc6455#section-4.2.2
 	// Parse request line data like HTTP version, uri and method.
-	resp, err := httpParseResponseLine(rl)
+	resp, err := httpParseResponseLine(sl)
 	if err != nil {
 		return
 	}
-	if resp.major < 1 || (resp.major == 1 && resp.minor < 1) {
+	// Even if RFC says "1.1 or higher" without mentioning the part of the
+	// version, we apply it only to minor part.
+	if resp.major != 1 || resp.minor < 1 {
 		err = ErrBadHttpProto
 		return
 	}
 	if resp.status != 101 {
-		err = statusError{resp.status, string(resp.reason)}
+		err = StatusError{resp.status, string(resp.reason)}
 		return
 	}
+	// If response status is 101 then we expect all technical headers to be
+	// valid. If not, then we stop processing response without giving user
+	// ability to read non-technical headers. That is, we do not distinguish
+	// technical errors (such as parsing error) and protocol errors.
 	var headerSeen byte
 	for {
 		line, e := readLine(br)
@@ -292,8 +305,8 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			err = e
 			return
 		}
-		// Blank line, no more lines to read.
 		if len(line) == 0 {
+			// Blank line, no more lines to read.
 			break
 		}
 
@@ -410,11 +423,16 @@ func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 func (timeoutError) Error() string   { return "client timeout" }
 
-type statusError struct {
-	status int
-	reason string
+type StatusError struct {
+	Status int
+	Reason string
 }
 
-func (s statusError) Error() string {
-	return "unexpected HTTP response status: " + strconv.Itoa(s.status) + " " + s.reason
+func (s StatusError) Error() string {
+	return "unexpected HTTP response status: " + strconv.Itoa(s.Status) + " " + s.Reason
+}
+
+func IsStatusError(err error) bool {
+	_, ok := err.(StatusError)
+	return ok
 }
