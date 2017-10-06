@@ -43,10 +43,9 @@ var (
 )
 
 var (
+	headerHost          = textproto.CanonicalMIMEHeaderKey("Host")
 	headerUpgrade       = textproto.CanonicalMIMEHeaderKey("Upgrade")
 	headerConnection    = textproto.CanonicalMIMEHeaderKey("Connection")
-	headerHost          = textproto.CanonicalMIMEHeaderKey("Host")
-	headerOrigin        = textproto.CanonicalMIMEHeaderKey("Origin")
 	headerSecVersion    = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Version")
 	headerSecProtocol   = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Protocol")
 	headerSecExtensions = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Extensions")
