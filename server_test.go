@@ -41,9 +41,8 @@ type upgradeCase struct {
 
 var upgradeCases = []upgradeCase{
 	{
-		label:    "lowercase",
-		protocol: func(sub string) bool { return true },
-		nonce:    mustMakeNonce(),
+		label: "base",
+		nonce: mustMakeNonce(),
 		req: mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
 			headerConnection: []string{"Upgrade"},
@@ -55,9 +54,8 @@ var upgradeCases = []upgradeCase{
 		}),
 	},
 	{
-		label:    "lowercase",
-		protocol: func(sub string) bool { return true },
-		nonce:    mustMakeNonce(),
+		label: "lowercase",
+		nonce: mustMakeNonce(),
 		req: mustMakeRequest("GET", "ws://example.org", http.Header{
 			strings.ToLower(headerUpgrade):    []string{"websocket"},
 			strings.ToLower(headerConnection): []string{"Upgrade"},
@@ -160,7 +158,7 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadHttpRequestMethod, nil),
+		res: mustMakeErrResponse(405, ErrBadHttpRequestMethod, nil),
 		err: ErrBadHttpRequestMethod,
 	},
 	{
@@ -171,7 +169,7 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		})),
-		res: mustMakeErrResponse(400, ErrBadHttpProto, nil),
+		res: mustMakeErrResponse(505, ErrBadHttpProto, nil),
 		err: ErrBadHttpProto,
 	},
 	{
@@ -392,6 +390,7 @@ func TestUpgrader(t *testing.T) {
 
 			hs, err := u.Upgrade(conn)
 			if test.err != err {
+
 				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
 				return
 			}
@@ -761,7 +760,7 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 }
 
 func mustMakeNonce() (ret [nonceSize]byte) {
-	newNonce(ret[:])
+	putNewNonce(ret[:])
 	return
 }
 
