@@ -383,10 +383,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		// headerSeen reports which header was seen by setting corresponding
 		// bit on.
 		headerSeen byte
-		nonce      []byte
-
-		hcb func(io.Writer)
-		hw  headerWriter
+		nonce      [nonceSize]byte
+		hcb        func(io.Writer)
+		hw         headerWriter
 	)
 	if u.Header != nil {
 		hw.add(u.Header)
@@ -444,7 +443,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			if len(v) != nonceSize {
 				err = ErrBadSecKey
 			} else {
-				nonce = v
+				copy(nonce[:], v)
 			}
 
 		case headerSecVersion:
@@ -548,7 +547,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
-	httpWriteResponseUpgrade(bw, btsToNonce(nonce), hs, hw.flush)
+	httpWriteResponseUpgrade(bw, nonce, hs, hw.flush)
 	err = bw.Flush()
 
 	return
