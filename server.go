@@ -535,10 +535,3 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 func headerWriterSecVersion(w io.Writer) {
 	w.Write(btsErrorVersion)
 }
-
-func nonZero(a, b int) int {
-	if a != 0 {
-		return a
-	}
-	return b
-}

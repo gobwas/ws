@@ -77,7 +77,7 @@ func randBytes(n int) []byte {
 	return bts
 }
 
-func newNonce(dest []byte) {
+func putNewNonce(dest []byte) {
 	base64.StdEncoding.Encode(dest, randBytes(nonceKeySize))
 }
 
