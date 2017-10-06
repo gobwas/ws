@@ -390,20 +390,15 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	if u.Header != nil {
 		hw.add(u.Header)
 	}
-	for {
+	for err == nil {
 		line, e := readLine(br)
 		if e != nil {
 			err = e
 			return
 		}
-		// Blank line, no more lines to read.
 		if len(line) == 0 {
+			// Blank line, no more lines to read.
 			break
-		}
-		// If we already have an error just read out whole request without
-		// processing.
-		if err != nil {
-			continue
 		}
 
 		k, v, ok := httpParseHeaderLine(line)
@@ -417,9 +412,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		switch btsToString(k) {
 		case headerHost:
 			headerSeen |= headerSeenHost
-			if len(v) == 0 {
-				err = ErrBadHost
-			} else if onRequest := u.OnRequest; onRequest != nil {
+			if onRequest := u.OnRequest; onRequest != nil {
 				if e, c := onRequest(v, req.uri); e != nil {
 					err = e
 					code = c
