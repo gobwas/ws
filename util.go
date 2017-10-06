@@ -304,3 +304,10 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func nonZero(a, b int) int {
+	if a != 0 {
+		return a
+	}
+	return b
+}
