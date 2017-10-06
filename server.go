@@ -63,12 +63,12 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if r.Method != http.MethodGet {
 		err = ErrBadHttpRequestMethod
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusMethodNotAllowed)
 		return
 	}
 	if r.ProtoMajor < 1 || (r.ProtoMajor == 1 && r.ProtoMinor < 1) {
 		err = ErrBadHttpProto
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusHTTPVersionNotSupported)
 		return
 	}
 	if r.Host == "" {
@@ -327,7 +327,6 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		)
 		defer pbufio.PutReader(br)
 	}
-
 	// Read HTTP request line like "GET /ws HTTP/1.1".
 	rl, err := readLine(br)
 	if err != nil {
@@ -345,23 +344,40 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		)
 		defer pbufio.PutWriter(bw)
 	}
+	// Use default http status code for errors.
+	code := http.StatusBadRequest
 
-	// See https://tools.ietf.org/html/rfc6455#section-4.1
-	// The method of the request MUST be GET, and the HTTP version MUST be at
-	// least 1.1.
+	// Parse and check HTTP request.
+	// As RFC6455 says:
+	//   The client's opening handshake consists of the following parts. If the
+	//   server, while reading the handshake, finds that the client did not
+	//   send a handshake that matches the description below (note that as per
+	//   [RFC2616], the order of the header fields is not important), including
+	//   but not limited to any violations of the ABNF grammar specified for
+	//   the components of the handshake, the server MUST stop processing the
+	//   client's handshake and return an HTTP response with an appropriate
+	//   error code (such as 400 Bad Request).
+	//
+	// See https://tools.ietf.org/html/rfc6455#section-4.2.1
+
+	// An HTTP/1.1 or higher GET request, including a "Request-URI".
+	//
+	// Even if RFC says "1.1 or higher" without mentioning the part of the
+	// version, we apply it only to minor part.
+	if req.major != 1 || req.minor < 1 {
+		// Abort processing the whole request because we do not even know how
+		// to actually parse it.
+		err = ErrBadHttpProto
+		httpWriteResponseError(bw, err, http.StatusHTTPVersionNotSupported, nil)
+		bw.Flush()
+		return
+	}
 	if btsToString(req.method) != http.MethodGet {
 		err = ErrBadHttpRequestMethod
-		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
+		httpWriteResponseError(bw, err, http.StatusMethodNotAllowed, nil)
 		bw.Flush()
 		return
 	}
-	if req.major < 1 || (req.major == 1 && req.minor < 1) {
-		err = ErrBadHttpProto
-		httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
-		bw.Flush()
-		return
-	}
-
 	// Start headers read/parse loop.
 	var (
 		// headerSeen reports which header was seen by setting corresponding
@@ -372,10 +388,6 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		hcb func(io.Writer)
 		hw  headerWriter
 	)
-
-	// Use default http status code for errors.
-	code := http.StatusBadRequest
-
 	if u.Header != nil {
 		hw.add(u.Header)
 	}
@@ -398,6 +410,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		k, v, ok := httpParseHeaderLine(line)
 		if !ok {
 			err = ErrMalformedHttpRequest
+			httpWriteResponseError(bw, err, http.StatusBadRequest, nil)
+			bw.Flush()
 			return
 		}
 
@@ -444,10 +458,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				// HTTP error code (such as 426 Upgrade Required) and a
 				// |Sec-WebSocket-Version| header field indicating the
 				// version(s) the server is capable of understanding.
+				hw.add(headerWriterSecVersion)
 				err = ErrBadSecVersion
 				code = http.StatusUpgradeRequired
-
-				hw.add(headerWriterSecVersion)
 			}
 
 		case headerSecProtocol:
@@ -485,11 +498,21 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			}
 		}
 	}
-
 	switch {
 	case err == nil && headerSeen != headerSeenAll:
 		switch {
 		case headerSeen&headerSeenHost == 0:
+			// As RFC2616 says:
+			//   A client MUST include a Host header field in all HTTP/1.1
+			//   request messages. If the requested URI does not include an
+			//   Internet host name for the service being requested, then the
+			//   Host header field MUST be given with an empty value. An
+			//   HTTP/1.1 proxy MUST ensure that any request message it
+			//   forwards does contain an appropriate Host header field that
+			//   identifies the service being requested by the proxy. All
+			//   Internet-based HTTP/1.1 servers MUST respond with a 400 (Bad
+			//   Request) status code to any HTTP/1.1 request message which
+			//   lacks a Host header field.
 			err = ErrBadHost
 		case headerSeen&headerSeenUpgrade == 0:
 			err = ErrBadUpgrade
@@ -518,7 +541,6 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			hw.add(hcb)
 		}
 	}
-
 	if err != nil {
 		httpWriteResponseError(bw, err, code, hw.flush)
 		// Do not store Flush() error to not override already existing one.
