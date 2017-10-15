@@ -47,16 +47,14 @@ func releaseSha1(h hash.Hash) {
 	sha1Pool.Put(h)
 }
 
-// TODO(gobwas): bench put expect to req as array
 func checkNonce(accept []byte, nonce [nonceSize]byte) bool {
 	if len(accept) != acceptSize {
 		return false
 	}
-
-	var expect [acceptSize]byte
-	putAccept(nonce, expect[:])
-
-	return bytes.Equal(expect[:], accept)
+	// NOTE: expect does not escapes.
+	expect := make([]byte, acceptSize)
+	putAccept(nonce, expect)
+	return bytes.Equal(expect, accept)
 }
 
 //const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -69,16 +67,13 @@ func checkNonce(accept []byte, nonce [nonceSize]byte) bool {
 //	dest[23] = '='
 //}
 
-func randBytes(n int) []byte {
-	bts := make([]byte, n)
+func putNewNonce(dest []byte) {
+	// NOTE: bts does not escapes.
+	bts := make([]byte, nonceKeySize)
 	if _, err := rand.Read(bts); err != nil {
 		panic(fmt.Sprintf("rand read error: %s", err))
 	}
-	return bts
-}
-
-func putNewNonce(dest []byte) {
-	base64.StdEncoding.Encode(dest, randBytes(nonceKeySize))
+	base64.StdEncoding.Encode(dest, bts)
 }
 
 // putAccept generates accept bytes and puts them into p.
