@@ -238,7 +238,14 @@ func httpWriteHeaderKey(bw *bufio.Writer, key string) {
 	bw.WriteString(colonAndSpace)
 }
 
-func httpWriteUpgradeRequest(bw *bufio.Writer, u *url.URL, nonce [nonceSize]byte, protocols []string, extensions []httphead.Option, hw func(io.Writer)) {
+func httpWriteUpgradeRequest(
+	bw *bufio.Writer,
+	u *url.URL,
+	nonce []byte,
+	protocols []string,
+	extensions []httphead.Option,
+	hw func(io.Writer),
+) {
 	bw.WriteString("GET ")
 	bw.WriteString(u.RequestURI())
 	bw.WriteString(" HTTP/1.1\r\n")
