@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -144,7 +144,7 @@ func BenchmarkCheckNonce(b *testing.B) {
 
 	accept := makeAccept(nonce)
 
-	b.StartTimer()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = checkNonce(accept, nonce)
 	}
@@ -664,6 +664,79 @@ func TestDialerCancelation(t *testing.T) {
 				t.Fatalf("unexpected error: %v; want %v", err, test.err)
 			}
 		})
+	}
+}
+
+func BenchmarkDialer(b *testing.B) {
+	for _, test := range []struct {
+		dialer   Dialer
+		response *http.Response
+	}{
+		{
+			dialer: DefaultDialer,
+		},
+	} {
+		// We need to "mock" the rand.Read method used to generate nonce random
+		// bytes for Sec-WebSocket-Key header.
+		rand.Seed(0)
+		need := b.N * nonceKeySize
+		nonceBytes := make([]byte, need)
+		n, err := rand.Read(nonceBytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if n != need {
+			b.Fatalf("not enough random nonce bytes: %d; want %d", n, need)
+		}
+		rand.Seed(0)
+
+		resp := &http.Response{
+			StatusCode: 101,
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header: http.Header{
+				headerConnection: []string{"Upgrade"},
+				headerUpgrade:    []string{"websocket"},
+				headerSecAccept:  []string{"fill it later"},
+			},
+		}
+		rs := make([][]byte, b.N)
+		for i := range rs {
+			var nonce [nonceSize]byte
+			base64.StdEncoding.Encode(
+				nonce[:],
+				nonceBytes[i*nonceKeySize:i*nonceKeySize+nonceKeySize],
+			)
+			accept := makeAccept(nonce)
+			resp.Header.Set(headerSecAccept, string(accept))
+			rs[i] = dumpResponse(resp)
+		}
+
+		var i int
+		conn := stubConn{
+			read: func(p []byte) (int, error) {
+				bts := rs[i]
+				if len(p) < len(bts) {
+					b.Fatalf("short buffer")
+				}
+				return copy(p, bts), io.EOF
+			},
+			write: func(p []byte) (int, error) {
+				return len(p), nil
+			},
+		}
+		var nc net.Conn = conn
+		test.dialer.NetDial = func(_ context.Context, net, addr string) (net.Conn, error) {
+			return nc, nil
+		}
+
+		b.ResetTimer()
+		for i = 0; i < b.N; i++ {
+			_, _, _, err := test.dialer.Dial(context.Background(), "ws://example.org")
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
 	}
 }
 

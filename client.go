@@ -256,7 +256,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	var nonce [nonceSize]byte
 	putNewNonce(nonce[:])
 
-	httpWriteUpgradeRequest(bw, u, nonce, d.Protocols, d.Extensions, d.Header)
+	httpWriteUpgradeRequest(bw, u, nonce[:], d.Protocols, d.Extensions, d.Header)
 	if err = bw.Flush(); err != nil {
 		return
 	}
