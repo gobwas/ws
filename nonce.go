@@ -57,7 +57,7 @@ func releaseSha1(h hash.Hash) {
 	sha1Pool.Put(h)
 }
 
-// initNonce fills dst with random base64-encoded bytes.
+// initNonce fills given slice with random base64-encoded nonce bytes.
 func initNonce(dst []byte) {
 	// NOTE: bts does not escapes.
 	bts := make([]byte, nonceKeySize)
@@ -67,7 +67,8 @@ func initNonce(dst []byte) {
 	base64.StdEncoding.Encode(dst, bts)
 }
 
-// checkAcceptFromNonce reports whether accept bytes are valid for given nonce.
+// checkAcceptFromNonce reports whether given accept bytes are valid for given
+// nonce bytes.
 func checkAcceptFromNonce(accept, nonce []byte) bool {
 	if len(accept) != acceptSize {
 		return false
@@ -78,8 +79,8 @@ func checkAcceptFromNonce(accept, nonce []byte) bool {
 	return bytes.Equal(expect, accept)
 }
 
-// initAcceptFromNonce puts accept bytes them into p.
-// Given buffer should be exactly acceptSize bytes.
+// initAcceptFromNonce fills given slice with accept bytes generated from given
+// nonce bytes. Given buffer should be exactly acceptSize bytes.
 func initAcceptFromNonce(dst, nonce []byte) {
 	if len(dst) != acceptSize {
 		panic("accept buffer is invalid")

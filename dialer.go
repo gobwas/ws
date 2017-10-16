@@ -114,12 +114,11 @@ type Dialer struct {
 }
 
 // Dial connects to the url host and handshakes connection to websocket.
-// Set of additional headers could be passed to be sent with the request.
 //
 // It could return non-nil bufio.Reader which contains unprocessed data from
 // the server. If err is nil, it could be the frames sent by the server right
 // after successful handshake. If err type is StatusError, then buffer may
-// contain request data (with headers part) except the first so called
+// contain response data (with headers part) except the first so called
 // status-line (which was read to detect non-101 status error). In other cases
 // returned bufio.Reader is always nil. For better memory efficiency received
 // non-nil bufio.Reader must be returned to the inner pool via PutReader()
