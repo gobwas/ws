@@ -44,6 +44,18 @@ func NewReader(r io.Reader, s ws.State) *Reader {
 	}
 }
 
+// NewClientSideReader is a helper function that calls NewReader with r and
+// ws.StateClientSide.
+func NewClientSideReader(r io.Reader) *Reader {
+	return NewReader(r, ws.StateClientSide)
+}
+
+// NewServerSideReader is a helper function that calls NewReader with r and
+// ws.StateServerSide.
+func NewServerSideReader(r io.Reader) *Reader {
+	return NewReader(r, ws.StateServerSide)
+}
+
 // Read implements io.Reader. It reads the next message payload into p. It
 // takes care on fragmented messages.
 //
