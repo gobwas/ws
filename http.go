@@ -221,6 +221,54 @@ func btsSelectExtensions(h []byte, selected []httphead.Option, check func(httphe
 	return s.Select(h, selected)
 }
 
+func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option) ([]httphead.Option, error) {
+	if len(selected) == 0 {
+		return received, nil
+	}
+	var (
+		index  int
+		option httphead.Option
+		err    error
+	)
+	index = -1
+	match := func() (ok bool) {
+		for _, want := range wanted {
+			if option.Equal(want) {
+				// Check parsed extension to be present in client
+				// requested extensions. We move matched extension
+				// from client list to avoid allocation.
+				received = append(received, want)
+				return true
+			}
+		}
+		return false
+	}
+	ok := httphead.ScanOptions(selected, func(i int, name, attr, val []byte) httphead.Control {
+		if i != index {
+			// Met next option.
+			index = i
+			if i != 0 && !match() {
+				// Server returned non-requested extension.
+				err = ErrBadExtensions
+				return httphead.ControlBreak
+			}
+			option = httphead.Option{Name: name}
+		}
+		if attr != nil {
+			option.Parameters.Set(attr, val)
+		}
+		return httphead.ControlContinue
+	})
+	if !ok {
+		err = ErrMalformedHttpResponse
+		return received, err
+	}
+	if !match() {
+		return received, ErrBadExtensions
+	}
+	return received, err
+}
+
 func httpWriteHeader(bw *bufio.Writer, key, value string) {
 	httpWriteHeaderKey(bw, key)
 	bw.WriteString(value)
