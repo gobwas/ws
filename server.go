@@ -252,22 +252,22 @@ type Upgrader struct {
 	// with appropriate http status.
 	OnHeader func(key, value []byte) (err error, code int)
 
-	// BeforeUpgrade is a callback that will be called before sending
+	// OnBeforeUpgrade is a callback that will be called before sending
 	// successful upgrade response.
 	//
-	// Setting BeforeUpgrade allows user to make final application-level
+	// Setting OnBeforeUpgrade allows user to make final application-level
 	// checks and decide whether this connection is allowed to successfully
 	// upgrade to WebSocket. That is, the session checks and other application
 	// logic could be contained inside this callback.
 	//
-	// BeforeUpgrade could return header writer callback, that will be called
+	// OnBeforeUpgrade could return header writer callback, that will be called
 	// to provide some user land http headers in response.
 	//
-	// If by some reason connection should not be upgraded then BeforeUpgrade
+	// If by some reason connection should not be upgraded then OnBeforeUpgrade
 	// should return error and appropriate http status code.
 	//
 	// Note that header writer callback will be called even if err is non-nil.
-	BeforeUpgrade func() (header func(io.Writer), err error, code int)
+	OnBeforeUpgrade func() (header func(io.Writer), err error, code int)
 
 	// TODO(gobwas): maybe use here io.WriterTo or something similar instead of
 	// error missing header callback?
@@ -527,8 +527,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			panic("unknown headers state")
 		}
 
-	case err == nil && u.BeforeUpgrade != nil:
-		hcb, err, code = u.BeforeUpgrade()
+	case err == nil && u.OnBeforeUpgrade != nil:
+		hcb, err, code = u.OnBeforeUpgrade()
 		if hcb != nil {
 			hw.add(hcb)
 		}
