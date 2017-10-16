@@ -281,7 +281,7 @@ func httpWriteUpgradeRequest(
 	bw.WriteString(crlf)
 }
 
-func httpWriteResponseUpgrade(bw *bufio.Writer, nonce [nonceSize]byte, hs Handshake, hw func(io.Writer)) {
+func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, hw func(io.Writer)) {
 	bw.WriteString(textUpgrade)
 
 	httpWriteHeaderKey(bw, headerSecAccept)

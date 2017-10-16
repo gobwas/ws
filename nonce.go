@@ -35,6 +35,16 @@ var WebSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 var sha1Pool sync.Pool
 
+// nonce helps to put nonce bytes on the stack and then retreive stack-backed
+// slice with unsafe.
+type nonce [nonceSize]byte
+
+func (n *nonce) bytes() []byte {
+	h := uintptr(unsafe.Pointer(n))
+	b := &reflect.SliceHeader{Data: h, Len: nonceSize, Cap: nonceSize}
+	return *(*[]byte)(unsafe.Pointer(b))
+}
+
 func acquireSha1() hash.Hash {
 	if h := sha1Pool.Get(); h != nil {
 		return h.(hash.Hash)
@@ -47,65 +57,65 @@ func releaseSha1(h hash.Hash) {
 	sha1Pool.Put(h)
 }
 
-func checkNonce(accept []byte, nonce [nonceSize]byte) bool {
-	if len(accept) != acceptSize {
-		return false
-	}
-	// NOTE: expect does not escapes.
-	expect := make([]byte, acceptSize)
-	putAccept(nonce, expect)
-	return bytes.Equal(expect, accept)
-}
-
-//const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-//
-//func newNonce(dest []byte) {
-//	for i := 0; i < 22; i++ {
-//		dest[i] = alphabet[rand.Intn(len(alphabet))]
-//	}
-//	dest[22] = '='
-//	dest[23] = '='
-//}
-
-func putNewNonce(dest []byte) {
+// initNonce fills dst with random base64-encoded bytes.
+func initNonce(dst []byte) {
 	// NOTE: bts does not escapes.
 	bts := make([]byte, nonceKeySize)
 	if _, err := rand.Read(bts); err != nil {
 		panic(fmt.Sprintf("rand read error: %s", err))
 	}
-	base64.StdEncoding.Encode(dest, bts)
+	base64.StdEncoding.Encode(dst, bts)
 }
 
-// putAccept generates accept bytes and puts them into p.
-// Given buffer should be exactly acceptSize bytes. If not putAccept will panic.
-func putAccept(nonce [nonceSize]byte, p []byte) {
-	if len(p) != acceptSize {
-		panic(fmt.Sprintf("buffer size is %d; want %d", len(p), acceptSize))
+// checkAcceptFromNonce reports whether accept bytes are valid for given nonce.
+func checkAcceptFromNonce(accept, nonce []byte) bool {
+	if len(accept) != acceptSize {
+		return false
+	}
+	// NOTE: expect does not escapes.
+	expect := make([]byte, acceptSize)
+	initAcceptFromNonce(expect, nonce)
+	return bytes.Equal(expect, accept)
+}
+
+// initAcceptFromNonce puts accept bytes them into p.
+// Given buffer should be exactly acceptSize bytes.
+func initAcceptFromNonce(dst, nonce []byte) {
+	if len(dst) != acceptSize {
+		panic("accept buffer is invalid")
+	}
+	if len(nonce) != nonceSize {
+		panic("nonce is invalid")
 	}
 
 	sha := acquireSha1()
 	defer releaseSha1(sha)
 
+	sha.Write(nonce)
+	sha.Write(WebSocketMagic)
+
 	var sb [sha1.Size]byte
 	sh := uintptr(unsafe.Pointer(&sb))
-	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: sh, Len: 0, Cap: sha1.Size}))
-
-	nh := uintptr(unsafe.Pointer(&nonce))
-	nb := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: nh, Len: nonceSize, Cap: nonceSize}))
-
-	sha.Write(nb)
-	sha.Write(WebSocketMagic)
+	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: sh,
+		Len:  0,
+		Cap:  sha1.Size,
+	}))
 	sum = sha.Sum(sum)
 
-	base64.StdEncoding.Encode(p, sum)
+	base64.StdEncoding.Encode(dst, sum)
 }
 
-func writeAccept(w io.Writer, nonce [nonceSize]byte) (int, error) {
+func writeAccept(w io.Writer, nonce []byte) (int, error) {
 	var b [acceptSize]byte
 	bp := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: bp, Len: acceptSize, Cap: acceptSize}))
+	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: bp,
+		Len:  acceptSize,
+		Cap:  acceptSize,
+	}))
 
-	putAccept(nonce, bts)
+	initAcceptFromNonce(bts, nonce)
 
 	return w.Write(bts)
 }
