@@ -363,27 +363,8 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			}
 
 		case headerSecExtensions:
-			var ok bool
-			n := len(hs.Extensions)
-			// NOTE: we can try to increase performance here by scanning
-			// options and appending to the hs.Extensions not the parsed
-			// option, but option from d.Extensions – that is, like in
-			// headerSecProtocol section we avoid copying of a header value.
-			hs.Extensions, ok = httphead.ParseOptions(v, hs.Extensions)
-			if !ok {
-				err = ErrMalformedHttpResponse
-				return
-			}
-			// Check newly parsed extensions to be present in client requested
-			// extensions.
-		check:
-			for i := n; i < len(hs.Extensions); i++ {
-				for _, want := range d.Extensions {
-					if hs.Extensions[i].Equal(want) {
-						continue check
-					}
-				}
-				err = ErrBadExtensions
+			hs.Extensions, err = matchSelectedExtensions(v, d.Extensions, hs.Extensions)
+			if err != nil {
 				return
 			}
 
