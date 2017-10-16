@@ -1,6 +1,14 @@
 package ws
 
-import "testing"
+import (
+	"bufio"
+	"io"
+	"io/ioutil"
+	"net/url"
+	"testing"
+
+	"github.com/gobwas/httphead"
+)
 
 type httpVersionCase struct {
 	in    []byte
@@ -38,4 +46,41 @@ func BenchmarkParseHttpVersion(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
+	for _, test := range []struct {
+		url        *url.URL
+		protocols  []string
+		extensions []httphead.Option
+		headers    func(io.Writer)
+	}{
+		{
+			url: makeURL("ws://example.org"),
+		},
+	} {
+		bw := bufio.NewWriter(ioutil.Discard)
+		nonce := make([]byte, nonceSize)
+		putNewNonce(nonce)
+		b.ResetTimer()
+		b.Run("", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				httpWriteUpgradeRequest(bw,
+					test.url,
+					nonce,
+					test.protocols,
+					test.extensions,
+					test.headers,
+				)
+			}
+		})
+	}
+}
+
+func makeURL(s string) *url.URL {
+	ret, err := url.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return ret
 }

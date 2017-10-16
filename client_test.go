@@ -4,23 +4,166 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/gobwas/httphead"
 )
 
+func TestDialerRequest(t *testing.T) {
+	for _, test := range []struct {
+		dialer Dialer
+		url    string
+		exp    *http.Request
+		err    bool
+	}{
+		{
+			url: "wss://example.org/chat",
+			exp: setHttpProto(1, 1,
+				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
+					headerUpgrade:    []string{"websocket"},
+					headerConnection: []string{"Upgrade"},
+					headerSecVersion: []string{"13"},
+					headerSecKey:     []string{"some key"},
+				}),
+			),
+		},
+		{
+			dialer: Dialer{
+				Protocols: []string{"foo", "bar"},
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+				Header: func(w io.Writer) {
+					http.Header{
+						"Origin": []string{"who knows"},
+					}.Write(w)
+				},
+			},
+			url: "wss://example.org/chat",
+			exp: setHttpProto(1, 1,
+				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
+					headerUpgrade:    []string{"websocket"},
+					headerConnection: []string{"Upgrade"},
+					headerSecVersion: []string{"13"},
+					headerSecKey:     []string{"some key"},
+
+					headerSecProtocol:   []string{"foo, bar"},
+					headerSecExtensions: []string{"foo;bar=1,baz"},
+
+					"Origin": []string{"who knows"},
+				}),
+			),
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			u, err := url.ParseRequestURI(test.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var ErrStub = errors.New("stub")
+			var buf bytes.Buffer
+			conn := stubConn{
+				read: func(p []byte) (int, error) {
+					return 0, ErrStub
+				},
+				write: func(p []byte) (int, error) {
+					return buf.Write(p)
+				},
+			}
+
+			_, _, err = test.dialer.request(context.Background(), &conn, u)
+			if err == ErrStub {
+				err = nil
+			}
+			if test.err && err == nil {
+				t.Errorf("expected error; got nil")
+			}
+			if !test.err && err != nil {
+				t.Errorf("unexpected error: %s", err)
+			}
+			if test.err {
+				return
+			}
+
+			act := buf.Bytes()
+			exp := dumpRequest(test.exp)
+
+			act = sortHeaders(maskHeader(act, headerSecKey, "<masked>"))
+			exp = sortHeaders(maskHeader(exp, headerSecKey, "<masked>"))
+
+			if !bytes.Equal(act, exp) {
+				t.Errorf("unexpected request:\nact:\n%s\nexp:\n%s\n", act, exp)
+			}
+			if _, err := http.ReadRequest(bufio.NewReader(&buf)); err != nil {
+				t.Errorf("read request error: %s", err)
+				return
+			}
+		})
+	}
+}
+
+func makeAccept(nonce []byte) []byte {
+	accept := make([]byte, acceptSize)
+	putAcceptNonce(accept, nonce)
+	return accept
+}
+
+func BenchmarkPutAccept(b *testing.B) {
+	nonce := make([]byte, nonceSize)
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+	p := make([]byte, acceptSize)
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		putAcceptNonce(p, nonce)
+	}
+}
+
+func BenchmarkCheckNonce(b *testing.B) {
+	nonce := make([]byte, nonceSize)
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	accept := makeAccept(nonce)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = checkNonceAccept(nonce, accept)
+	}
+}
+
 func TestDialerHandshake(t *testing.T) {
-	for i, test := range []struct {
-		res       *http.Response
-		accept    bool
-		protocols []string
-		err       error
+	const (
+		acceptNo = iota
+		acceptInvalid
+		acceptValid
+	)
+	for _, test := range []struct {
+		name       string
+		dialer     Dialer
+		res        *http.Response
+		frames     []Frame
+		accept     int
+		err        error
+		wantBuffer bool
 	}{
 		{
 			res: &http.Response{
@@ -32,9 +175,12 @@ func TestDialerHandshake(t *testing.T) {
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 		},
 		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+			},
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -45,59 +191,241 @@ func TestDialerHandshake(t *testing.T) {
 					headerSecProtocol: []string{"json"},
 				},
 			},
-			protocols: []string{"xml", "json", "soap"},
-			accept:    true,
+			accept: acceptValid,
 		},
 		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo;bar=1"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			dialer: Dialer{
+				Protocols: []string{"xml", "json", "soap"},
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+					httphead.NewOption("baz", nil),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecProtocol:   []string{"json"},
+					headerSecExtensions: []string{"foo;bar=1"},
+				},
+			},
+			accept: acceptValid,
+		},
+		{
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+			frames: []Frame{
+				NewTextFrame("hello, gopherizer!"),
+			},
+			wantBuffer: true,
+		},
+		{
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+				Body:          ioutil.NopCloser(bytes.NewReader([]byte(`hello, gopher!`))),
+				ContentLength: 14,
+			},
+			accept:     acceptValid,
+			wantBuffer: true,
+		},
+
+		// Error cases.
+
+		{
+			name: "bad proto",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 2,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+			},
+			err: ErrBadHttpProto,
+		},
+		{
+			name: "bad status",
 			res: &http.Response{
 				StatusCode: 400,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
-				Header: http.Header{
-					headerConnection: []string{"Upgrade"},
-					headerUpgrade:    []string{"websocket"},
-				},
+				Header:     make(http.Header),
 			},
-			err: ErrBadStatus,
+			err:        StatusError{400, http.StatusText(400)},
+			wantBuffer: true,
 		},
 		{
+			name: "bad status with body",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: 400,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
-				Header: http.Header{
-					headerConnection: []string{"Error"},
-					headerUpgrade:    []string{"websocket"},
-				},
+				Header:     make(http.Header),
+				Body: ioutil.NopCloser(bytes.NewReader(
+					[]byte(`<error description here>`),
+				)),
+				ContentLength: 24,
 			},
-			err: ErrBadConnection,
+			err:        StatusError{400, http.StatusText(400)},
+			wantBuffer: true,
 		},
 		{
-			res: &http.Response{
-				StatusCode: 101,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header: http.Header{
-					headerConnection: []string{"Upgrade"},
-					headerUpgrade:    []string{"iproto"},
-				},
-			},
-			err: ErrBadUpgrade,
-		},
-		{
+			name: "bad upgrade",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
 					headerConnection: []string{"Upgrade"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadUpgrade,
+		},
+		{
+			name: "bad upgrade",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"oops"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadUpgrade,
+		},
+		{
+			name: "bad connection",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerUpgrade: []string{"websocket"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadConnection,
+		},
+		{
+			name: "bad connection",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"oops!"},
 					headerUpgrade:    []string{"websocket"},
 				},
 			},
-			accept: false,
+			accept: acceptValid,
+			err:    ErrBadConnection,
+		},
+		{
+			name: "bad accept",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptInvalid,
 			err:    ErrBadSecAccept,
 		},
 		{
+			name: "bad accept",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection: []string{"Upgrade"},
+					headerUpgrade:    []string{"websocket"},
+				},
+			},
+			accept: acceptNo,
+			err:    ErrBadSecAccept,
+		},
+		{
+			name: "bad subprotocol",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -105,38 +433,87 @@ func TestDialerHandshake(t *testing.T) {
 				Header: http.Header{
 					headerConnection:  []string{"Upgrade"},
 					headerUpgrade:     []string{"websocket"},
-					headerSecProtocol: []string{"oops"},
+					headerSecProtocol: []string{"oops!"},
 				},
 			},
-			accept: true,
+			accept: acceptValid,
 			err:    ErrBadSubProtocol,
 		},
+		{
+			name: "bad extensions",
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo,bar;baz=1"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadExtensions,
+		},
+		{
+			name: "bad extensions",
+			dialer: Dialer{
+				Extensions: []httphead.Option{
+					httphead.NewOption("foo", map[string]string{
+						"bar": "1",
+					}),
+				},
+			},
+			res: &http.Response{
+				StatusCode: 101,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header: http.Header{
+					headerConnection:    []string{"Upgrade"},
+					headerUpgrade:       []string{"websocket"},
+					headerSecExtensions: []string{"foo;bar=2"},
+				},
+			},
+			accept: acceptValid,
+			err:    ErrBadExtensions,
+		},
 	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			rb := &bytes.Buffer{}
 			wb := &bytes.Buffer{}
 			wbuf := bufio.NewReader(wb)
 
 			sig := make(chan struct{})
 			go func() {
+				// This routine is our fake web-server. It reads request after
+				// client wrote it. Then it optinally could send some frames
+				// set in test case.
 				<-sig
 				req, err := http.ReadRequest(wbuf)
 				if err != nil {
 					t.Fatal(err)
 				}
-				var nonce string
-				if test.accept {
-					nonce = req.Header.Get(headerSecKey)
-				} else {
+
+				switch test.accept {
+				case acceptInvalid:
 					k := make([]byte, nonceSize)
 					rand.Read(k)
-					nonce = string(k)
+					nonce := string(k)
+					accept := makeAccept(strToBytes(nonce))
+					test.res.Header.Set(headerSecAccept, string(accept))
+				case acceptValid:
+					nonce := req.Header.Get(headerSecKey)
+					accept := makeAccept(strToBytes(nonce))
+					test.res.Header.Set(headerSecAccept, string(accept))
 				}
 
-				accept := makeAccept(strToNonce(nonce))
-				test.res.Header.Set(headerSecAccept, accept)
 				test.res.Request = req
-				test.res.Write(rb)
+				rb.Write(dumpResponse(test.res))
+
+				for _, f := range test.frames {
+					if err := WriteFrame(rb, f); err != nil {
+						t.Fatal(err)
+					}
+				}
 
 				sig <- struct{}{}
 			}()
@@ -154,21 +531,38 @@ func TestDialerHandshake(t *testing.T) {
 				close: func() error { return nil },
 			}
 
-			pr := stubReadPool{}
-			pw := stubWritePool{}
-
-			d := Dialer{
-				Protocol: test.protocols,
-				NetDial: func(_ context.Context, _, _ string) (net.Conn, error) {
-					return conn, nil
-				},
-				ReaderPool: &pr,
-				WriterPool: &pw,
+			test.dialer.NetDial = func(_ context.Context, _, _ string) (net.Conn, error) {
+				return conn, nil
 			}
 
-			_, _, err := d.Dial(context.Background(), "ws://gobwas.com", nil)
+			_, br, _, err := test.dialer.Dial(context.Background(), "ws://gobwas.com")
 			if test.err != err {
 				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
+			}
+
+			if test.wantBuffer && br == nil {
+				t.Fatalf("Dial() returned empty bufio.Reader")
+			}
+			if !test.wantBuffer && br != nil {
+				t.Fatalf("Dial() returned non-empty bufio.Reader")
+			}
+			for i, exp := range test.frames {
+				act, err := ReadFrame(br)
+				if err != nil {
+					t.Fatalf("can not read %d-th frame: %v", i, err)
+				}
+				if act.Header != exp.Header {
+					t.Fatalf(
+						"unexpected %d-th frame header: %v; want %v",
+						i, act.Header, exp.Header,
+					)
+				}
+				if !bytes.Equal(act.Payload, exp.Payload) {
+					t.Fatalf(
+						"unexpected %d-th frame payload:\n%v\nwant:\n%v",
+						i, act.Payload, exp.Payload,
+					)
+				}
 			}
 		})
 	}
@@ -265,7 +659,7 @@ func TestDialerCancelation(t *testing.T) {
 				time.AfterFunc(t, cancel)
 			}
 
-			_, _, err := d.Dial(ctx, "ws://gobwas.com", nil)
+			_, _, _, err := d.Dial(ctx, "ws://gobwas.com")
 			if err != test.err {
 				t.Fatalf("unexpected error: %v; want %v", err, test.err)
 			}
@@ -273,30 +667,76 @@ func TestDialerCancelation(t *testing.T) {
 	}
 }
 
-func TestHostPortResolve(t *testing.T) {
+func BenchmarkDialer(b *testing.B) {
 	for _, test := range []struct {
-		url *url.URL
-		ret string
+		dialer   Dialer
+		response *http.Response
 	}{
 		{
-			url: &url.URL{Host: "example.com", Scheme: "ws"},
-			ret: "example.com:80",
-		},
-		{
-			url: &url.URL{Host: "example.com", Scheme: "wss"},
-			ret: "example.com:443",
-		},
-		{
-			url: &url.URL{Host: "example.com:3000", Scheme: "wss"},
-			ret: "example.com:3000",
+			dialer: DefaultDialer,
 		},
 	} {
-		t.Run(test.url.String(), func(t *testing.T) {
-			ret := hostport(test.url)
-			if test.ret != ret {
-				t.Errorf("expected %s; got %s", test.ret, ret)
+		// We need to "mock" the rand.Read method used to generate nonce random
+		// bytes for Sec-WebSocket-Key header.
+		rand.Seed(0)
+		need := b.N * nonceKeySize
+		nonceBytes := make([]byte, need)
+		n, err := rand.Read(nonceBytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if n != need {
+			b.Fatalf("not enough random nonce bytes: %d; want %d", n, need)
+		}
+		rand.Seed(0)
+
+		resp := &http.Response{
+			StatusCode: 101,
+			ProtoMajor: 1,
+			ProtoMinor: 1,
+			Header: http.Header{
+				headerConnection: []string{"Upgrade"},
+				headerUpgrade:    []string{"websocket"},
+				headerSecAccept:  []string{"fill it later"},
+			},
+		}
+		rs := make([][]byte, b.N)
+		for i := range rs {
+			nonce := make([]byte, nonceSize)
+			base64.StdEncoding.Encode(
+				nonce,
+				nonceBytes[i*nonceKeySize:i*nonceKeySize+nonceKeySize],
+			)
+			accept := makeAccept(nonce)
+			resp.Header.Set(headerSecAccept, string(accept))
+			rs[i] = dumpResponse(resp)
+		}
+
+		var i int
+		conn := stubConn{
+			read: func(p []byte) (int, error) {
+				bts := rs[i]
+				if len(p) < len(bts) {
+					b.Fatalf("short buffer")
+				}
+				return copy(p, bts), io.EOF
+			},
+			write: func(p []byte) (int, error) {
+				return len(p), nil
+			},
+		}
+		var nc net.Conn = conn
+		test.dialer.NetDial = func(_ context.Context, net, addr string) (net.Conn, error) {
+			return nc, nil
+		}
+
+		b.ResetTimer()
+		for i = 0; i < b.N; i++ {
+			_, _, _, err := test.dialer.Dial(context.Background(), "ws://example.org")
+			if err != nil {
+				b.Fatal(err)
 			}
-		})
+		}
 	}
 }
 
