@@ -116,14 +116,14 @@ func TestDialerRequest(t *testing.T) {
 	}
 }
 
-func makeAccept(nonce [nonceSize]byte) []byte {
+func makeAccept(nonce []byte) []byte {
 	accept := make([]byte, acceptSize)
-	putAccept(nonce, accept)
+	putAcceptNonce(accept, nonce)
 	return accept
 }
 
 func BenchmarkPutAccept(b *testing.B) {
-	var nonce [nonceSize]byte
+	nonce := make([]byte, nonceSize)
 	_, err := rand.Read(nonce[:])
 	if err != nil {
 		b.Fatal(err)
@@ -131,12 +131,12 @@ func BenchmarkPutAccept(b *testing.B) {
 	p := make([]byte, acceptSize)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		putAccept(nonce, p)
+		putAcceptNonce(p, nonce)
 	}
 }
 
 func BenchmarkCheckNonce(b *testing.B) {
-	var nonce [nonceSize]byte
+	nonce := make([]byte, nonceSize)
 	_, err := rand.Read(nonce[:])
 	if err != nil {
 		b.Fatal(err)
@@ -146,7 +146,7 @@ func BenchmarkCheckNonce(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = checkNonce(accept, nonce)
+		_ = checkNonceAccept(nonce, accept)
 	}
 }
 
@@ -498,11 +498,11 @@ func TestDialerHandshake(t *testing.T) {
 					k := make([]byte, nonceSize)
 					rand.Read(k)
 					nonce := string(k)
-					accept := makeAccept(strToNonce(nonce))
+					accept := makeAccept(strToBytes(nonce))
 					test.res.Header.Set(headerSecAccept, string(accept))
 				case acceptValid:
 					nonce := req.Header.Get(headerSecKey)
-					accept := makeAccept(strToNonce(nonce))
+					accept := makeAccept(strToBytes(nonce))
 					test.res.Header.Set(headerSecAccept, string(accept))
 				}
 
@@ -702,9 +702,9 @@ func BenchmarkDialer(b *testing.B) {
 		}
 		rs := make([][]byte, b.N)
 		for i := range rs {
-			var nonce [nonceSize]byte
+			nonce := make([]byte, nonceSize)
 			base64.StdEncoding.Encode(
-				nonce[:],
+				nonce,
 				nonceBytes[i*nonceKeySize:i*nonceKeySize+nonceKeySize],
 			)
 			accept := makeAccept(nonce)

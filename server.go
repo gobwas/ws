@@ -163,7 +163,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 		hw = HeaderWriter(h)
 	}
 
-	httpWriteResponseUpgrade(rw.Writer, strToNonce(nonce), hs, hw)
+	httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, hw)
 	err = rw.Writer.Flush()
 
 	return
@@ -540,7 +540,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
-	httpWriteResponseUpgrade(bw, nonce, hs, hw.flush)
+	httpWriteResponseUpgrade(bw, nonce[:], hs, hw.flush)
 	err = bw.Flush()
 
 	return

@@ -47,13 +47,13 @@ func releaseSha1(h hash.Hash) {
 	sha1Pool.Put(h)
 }
 
-func checkNonce(accept []byte, nonce [nonceSize]byte) bool {
+func checkNonceAccept(nonce, accept []byte) bool {
 	if len(accept) != acceptSize {
 		return false
 	}
 	// NOTE: expect does not escapes.
 	expect := make([]byte, acceptSize)
-	putAccept(nonce, expect)
+	putAcceptNonce(expect, nonce)
 	return bytes.Equal(expect, accept)
 }
 
@@ -76,36 +76,44 @@ func putNewNonce(dest []byte) {
 	base64.StdEncoding.Encode(dest, bts)
 }
 
-// putAccept generates accept bytes and puts them into p.
-// Given buffer should be exactly acceptSize bytes. If not putAccept will panic.
-func putAccept(nonce [nonceSize]byte, p []byte) {
-	if len(p) != acceptSize {
-		panic(fmt.Sprintf("buffer size is %d; want %d", len(p), acceptSize))
+// putAcceptNonce generates accept bytes and puts them into p.
+// Given buffer should be exactly acceptSize bytes.
+func putAcceptNonce(dest, nonce []byte) {
+	if len(dest) != acceptSize {
+		panic("accept buffer is invalid")
+	}
+	if len(nonce) != nonceSize {
+		panic("nonce is invalid")
 	}
 
 	sha := acquireSha1()
 	defer releaseSha1(sha)
 
+	sha.Write(nonce)
+	sha.Write(WebSocketMagic)
+
 	var sb [sha1.Size]byte
 	sh := uintptr(unsafe.Pointer(&sb))
-	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: sh, Len: 0, Cap: sha1.Size}))
-
-	nh := uintptr(unsafe.Pointer(&nonce))
-	nb := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: nh, Len: nonceSize, Cap: nonceSize}))
-
-	sha.Write(nb)
-	sha.Write(WebSocketMagic)
+	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: sh,
+		Len:  0,
+		Cap:  sha1.Size,
+	}))
 	sum = sha.Sum(sum)
 
-	base64.StdEncoding.Encode(p, sum)
+	base64.StdEncoding.Encode(dest, sum)
 }
 
-func writeAccept(w io.Writer, nonce [nonceSize]byte) (int, error) {
+func writeAccept(w io.Writer, nonce []byte) (int, error) {
 	var b [acceptSize]byte
 	bp := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{Data: bp, Len: acceptSize, Cap: acceptSize}))
+	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: bp,
+		Len:  acceptSize,
+		Cap:  acceptSize,
+	}))
 
-	putAccept(nonce, bts)
+	putAcceptNonce(bts, nonce)
 
 	return w.Write(bts)
 }

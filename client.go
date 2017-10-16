@@ -253,10 +253,10 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	)
 	defer pbufio.PutWriter(bw)
 
-	var nonce [nonceSize]byte
-	putNewNonce(nonce[:])
+	nonce := make([]byte, nonceSize)
+	putNewNonce(nonce)
 
-	httpWriteUpgradeRequest(bw, u, nonce[:], d.Protocols, d.Extensions, d.Header)
+	httpWriteUpgradeRequest(bw, u, nonce, d.Protocols, d.Extensions, d.Header)
 	if err = bw.Flush(); err != nil {
 		return
 	}
@@ -337,7 +337,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 
 		case headerSecAccept:
 			headerSeen |= headerSeenSecAccept
-			if !checkNonce(v, nonce) {
+			if !checkNonceAccept(nonce, v) {
 				err = ErrBadSecAccept
 				return
 			}
