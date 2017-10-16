@@ -54,18 +54,6 @@ func btsToString(bts []byte) string {
 	return *(*string)(unsafe.Pointer(s))
 }
 
-func strToNonce(str string) [nonceSize]byte {
-	s := *(*reflect.StringHeader)(unsafe.Pointer(&str))
-	n := *(*[nonceSize]byte)(unsafe.Pointer(s.Data))
-	return n
-}
-
-func btsToNonce(bts []byte) [nonceSize]byte {
-	b := *(*reflect.SliceHeader)(unsafe.Pointer(&bts))
-	n := *(*[nonceSize]byte)(unsafe.Pointer(b.Data))
-	return n
-}
-
 // asciiToInt converts bytes to int.
 func asciiToInt(bts []byte) (ret int, err error) {
 	// ASCII numbers all start with the high-order bits 0011.

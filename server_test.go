@@ -29,7 +29,7 @@ type upgradeCase struct {
 	onHeader  func(k, v []byte) (error, int)
 	onRequest func(h, u []byte) (error, int)
 
-	nonce        [nonceSize]byte
+	nonce        []byte
 	removeSecKey bool
 	badSecKey    bool
 
@@ -295,7 +295,7 @@ func TestHTTPUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			if !test.removeSecKey {
-				nonce := test.nonce[:]
+				nonce := test.nonce
 				if test.badSecKey {
 					nonce = nonce[:nonceSize-1]
 				}
@@ -759,8 +759,9 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 	return res
 }
 
-func mustMakeNonce() (ret [nonceSize]byte) {
-	putNewNonce(ret[:])
+func mustMakeNonce() (ret []byte) {
+	ret = make([]byte, nonceSize)
+	initNonce(ret)
 	return
 }
 

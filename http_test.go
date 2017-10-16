@@ -61,7 +61,7 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 	} {
 		bw := bufio.NewWriter(ioutil.Discard)
 		nonce := make([]byte, nonceSize)
-		putNewNonce(nonce)
+		initNonce(nonce)
 		b.ResetTimer()
 		b.Run("", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
