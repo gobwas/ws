@@ -79,6 +79,11 @@ type Dialer struct {
 
 	// Extensions is the list of extensions that client wants to speak.
 	//
+	// Note that if server decides to use some of this extensions, Dial() will
+	// return Handshake struct containing a slice of items, which are the
+	// shallow copies of the items from this list. That is, internals of
+	// Extensions items are shared during Dial().
+	//
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// See https://tools.ietf.org/html/rfc6455#section-9.1
 	Extensions []httphead.Option
