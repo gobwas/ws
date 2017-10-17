@@ -137,6 +137,9 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 		return
 	}
 	br, hs, err = d.request(ctx, conn, u)
+	if err != nil {
+		conn.Close()
+	}
 	return
 }
 
@@ -231,7 +234,10 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 		)
 		defer func() {
 			close(done)
-			if ctxErr := <-interrupt; ctxErr != nil && err == nil {
+			// If original err is net.Error with Timeout() == true, then it
+			// only means that we have canceled i/o by SetDeadline().
+			// That is, only we own conn and we use SetDeadline() only here.
+			if ctxErr := <-interrupt; ctxErr != nil && (err == nil || isTimeoutError(err)) {
 				err = ctxErr
 				if br != nil {
 					pbufio.PutReader(br)
@@ -422,4 +428,9 @@ func (s StatusError) Error() string {
 func IsStatusError(err error) bool {
 	_, ok := err.(StatusError)
 	return ok
+}
+
+func isTimeoutError(err error) bool {
+	t, ok := err.(net.Error)
+	return ok && t.Timeout()
 }

@@ -568,10 +568,16 @@ func TestDialerHandshake(t *testing.T) {
 	}
 }
 
+// Used to emulate net.Error behaviour, which is usually returned when
+// connection deadline exceeds.
+type errTimeout struct {
+	error
+}
+
+func (errTimeout) Timeout() bool   { return true }
+func (errTimeout) Temporary() bool { return false }
+
 func TestDialerCancelation(t *testing.T) {
-	var (
-		ioErrDeadlineExceeded = fmt.Errorf("stub deadline exceeded")
-	)
 	for _, test := range []struct {
 		name           string
 		dialDelay      time.Duration
@@ -581,11 +587,11 @@ func TestDialerCancelation(t *testing.T) {
 	}{
 		{
 			ctxTimeout: time.Millisecond * 100,
-			err:        ioErrDeadlineExceeded,
+			err:        context.DeadlineExceeded,
 		},
 		{
 			ctxCancelAfter: time.Millisecond * 100,
-			err:            ioErrDeadlineExceeded,
+			err:            context.Canceled,
 		},
 		{
 			ctxTimeout: time.Millisecond * 100,
@@ -609,13 +615,15 @@ func TestDialerCancelation(t *testing.T) {
 						}
 						return nil
 					}
-
+					ioErrDeadline := errTimeout{
+						fmt.Errorf("stub deadline exceeded"),
+					}
 					d := t.Sub(time.Now())
 					if d < 0 {
-						deadline <- ioErrDeadlineExceeded
+						deadline <- ioErrDeadline
 					} else {
 						ts = append(ts, time.AfterFunc(d, func() {
-							deadline <- ioErrDeadlineExceeded
+							deadline <- ioErrDeadline
 						}))
 					}
 
@@ -751,9 +759,14 @@ type stubConn struct {
 
 func (s stubConn) Read(p []byte) (int, error)  { return s.read(p) }
 func (s stubConn) Write(p []byte) (int, error) { return s.write(p) }
-func (s stubConn) Close() error                { return s.close() }
 func (s stubConn) LocalAddr() net.Addr         { return nil }
 func (s stubConn) RemoteAddr() net.Addr        { return nil }
+func (s stubConn) Close() error {
+	if s.close != nil {
+		return s.close()
+	}
+	return nil
+}
 func (s stubConn) SetDeadline(t time.Time) error {
 	if s.setDeadline != nil {
 		return s.setDeadline(t)
