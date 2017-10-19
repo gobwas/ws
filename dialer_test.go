@@ -605,26 +605,26 @@ func TestDialerCancelation(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var ts []*time.Timer
+			var timer *time.Timer
 			deadline := make(chan error, 10)
 			conn := &stubConn{
 				setDeadline: func(t time.Time) error {
+					if timer != nil {
+						timer.Stop()
+					}
 					if t.IsZero() {
-						for _, t := range ts {
-							t.Stop()
-						}
 						return nil
 					}
 					ioErrDeadline := errTimeout{
-						fmt.Errorf("stub deadline exceeded"),
+						fmt.Errorf("stub: i/o timeout"),
 					}
 					d := t.Sub(time.Now())
 					if d < 0 {
 						deadline <- ioErrDeadline
 					} else {
-						ts = append(ts, time.AfterFunc(d, func() {
+						timer = time.AfterFunc(d, func() {
 							deadline <- ioErrDeadline
-						}))
+						})
 					}
 
 					return nil
@@ -669,7 +669,7 @@ func TestDialerCancelation(t *testing.T) {
 
 			_, _, _, err := d.Dial(ctx, "ws://gobwas.com")
 			if err != test.err {
-				t.Fatalf("unexpected error: %v; want %v", err, test.err)
+				t.Fatalf("unexpected error: %q; want %q", err, test.err)
 			}
 		})
 	}

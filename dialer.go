@@ -221,22 +221,22 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			headerSeenSecAccept
 	)
 
-	if deadline, _ := ctx.Deadline(); !deadline.IsZero() {
-		conn.SetDeadline(deadline)
-		defer conn.SetDeadline(noDeadline)
-	}
-	// If ctx is not a background, then it could be canceled. So we need to
-	// handle this cancelation properly.
 	if ctx != context.Background() {
+		// Context could be canceled or its deadline could be exceeded.
+		// Start the interrupter goroutine to handle context cancelation.
 		var (
 			done      = make(chan struct{})
 			interrupt = make(chan error, 1)
 		)
 		defer func() {
 			close(done)
-			// If original err is net.Error with Timeout() == true, then it
-			// only means that we have canceled i/o by SetDeadline().
-			// That is, only we own conn and we use SetDeadline() only here.
+			// If ctx.Err() is non-nil and the original err is net.Error with
+			// Timeout() == true, then it means that i/o was canceled by us by
+			// SetDeadline(aLongTimeAgo) call, or by somebody else previously
+			// by conn.SetDeadline(x). In both cases, context is canceled too.
+			// Even on race condition when both connection deadline (set not by
+			// us) and request context are exceeded, we prefer ctx.Err() to be
+			// returned just to be consistent.
 			if ctxErr := <-interrupt; ctxErr != nil && (err == nil || isTimeoutError(err)) {
 				err = ctxErr
 				if br != nil {
@@ -251,7 +251,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			case <-done:
 				interrupt <- nil
 			case <-ctx.Done():
-				// Cancel io immediately.
+				// Cancel i/o immediately.
 				conn.SetDeadline(aLongTimeAgo)
 				interrupt <- ctx.Err()
 			}
