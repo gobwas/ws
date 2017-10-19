@@ -578,8 +578,13 @@ func (errTimeout) Timeout() bool   { return true }
 func (errTimeout) Temporary() bool { return false }
 
 func TestDialerCancelation(t *testing.T) {
+	ioErrDeadline := errTimeout{
+		fmt.Errorf("stub: i/o timeout"),
+	}
+
 	for _, test := range []struct {
 		name           string
+		dialer         Dialer
 		dialDelay      time.Duration
 		ctxTimeout     time.Duration
 		ctxCancelAfter time.Duration
@@ -592,6 +597,13 @@ func TestDialerCancelation(t *testing.T) {
 		{
 			ctxCancelAfter: time.Millisecond * 100,
 			err:            context.Canceled,
+		},
+		{
+			dialer: Dialer{
+				HandshakeTimeout: time.Millisecond * 100,
+			},
+			ctxTimeout: time.Millisecond * 150,
+			err:        ioErrDeadline,
 		},
 		{
 			ctxTimeout: time.Millisecond * 100,
@@ -614,9 +626,6 @@ func TestDialerCancelation(t *testing.T) {
 					}
 					if t.IsZero() {
 						return nil
-					}
-					ioErrDeadline := errTimeout{
-						fmt.Errorf("stub: i/o timeout"),
 					}
 					d := t.Sub(time.Now())
 					if d < 0 {
@@ -643,18 +652,16 @@ func TestDialerCancelation(t *testing.T) {
 				},
 			}
 
-			d := Dialer{
-				NetDial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-					if t := test.dialDelay; t != 0 {
-						delay := time.After(t)
-						select {
-						case <-delay:
-						case <-ctx.Done():
-							return nil, ctx.Err()
-						}
+			test.dialer.NetDial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+				if t := test.dialDelay; t != 0 {
+					delay := time.After(t)
+					select {
+					case <-delay:
+					case <-ctx.Done():
+						return nil, ctx.Err()
 					}
-					return conn, nil
-				},
+				}
+				return conn, nil
 			}
 
 			ctx := context.Background()
@@ -667,7 +674,7 @@ func TestDialerCancelation(t *testing.T) {
 				time.AfterFunc(t, cancel)
 			}
 
-			_, _, _, err := d.Dial(ctx, "ws://gobwas.com")
+			_, _, _, err := test.dialer.Dial(ctx, "ws://gobwas.com")
 			if err != test.err {
 				t.Fatalf("unexpected error: %q; want %q", err, test.err)
 			}

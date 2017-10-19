@@ -67,6 +67,10 @@ type Dialer struct {
 	// If a size is zero then default value is used.
 	ReadBufferSize, WriteBufferSize int
 
+	// HandshakeTimeout allows to limit the time spent in i/o upgrade
+	// operations.
+	HandshakeTimeout time.Duration
+
 	// WriterPool is used to reuse bufio.Writers.
 	// If non-nil, then WriteBufferSize option is ignored.
 	WriterPool WriterPool
@@ -135,6 +139,11 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	}
 	if conn, err = d.dial(ctx, u); err != nil {
 		return
+	}
+	if t := d.HandshakeTimeout; t != 0 {
+		d := time.Now().Add(t)
+		conn.SetDeadline(d)
+		defer conn.SetDeadline(noDeadline)
 	}
 	br, hs, err = d.request(ctx, conn, u)
 	if err != nil {
