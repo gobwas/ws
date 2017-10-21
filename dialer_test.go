@@ -485,7 +485,7 @@ func TestDialerHandshake(t *testing.T) {
 			sig := make(chan struct{})
 			go func() {
 				// This routine is our fake web-server. It reads request after
-				// client wrote it. Then it optinally could send some frames
+				// client wrote it. Then it optionally could send some frames
 				// set in test case.
 				<-sig
 				req, err := http.ReadRequest(wbuf)

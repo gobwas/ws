@@ -288,7 +288,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	defer func() {
 		if br.Buffered() == 0 || (err != nil && !IsStatusError(err)) {
 			// Server does not wrote additional bytes to the connection or
-			// error occured. That is, no reason to return buffer.
+			// error occurred. That is, no reason to return buffer.
 			pbufio.PutReader(br)
 			br = nil
 		}

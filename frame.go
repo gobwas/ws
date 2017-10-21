@@ -26,7 +26,7 @@ const (
 	OpPong                = 0xa
 )
 
-// IsControl checks wheter the c is control operation code.
+// IsControl checks whether the c is control operation code.
 // See https://tools.ietf.org/html/rfc6455#section-5.5
 func (c OpCode) IsControl() bool {
 	// RFC6455: Control frames are identified by opcodes where
@@ -36,7 +36,7 @@ func (c OpCode) IsControl() bool {
 	return c&0x8 != 0
 }
 
-// IsData checks wheter the c is data operation code.
+// IsData checks whether the c is data operation code.
 // See https://tools.ietf.org/html/rfc6455#section-5.6
 func (c OpCode) IsData() bool {
 	// RFC6455: Data frames (e.g., non-control frames) are identified by opcodes
@@ -46,7 +46,7 @@ func (c OpCode) IsData() bool {
 	return c&0x8 == 0
 }
 
-// IsReserved checks wheter the c is reserved operation code.
+// IsReserved checks whether the c is reserved operation code.
 // See https://tools.ietf.org/html/rfc6455#section-5.2
 func (c OpCode) IsReserved() bool {
 	// RFC6455:
@@ -100,7 +100,7 @@ func (s StatusCode) In(r StatusCodeRange) bool {
 	return r.Min <= s && s <= r.Max
 }
 
-// Empty reports wheter the code is empty.
+// Empty reports whether the code is empty.
 // Empty code has no any meaning neither app level codes nor other.
 // This method is useful just to check that code is golang default value 0.
 func (s StatusCode) Empty() bool {

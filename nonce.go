@@ -35,7 +35,7 @@ var WebSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 var sha1Pool sync.Pool
 
-// nonce helps to put nonce bytes on the stack and then retreive stack-backed
+// nonce helps to put nonce bytes on the stack and then retrieve stack-backed
 // slice with unsafe.
 type nonce [nonceSize]byte
 
