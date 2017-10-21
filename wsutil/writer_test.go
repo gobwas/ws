@@ -236,7 +236,7 @@ func TestWriter(t *testing.T) {
 
 		{
 			data: [][]byte{
-				[]byte{},
+				{},
 			},
 			expBts: ws.MustCompileFrame(ws.NewTextFrame("")),
 		},
