@@ -12,7 +12,7 @@ type State uint8
 const (
 	// StateServerSide means that endpoint (caller) is a server.
 	StateServerSide State = 0x1 << iota
-	// StateServerSide means that endpoint (caller) is a client.
+	// StateClientSide means that endpoint (caller) is a client.
 	StateClientSide
 	// StateExtended means that extension was negotiated during handshake.
 	StateExtended

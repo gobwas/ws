@@ -425,8 +425,12 @@ func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 func (timeoutError) Error() string   { return "client timeout" }
 
+// StatusError represents an unsuccessful status-line parsed from handshake
+// response from the server.
 type StatusError struct {
+	// Status contains HTTP response status code.
 	Status int
+	// Reason contains associated with Status textual phrase.
 	Reason string
 }
 
@@ -434,6 +438,7 @@ func (s StatusError) Error() string {
 	return "unexpected HTTP response status: " + strconv.Itoa(s.Status) + " " + s.Reason
 }
 
+// IsStatusError reports whether given error is an instance of StatusError.
 func IsStatusError(err error) bool {
 	_, ok := err.(StatusError)
 	return ok

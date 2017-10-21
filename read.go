@@ -8,10 +8,6 @@ import (
 	"unsafe"
 )
 
-const (
-	PlatformSizeLimit = int64(^(uint(0)) >> 1) // Max int value for current platform.
-)
-
 // Errors used by frame reader.
 var (
 	ErrHeaderLengthMSB        = fmt.Errorf("header error: the most significant bit must be 0")

@@ -290,15 +290,18 @@ func MaskFrameWith(f Frame, mask [4]byte) Frame {
 	return MaskFrameInPlaceWith(f, mask)
 }
 
-// MaskFrame masks frame and returns frame with masked payload and Mask header's field set.
-// Note that it applies xor cipher to f.Payload without copying, that is, it modifies f.Payload inplace.
+// MaskFrameInPlace masks frame and returns frame with masked payload and Mask
+// header's field set.
+// Note that it applies xor cipher to f.Payload without copying, that is, it
+// modifies f.Payload inplace.
 func MaskFrameInPlace(f Frame) Frame {
 	return MaskFrameInPlaceWith(f, NewMask())
 }
 
 // MaskFrameInPlaceWith masks frame with given mask and returns frame
 // with masked payload and Mask header's field set.
-// Note that it applies xor cipher to f.Payload without copying, that is, it modifies f.Payload inplace.
+// Note that it applies xor cipher to f.Payload without copying, that is, it
+// modifies f.Payload inplace.
 func MaskFrameInPlaceWith(f Frame, m [4]byte) Frame {
 	f.Header.Masked = true
 	f.Header.Mask = m
@@ -313,7 +316,8 @@ func NewMask() (ret [4]byte) {
 }
 
 // CompileFrame returns byte representation of given frame.
-// In terms of memory consumption it is useful to precompile static frames which are often used.
+// In terms of memory consumption it is useful to precompile static frames
+// which are often used.
 func CompileFrame(f Frame) (bts []byte, err error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 16))
 	err = WriteFrame(buf, f)

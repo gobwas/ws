@@ -19,6 +19,8 @@ const (
 	DefaultServerWriteBufferSize = 512
 )
 
+// ErrNotHijacker is an error returned when http.ResponseWriter does not
+// implement http.Hijacker interface.
 var ErrNotHijacker = fmt.Errorf("given http.ResponseWriter is not a http.Hijacker")
 
 // DefaultHTTPUpgrader is an HTTPUpgrader that holds no options and is used by

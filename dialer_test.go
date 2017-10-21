@@ -28,7 +28,7 @@ func TestDialerRequest(t *testing.T) {
 	}{
 		{
 			url: "wss://example.org/chat",
-			exp: setHttpProto(1, 1,
+			exp: setProto(1, 1,
 				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
 					headerUpgrade:    []string{"websocket"},
 					headerConnection: []string{"Upgrade"},
@@ -53,7 +53,7 @@ func TestDialerRequest(t *testing.T) {
 				},
 			},
 			url: "wss://example.org/chat",
-			exp: setHttpProto(1, 1,
+			exp: setProto(1, 1,
 				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
 					headerUpgrade:    []string{"websocket"},
 					headerConnection: []string{"Upgrade"},

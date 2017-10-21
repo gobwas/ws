@@ -7,6 +7,7 @@ import (
 	"unsafe"
 )
 
+// Header size length bounds in bytes.
 const (
 	MaxHeaderSize = 14
 	MinHeaderSize = 2
@@ -46,6 +47,7 @@ func HeaderSize(h Header) (n int) {
 	return n
 }
 
+// WriteHeader writes header binary representation into w.
 func WriteHeader(w io.Writer, h Header) error {
 	// Make slice of bytes with capacity 14 that could hold any header.
 	//
@@ -99,6 +101,7 @@ func WriteHeader(w io.Writer, h Header) error {
 	return err
 }
 
+// WriteFrame writes frame binary representation into w.
 func WriteFrame(w io.Writer, f Frame) error {
 	err := WriteHeader(w, f.Header)
 	if err != nil {

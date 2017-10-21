@@ -29,8 +29,6 @@ const (
 	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
 )
 
-var ErrBadNonce = fmt.Errorf("nonce size is not %d", nonceSize)
-
 var WebSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 var sha1Pool sync.Pool

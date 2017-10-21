@@ -164,7 +164,7 @@ var upgradeCases = []upgradeCase{
 	{
 		label: "bad_http_proto",
 		nonce: mustMakeNonce(),
-		req: setHttpProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
+		req: setProto(1, 0, mustMakeRequest("GET", "ws://example.org", http.Header{
 			headerUpgrade:    []string{"websocket"},
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
@@ -710,7 +710,7 @@ func mustMakeRequest(method, url string, headers http.Header) *http.Request {
 	return req
 }
 
-func setHttpProto(major, minor int, req *http.Request) *http.Request {
+func setProto(major, minor int, req *http.Request) *http.Request {
 	req.ProtoMajor = major
 	req.ProtoMinor = minor
 	return req
