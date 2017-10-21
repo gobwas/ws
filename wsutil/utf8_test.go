@@ -15,7 +15,6 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 		err   bool
 		valid bool
 		n     int
-		chop  int
 	}{
 		{
 			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
@@ -28,7 +27,6 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			valid: false,
 			err:   true,
 			n:     12,
-			chop:  1,
 		},
 		{
 			hex:   "7f7f7fdf",
@@ -47,11 +45,6 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			bts, err := hex.DecodeString(test.hex)
 			if err != nil {
 				t.Fatal(err)
-			}
-
-			chop := test.chop
-			if chop <= 0 {
-				chop = len(bts)
 			}
 
 			src := bytes.NewReader(bts)
