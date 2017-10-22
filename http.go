@@ -23,23 +23,14 @@ const (
 	commaAndSpace       = ", "
 )
 
+// Errors returned when HTTP request or response can not be parsed.
 var (
-	btsErrorVersion = []byte(headerSecVersion + ": 13\r\n")
+	ErrMalformedRequest  = fmt.Errorf("malformed HTTP request")
+	ErrMalformedResponse = fmt.Errorf("malformed HTTP response")
 )
 
 var (
-	ErrMalformedHttpRequest  = fmt.Errorf("malformed HTTP request")
-	ErrMalformedHttpResponse = fmt.Errorf("malformed HTTP response")
-
-	ErrBadHttpProto         = fmt.Errorf("bad HTTP protocol version")
-	ErrBadHttpRequestMethod = fmt.Errorf("bad HTTP request method")
-
-	ErrBadHost       = fmt.Errorf("bad %q header", headerHost)
-	ErrBadUpgrade    = fmt.Errorf("bad %q header", headerUpgrade)
-	ErrBadConnection = fmt.Errorf("bad %q header", headerConnection)
-	ErrBadSecAccept  = fmt.Errorf("bad %q header", headerSecAccept)
-	ErrBadSecKey     = fmt.Errorf("bad %q header", headerSecKey)
-	ErrBadSecVersion = fmt.Errorf("bad %q header", headerSecVersion)
+	btsErrorVersion = []byte(headerSecVersion + ": 13\r\n")
 )
 
 var (
@@ -85,7 +76,7 @@ func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	var ok bool
 	req.major, req.minor, ok = httpParseVersion(proto)
 	if !ok {
-		err = ErrMalformedHttpRequest
+		err = ErrMalformedRequest
 		return
 	}
 
@@ -102,13 +93,13 @@ func httpParseResponseLine(line []byte) (resp httpResponseLine, err error) {
 	var ok bool
 	resp.major, resp.minor, ok = httpParseVersion(proto)
 	if !ok {
-		return resp, ErrMalformedHttpResponse
+		return resp, ErrMalformedResponse
 	}
 
 	var convErr error
 	resp.status, convErr = asciiToInt(status)
 	if convErr != nil {
-		return resp, ErrMalformedHttpResponse
+		return resp, ErrMalformedResponse
 	}
 
 	return resp, nil
@@ -213,60 +204,13 @@ func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) 
 func strSelectExtensions(h string, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {
 	return btsSelectExtensions(strToBytes(h), selected, check)
 }
+
 func btsSelectExtensions(h []byte, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {
 	s := httphead.OptionSelector{
 		Flags: httphead.SelectUnique | httphead.SelectCopy,
 		Check: check,
 	}
 	return s.Select(h, selected)
-}
-
-func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option) ([]httphead.Option, error) {
-	if len(selected) == 0 {
-		return received, nil
-	}
-	var (
-		index  int
-		option httphead.Option
-		err    error
-	)
-	index = -1
-	match := func() (ok bool) {
-		for _, want := range wanted {
-			if option.Equal(want) {
-				// Check parsed extension to be present in client
-				// requested extensions. We move matched extension
-				// from client list to avoid allocation.
-				received = append(received, want)
-				return true
-			}
-		}
-		return false
-	}
-	ok := httphead.ScanOptions(selected, func(i int, name, attr, val []byte) httphead.Control {
-		if i != index {
-			// Met next option.
-			index = i
-			if i != 0 && !match() {
-				// Server returned non-requested extension.
-				err = ErrBadExtensions
-				return httphead.ControlBreak
-			}
-			option = httphead.Option{Name: name}
-		}
-		if attr != nil {
-			option.Parameters.Set(attr, val)
-		}
-		return httphead.ControlContinue
-	})
-	if !ok {
-		err = ErrMalformedHttpResponse
-		return received, err
-	}
-	if !match() {
-		return received, ErrBadExtensions
-	}
-	return received, err
 }
 
 func httpWriteHeader(bw *bufio.Writer, key, value string) {
