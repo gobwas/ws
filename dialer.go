@@ -45,9 +45,9 @@ type Handshake struct {
 
 // Errors used by the websocket client.
 var (
-	ErrBadStatus      = fmt.Errorf("unexpected http status")
-	ErrBadSubProtocol = fmt.Errorf("unexpected protocol in %q header", headerSecProtocol)
-	ErrBadExtensions  = fmt.Errorf("unexpected extensions in %q header", headerSecProtocol)
+	ErrHandshakeBadStatus      = fmt.Errorf("unexpected http status")
+	ErrHandshakeBadSubProtocol = fmt.Errorf("unexpected protocol in %q header", headerSecProtocol)
+	ErrHandshakeBadExtensions  = fmt.Errorf("unexpected extensions in %q header", headerSecProtocol)
 )
 
 // DefaultDialer is dialer that holds no options and is used by Dial function.
@@ -308,7 +308,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	// Even if RFC says "1.1 or higher" without mentioning the part of the
 	// version, we apply it only to minor part.
 	if resp.major != 1 || resp.minor < 1 {
-		err = ErrBadHttpProto
+		err = ErrHandshakeBadProtocol
 		return
 	}
 	if resp.status != 101 {
@@ -333,7 +333,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 
 		k, v, ok := httpParseHeaderLine(line)
 		if !ok {
-			err = ErrMalformedHttpResponse
+			err = ErrMalformedResponse
 			return
 		}
 
@@ -341,7 +341,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 		case headerUpgrade:
 			headerSeen |= headerSeenUpgrade
 			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
-				err = ErrBadUpgrade
+				err = ErrHandshakeBadUpgrade
 				return
 			}
 
@@ -352,14 +352,14 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			// That is, in server side, "Connection" header could contain
 			// multiple token. But in response it must contains exactly one.
 			if !bytes.Equal(v, specHeaderValueConnection) && !btsEqualFold(v, specHeaderValueConnection) {
-				err = ErrBadConnection
+				err = ErrHandshakeBadConnection
 				return
 			}
 
 		case headerSecAccept:
 			headerSeen |= headerSeenSecAccept
 			if !checkAcceptFromNonce(v, nonce) {
-				err = ErrBadSecAccept
+				err = ErrHandshakeBadSecAccept
 				return
 			}
 
@@ -377,7 +377,7 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			if hs.Protocol == "" {
 				// Server echoed subprotocol that is not present in client
 				// requested protocols.
-				err = ErrBadSubProtocol
+				err = ErrHandshakeBadSubProtocol
 				return
 			}
 
@@ -399,11 +399,11 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 	if err == nil && headerSeen != headerSeenAll {
 		switch {
 		case headerSeen&headerSeenUpgrade == 0:
-			err = ErrBadUpgrade
+			err = ErrHandshakeBadUpgrade
 		case headerSeen&headerSeenConnection == 0:
-			err = ErrBadConnection
+			err = ErrHandshakeBadConnection
 		case headerSeen&headerSeenSecAccept == 0:
-			err = ErrBadSecAccept
+			err = ErrHandshakeBadSecAccept
 		default:
 			panic("unknown headers state")
 		}
@@ -447,4 +447,52 @@ func IsStatusError(err error) bool {
 func isTimeoutError(err error) bool {
 	t, ok := err.(net.Error)
 	return ok && t.Timeout()
+}
+
+func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option) ([]httphead.Option, error) {
+	if len(selected) == 0 {
+		return received, nil
+	}
+	var (
+		index  int
+		option httphead.Option
+		err    error
+	)
+	index = -1
+	match := func() (ok bool) {
+		for _, want := range wanted {
+			if option.Equal(want) {
+				// Check parsed extension to be present in client
+				// requested extensions. We move matched extension
+				// from client list to avoid allocation.
+				received = append(received, want)
+				return true
+			}
+		}
+		return false
+	}
+	ok := httphead.ScanOptions(selected, func(i int, name, attr, val []byte) httphead.Control {
+		if i != index {
+			// Met next option.
+			index = i
+			if i != 0 && !match() {
+				// Server returned non-requested extension.
+				err = ErrHandshakeBadExtensions
+				return httphead.ControlBreak
+			}
+			option = httphead.Option{Name: name}
+		}
+		if attr != nil {
+			option.Parameters.Set(attr, val)
+		}
+		return httphead.ControlContinue
+	})
+	if !ok {
+		err = ErrMalformedResponse
+		return received, err
+	}
+	if !match() {
+		return received, ErrHandshakeBadExtensions
+	}
+	return received, err
 }

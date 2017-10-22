@@ -314,7 +314,7 @@ func TestDialerHandshake(t *testing.T) {
 				ProtoMinor: 1,
 				Header:     make(http.Header),
 			},
-			err: ErrBadHttpProto,
+			err: ErrHandshakeBadProtocol,
 		},
 		{
 			name: "bad status",
@@ -353,7 +353,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadUpgrade,
+			err:    ErrHandshakeBadUpgrade,
 		},
 		{
 			name: "bad upgrade",
@@ -367,7 +367,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadUpgrade,
+			err:    ErrHandshakeBadUpgrade,
 		},
 		{
 			name: "bad connection",
@@ -380,7 +380,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadConnection,
+			err:    ErrHandshakeBadConnection,
 		},
 		{
 			name: "bad connection",
@@ -394,7 +394,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadConnection,
+			err:    ErrHandshakeBadConnection,
 		},
 		{
 			name: "bad accept",
@@ -408,7 +408,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptInvalid,
-			err:    ErrBadSecAccept,
+			err:    ErrHandshakeBadSecAccept,
 		},
 		{
 			name: "bad accept",
@@ -422,7 +422,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptNo,
-			err:    ErrBadSecAccept,
+			err:    ErrHandshakeBadSecAccept,
 		},
 		{
 			name: "bad subprotocol",
@@ -437,7 +437,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadSubProtocol,
+			err:    ErrHandshakeBadSubProtocol,
 		},
 		{
 			name: "bad extensions",
@@ -452,7 +452,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadExtensions,
+			err:    ErrHandshakeBadExtensions,
 		},
 		{
 			name: "bad extensions",
@@ -474,7 +474,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			accept: acceptValid,
-			err:    ErrBadExtensions,
+			err:    ErrHandshakeBadExtensions,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

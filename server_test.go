@@ -158,8 +158,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(405, ErrBadHttpRequestMethod, nil),
-		err: ErrBadHttpRequestMethod,
+		res: mustMakeErrResponse(405, ErrHandshakeBadMethod, nil),
+		err: ErrHandshakeBadMethod,
 	},
 	{
 		label: "bad_http_proto",
@@ -169,8 +169,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		})),
-		res: mustMakeErrResponse(505, ErrBadHttpProto, nil),
-		err: ErrBadHttpProto,
+		res: mustMakeErrResponse(505, ErrHandshakeBadProtocol, nil),
+		err: ErrHandshakeBadProtocol,
 	},
 	{
 		label: "bad_host",
@@ -180,8 +180,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		})),
-		res: mustMakeErrResponse(400, ErrBadHost, nil),
-		err: ErrBadHost,
+		res: mustMakeErrResponse(400, ErrHandshakeBadHost, nil),
+		err: ErrHandshakeBadHost,
 	},
 	{
 		label: "bad_upgrade",
@@ -190,8 +190,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadUpgrade, nil),
-		err: ErrBadUpgrade,
+		res: mustMakeErrResponse(400, ErrHandshakeBadUpgrade, nil),
+		err: ErrHandshakeBadUpgrade,
 	},
 	{
 		label: "bad_upgrade",
@@ -207,8 +207,8 @@ var upgradeCases = []upgradeCase{
 		onHeader: func(k, v []byte) (error, int) {
 			return nil, 0
 		},
-		res: mustMakeErrResponse(400, ErrBadUpgrade, nil),
-		err: ErrBadUpgrade,
+		res: mustMakeErrResponse(400, ErrHandshakeBadUpgrade, nil),
+		err: ErrHandshakeBadUpgrade,
 	},
 	{
 		label: "bad_upgrade",
@@ -218,8 +218,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadUpgrade, nil),
-		err: ErrBadUpgrade,
+		res: mustMakeErrResponse(400, ErrHandshakeBadUpgrade, nil),
+		err: ErrHandshakeBadUpgrade,
 	},
 	{
 		label: "bad_connection",
@@ -228,8 +228,8 @@ var upgradeCases = []upgradeCase{
 			headerUpgrade:    []string{"websocket"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadConnection, nil),
-		err: ErrBadConnection,
+		res: mustMakeErrResponse(400, ErrHandshakeBadConnection, nil),
+		err: ErrHandshakeBadConnection,
 	},
 	{
 		label: "bad_connection",
@@ -239,8 +239,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"not-upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadConnection, nil),
-		err: ErrBadConnection,
+		res: mustMakeErrResponse(400, ErrHandshakeBadConnection, nil),
+		err: ErrHandshakeBadConnection,
 	},
 	{
 		label: "bad_sec_version_x",
@@ -249,8 +249,8 @@ var upgradeCases = []upgradeCase{
 			headerUpgrade:    []string{"websocket"},
 			headerConnection: []string{"Upgrade"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadSecVersion, nil),
-		err: ErrBadSecVersion,
+		res: mustMakeErrResponse(400, ErrHandshakeBadSecVersion, nil),
+		err: ErrHandshakeBadSecVersion,
 	},
 	{
 		label: "bad_sec_version",
@@ -260,10 +260,10 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"upgrade"},
 			headerSecVersion: []string{"15"},
 		}),
-		res: mustMakeErrResponse(426, ErrBadSecVersion, http.Header{
+		res: mustMakeErrResponse(426, ErrHandshakeBadSecVersion, http.Header{
 			headerSecVersion: []string{"13"},
 		}),
-		err: ErrBadSecVersion,
+		err: ErrHandshakeBadSecVersion,
 	},
 	{
 		label:        "bad_sec_key",
@@ -274,8 +274,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadSecKey, nil),
-		err: ErrBadSecKey,
+		res: mustMakeErrResponse(400, ErrHandshakeBadSecKey, nil),
+		err: ErrHandshakeBadSecKey,
 	},
 	{
 		label:     "bad_sec_key",
@@ -286,8 +286,8 @@ var upgradeCases = []upgradeCase{
 			headerConnection: []string{"Upgrade"},
 			headerSecVersion: []string{"13"},
 		}),
-		res: mustMakeErrResponse(400, ErrBadSecKey, nil),
-		err: ErrBadSecKey,
+		res: mustMakeErrResponse(400, ErrHandshakeBadSecKey, nil),
+		err: ErrHandshakeBadSecKey,
 	},
 }
 
