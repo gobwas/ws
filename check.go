@@ -1,9 +1,6 @@
 package ws
 
-import (
-	"fmt"
-	"unicode/utf8"
-)
+import "unicode/utf8"
 
 // State represents state of websocket endpoint.
 // It used by some functions to be more strict when checking compatibility with RFC6455.
@@ -46,24 +43,28 @@ func (s State) SetOrClearIf(cond bool, v State) (ret State) {
 	return
 }
 
-// ProtocolError describes error during checking/parsing websocket frames or headers.
-type ProtocolError error
+// ProtocolError describes error during checking/parsing websocket frames or
+// headers.
+type ProtocolError string
+
+// Error implements error interface.
+func (p ProtocolError) Error() string { return string(p) }
 
 // Errors used by the protocol checkers.
 var (
-	ErrProtocolOpCodeReserved             = ProtocolError(fmt.Errorf("use of reserved op code"))
-	ErrProtocolControlPayloadOverflow     = ProtocolError(fmt.Errorf("control frame payload limit exceeded"))
-	ErrProtocolControlNotFinal            = ProtocolError(fmt.Errorf("control frame is not final"))
-	ErrProtocolNonZeroRsv                 = ProtocolError(fmt.Errorf("non-zero rsv bits with no extension negotiated"))
-	ErrProtocolMaskRequired               = ProtocolError(fmt.Errorf("frames from client to server must be masked"))
-	ErrProtocolMaskUnexpected             = ProtocolError(fmt.Errorf("frames from server to client must be not masked"))
-	ErrProtocolContinuationExpected       = ProtocolError(fmt.Errorf("unexpected non-continuation data frame"))
-	ErrProtocolContinuationUnexpected     = ProtocolError(fmt.Errorf("unexpected continuation data frame"))
-	ErrProtocolStatusCodeNotInUse         = ProtocolError(fmt.Errorf("status code is not in use"))
-	ErrProtocolStatusCodeApplicationLevel = ProtocolError(fmt.Errorf("status code is only application level"))
-	ErrProtocolStatusCodeNoMeaning        = ProtocolError(fmt.Errorf("status code has no meaning yet"))
-	ErrProtocolStatusCodeUnknown          = ProtocolError(fmt.Errorf("status code is not defined in spec"))
-	ErrProtocolInvalidUTF8                = ProtocolError(fmt.Errorf("invalid utf8 sequence in close reason"))
+	ErrProtocolOpCodeReserved             = ProtocolError("use of reserved op code")
+	ErrProtocolControlPayloadOverflow     = ProtocolError("control frame payload limit exceeded")
+	ErrProtocolControlNotFinal            = ProtocolError("control frame is not final")
+	ErrProtocolNonZeroRsv                 = ProtocolError("non-zero rsv bits with no extension negotiated")
+	ErrProtocolMaskRequired               = ProtocolError("frames from client to server must be masked")
+	ErrProtocolMaskUnexpected             = ProtocolError("frames from server to client must be not masked")
+	ErrProtocolContinuationExpected       = ProtocolError("unexpected non-continuation data frame")
+	ErrProtocolContinuationUnexpected     = ProtocolError("unexpected continuation data frame")
+	ErrProtocolStatusCodeNotInUse         = ProtocolError("status code is not in use")
+	ErrProtocolStatusCodeApplicationLevel = ProtocolError("status code is only application level")
+	ErrProtocolStatusCodeNoMeaning        = ProtocolError("status code has no meaning yet")
+	ErrProtocolStatusCodeUnknown          = ProtocolError("status code is not defined in spec")
+	ErrProtocolInvalidUTF8                = ProtocolError("invalid utf8 sequence in close reason")
 )
 
 // CheckHeader checks h to contain valid header data for given state s.
