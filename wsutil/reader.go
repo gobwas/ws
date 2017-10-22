@@ -37,6 +37,8 @@ type Reader struct {
 	utf8   UTF8Reader
 }
 
+// NewReader creates new frame reader that reads from r keeping given state to
+// make some protocol validity checks when it needed.
 func NewReader(r io.Reader, s ws.State) *Reader {
 	return &Reader{
 		Source: r,
@@ -84,7 +86,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		if r.State.Is(ws.StateFragmented) {
 			err = nil
 		} else if r.CheckUTF8 && r.header.OpCode == ws.OpText && !r.utf8.Valid() {
-			err = ErrInvalidUtf8
+			err = ErrInvalidUTF8
 		}
 	}
 

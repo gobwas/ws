@@ -149,7 +149,7 @@ func TestUTF8Reader(t *testing.T) {
 				t.Errorf("unexpected error: %s", err)
 				return
 			}
-			if test.err && err == ErrInvalidUtf8 && i != test.at {
+			if test.err && err == ErrInvalidUTF8 && i != test.at {
 				t.Errorf("received error at %d; want at %d", i, test.at)
 				return
 			}

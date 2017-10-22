@@ -236,11 +236,11 @@ func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 			payload := make([]byte, header.Length)
 			_, err = io.ReadFull(r, payload)
 			if err == nil && utf8Fin && !utf8Reader.Valid() {
-				err = wsutil.ErrInvalidUtf8
+				err = wsutil.ErrInvalidUTF8
 			}
 			if err != nil {
 				log.Printf("read payload error: %s", err)
-				if err == wsutil.ErrInvalidUtf8 {
+				if err == wsutil.ErrInvalidUTF8 {
 					conn.Write(CloseInvalidPayload)
 				} else {
 					conn.Write(ws.CompiledClose)

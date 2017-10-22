@@ -5,8 +5,24 @@ import (
 	"io"
 )
 
-var ErrInvalidUtf8 = fmt.Errorf("invalid utf8")
+// ErrInvalidUTF8 is returned by UTF8 reader on invalid utf8 sequnce.
+var ErrInvalidUTF8 = fmt.Errorf("invalid utf8")
 
+// UTF8Reader implements io.Reader that calculates utf8 validity state after
+// every read byte from Source.
+//
+// Note that in some cases client must call r.Valid() after all bytes are read
+// to ensure that all of them are valid utf8 sequences. That is, some io helper
+// functions such io.ReadAtLeast or io.ReadFull could discard the error
+// information returned by the reader when they receive all of requested bytes.
+// For example, the last read sequence is invalid and UTF8Reader returns number
+// of bytes read and an error. But helper function decides to discard received
+// error due to all requested bytes are completely read from the source.
+//
+// Another possible case is when some valid sequence become split by the read
+// bound. Then UTF8Reader can not make decision about validity of the last
+// sequence cause it is not fully read yet. And if the read stops, Valid() will
+// return false, even if Read() by itself dit not.
 type UTF8Reader struct {
 	Source io.Reader
 
@@ -14,18 +30,21 @@ type UTF8Reader struct {
 	codep uint32
 }
 
+// NewUTF8Reader creates utf8 reader that reads from r.
 func NewUTF8Reader(r io.Reader) *UTF8Reader {
 	return &UTF8Reader{
 		Source: r,
 	}
 }
 
+// Reset resets utf8 reader to read from r.
 func (u *UTF8Reader) Reset(r io.Reader) {
 	u.Source = r
 	u.state = 0
 	u.codep = 0
 }
 
+// Read implements io.Reader.
 func (u *UTF8Reader) Read(p []byte) (n int, err error) {
 	n, err = u.Source.Read(p)
 
@@ -34,7 +53,7 @@ func (u *UTF8Reader) Read(p []byte) (n int, err error) {
 		c, s = decode(s, c, p[i])
 		if s == utf8Reject {
 			u.state = s
-			return i, ErrInvalidUtf8
+			return i, ErrInvalidUTF8
 		}
 	}
 	u.state, u.codep = s, c

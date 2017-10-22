@@ -9,25 +9,34 @@ import (
 	"github.com/gobwas/ws"
 )
 
+// FrameHandler handles parsed frame header and its body represetned by
+// io.Reader.
 type FrameHandler func(h ws.Header, r io.Reader) error
 
+// ClosedError returned when peer has closed the connection with appropriate
+// code and a textual reason.
 type ClosedError struct {
 	code   ws.StatusCode
 	reason string
 }
 
+// Error implements error interface.
 func (err ClosedError) Error() string {
 	return "ws closed: " + strconv.FormatUint(uint64(err.code), 10) + " " + err.reason
 }
 
+// Reason returns reason of closure as a textual phrase.
 func (err ClosedError) Reason() string {
 	return err.reason
 }
 
+// Code returns code of closure.
 func (err ClosedError) Code() ws.StatusCode {
 	return err.code
 }
 
+// PingHandler returns FrameHandler that handles ping frame and writes
+// specification compatible response to the w.
 func PingHandler(w io.Writer, state ws.State) FrameHandler {
 	return func(h ws.Header, rd io.Reader) (err error) {
 		if h.Length == 0 {
@@ -59,6 +68,7 @@ func PingHandler(w io.Writer, state ws.State) FrameHandler {
 	}
 }
 
+// PongHandler returns FrameHandler that handles pong frame by discarding it.
 func PongHandler(w io.Writer, state ws.State) FrameHandler {
 	return func(h ws.Header, rd io.Reader) (err error) {
 		if h.Length == 0 {
@@ -80,6 +90,8 @@ func PongHandler(w io.Writer, state ws.State) FrameHandler {
 	}
 }
 
+// CloseHandler returns FrameHandler that handles close frame, makes protocol
+// validity checks and writes specification compatible response to the w.
 func CloseHandler(w io.Writer, state ws.State) FrameHandler {
 	return func(h ws.Header, rd io.Reader) (err error) {
 		var (
