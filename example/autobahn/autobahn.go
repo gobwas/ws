@@ -40,10 +40,10 @@ func main() {
 }
 
 var (
-	CloseInvalidPayload = ws.MustCompileFrame(
+	closeInvalidPayload = ws.MustCompileFrame(
 		ws.NewCloseFrame(ws.StatusInvalidFramePayloadData, ""),
 	)
-	CloseProtocolError = ws.MustCompileFrame(
+	closeProtocolError = ws.MustCompileFrame(
 		ws.NewCloseFrame(ws.StatusProtocolError, ""),
 	)
 )
@@ -178,7 +178,7 @@ func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 			}
 			if err = ws.CheckHeader(header, state); err != nil {
 				log.Printf("header check error: %s", err)
-				conn.Write(CloseProtocolError)
+				conn.Write(closeProtocolError)
 				return
 			}
 
@@ -241,7 +241,7 @@ func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Printf("read payload error: %s", err)
 				if err == wsutil.ErrInvalidUTF8 {
-					conn.Write(CloseInvalidPayload)
+					conn.Write(closeInvalidPayload)
 				} else {
 					conn.Write(ws.CompiledClose)
 				}
@@ -261,7 +261,7 @@ func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 					}
 					if err != nil {
 						log.Printf("invalid close data: %s", err)
-						conn.Write(CloseProtocolError)
+						conn.Write(closeProtocolError)
 					} else {
 						ws.WriteFrame(conn, ws.NewCloseFrame(code, ""))
 					}
