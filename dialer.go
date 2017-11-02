@@ -22,18 +22,6 @@ const (
 	DefaultClientWriteBufferSize = 4096
 )
 
-// ReaderPool describes object that manages reuse of bufio.Reader instances.
-type ReaderPool interface {
-	Get(io.Reader) *bufio.Reader
-	Put(*bufio.Reader)
-}
-
-// WriterPool describes object that manages reuse of bufio.Writer instances.
-type WriterPool interface {
-	Get(io.Writer) *bufio.Writer
-	Put(*bufio.Writer)
-}
-
 // Handshake represents handshake result.
 type Handshake struct {
 	// Protocol is the subprotocol selected during handshake.
@@ -70,10 +58,6 @@ type Dialer struct {
 	// HandshakeTimeout allows to limit the time spent in i/o upgrade
 	// operations.
 	HandshakeTimeout time.Duration
-
-	// WriterPool is used to reuse bufio.Writers.
-	// If non-nil, then WriteBufferSize option is ignored.
-	WriterPool WriterPool
 
 	// Protocols is the list of subprotocols that the client wants to speak,
 	// ordered by preference.
