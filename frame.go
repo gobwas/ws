@@ -19,11 +19,11 @@ type OpCode byte
 // See https://tools.ietf.org/html/rfc6455#section-5.2
 const (
 	OpContinuation OpCode = 0x0
-	OpText                = 0x1
-	OpBinary              = 0x2
-	OpClose               = 0x8
-	OpPing                = 0x9
-	OpPong                = 0xa
+	OpText         OpCode = 0x1
+	OpBinary       OpCode = 0x2
+	OpClose        OpCode = 0x8
+	OpPing         OpCode = 0x9
+	OpPong         OpCode = 0xa
 )
 
 // IsControl checks whether the c is control operation code.
@@ -81,18 +81,18 @@ var (
 // See https://tools.ietf.org/html/rfc6455#section-7.4.1
 const (
 	StatusNormalClosure           StatusCode = 1000
-	StatusGoingAway                          = 1001
-	StatusProtocolError                      = 1002
-	StatusUnsupportedData                    = 1003
-	StatusNoMeaningYet                       = 1004
-	StatusNoStatusRcvd                       = 1005
-	StatusAbnormalClosure                    = 1006
-	StatusInvalidFramePayloadData            = 1007
-	StatusPolicyViolation                    = 1008
-	StatusMessageTooBig                      = 1009
-	StatusMandatoryExt                       = 1010
-	StatusInternalServerError                = 1011
-	StatusTLSHandshake                       = 1015
+	StatusGoingAway               StatusCode = 1001
+	StatusProtocolError           StatusCode = 1002
+	StatusUnsupportedData         StatusCode = 1003
+	StatusNoMeaningYet            StatusCode = 1004
+	StatusNoStatusRcvd            StatusCode = 1005
+	StatusAbnormalClosure         StatusCode = 1006
+	StatusInvalidFramePayloadData StatusCode = 1007
+	StatusPolicyViolation         StatusCode = 1008
+	StatusMessageTooBig           StatusCode = 1009
+	StatusMandatoryExt            StatusCode = 1010
+	StatusInternalServerError     StatusCode = 1011
+	StatusTLSHandshake            StatusCode = 1015
 )
 
 // In reports whether the code is defined in given range.

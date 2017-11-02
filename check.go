@@ -10,12 +10,12 @@ const (
 	// StateServerSide means that endpoint (caller) is a server.
 	StateServerSide State = 0x1 << iota
 	// StateClientSide means that endpoint (caller) is a client.
-	StateClientSide
+	StateClientSide State = 0x1 << iota
 	// StateExtended means that extension was negotiated during handshake.
-	StateExtended
+	StateExtended State = 0x1 << iota
 	// StateFragmented means that endpoint (caller) has received fragmented
 	// frame and waits for continuation parts.
-	StateFragmented
+	StateFragmented State = 0x1 << iota
 )
 
 // Is checks whether the s has v enabled.
