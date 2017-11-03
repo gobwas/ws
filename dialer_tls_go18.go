@@ -4,6 +4,6 @@ package ws
 
 import "crypto/tls"
 
-func cloneTLSConfig(c *tls.Config) *tls.Config {
+func tlsCloneConfig(c *tls.Config) *tls.Config {
 	return c.Clone()
 }

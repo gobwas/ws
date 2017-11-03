@@ -97,7 +97,16 @@ type Dialer struct {
 	// If it is not nil, then it is used instead of net.Dialer.
 	NetDial func(ctx context.Context, network, addr string) (net.Conn, error)
 
-	// TLSConfig is passed to tls.DialWithDialer.
+	// TLSClient is the callback that will be called after succesful dial with
+	// received connection and its remote host name. If it is nil, then the
+	// default tls.Client() will be used.
+	// If it is not nil, then TLSConfig field is ignored.
+	TLSClient func(conn net.Conn, hostname string) net.Conn
+
+	// TLSConfig is passed to tls.Client() to start TLS over established
+	// connection. If TLSClient is not nil, then it is ignored. If TLSConfig is
+	// non-nil and its ServerName is empty, then for every Dial() it will be
+	// cloned and appropriate ServerName will be set.
 	TLSConfig *tls.Config
 }
 
@@ -137,53 +146,62 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 }
 
 var (
-	// emptyDialer is a net.Dialer without options, used in Dialer.dial() if
+	// netEmptyDialer is a net.Dialer without options, used in Dialer.dial() if
 	// Dialer.NetDial is not provided.
-	emptyDialer net.Dialer
-	// emptyTLSConfig is an empty tls.Config used as default one.
-	emptyTLSConfig tls.Config
+	netEmptyDialer net.Dialer
+	// tlsEmptyConfig is an empty tls.Config used as default one.
+	tlsEmptyConfig tls.Config
 )
 
-func defaultTLSConfig() *tls.Config {
-	return &emptyTLSConfig
+func tlsDefaultConfig() *tls.Config {
+	return &tlsEmptyConfig
 }
 
 func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error) {
 	var addr string
 	// We use here fast split2 func instead of net.SplitHostPort() because we
 	// do not want to validate host value here.
-	host, port := split2(u.Host, ':')
+	hostname, port := split2(u.Host, ':')
 	switch {
 	case port != "":
 		// Port were forced, do nothing.
 		addr = u.Host
 	case u.Scheme == "wss":
-		addr = host + ":443"
+		addr = hostname + ":443"
 	default:
-		addr = host + ":80"
+		addr = hostname + ":80"
 	}
 	dial := d.NetDial
 	if dial == nil {
-		dial = emptyDialer.DialContext
+		dial = netEmptyDialer.DialContext
 	}
 	conn, err = dial(ctx, "tcp", addr)
 	if err != nil {
 		return
 	}
 	if u.Scheme == "wss" {
-		config := d.TLSConfig
-		if config == nil {
-			config = defaultTLSConfig()
+		tlsClient := d.TLSClient
+		if tlsClient == nil {
+			tlsClient = d.tlsClient
 		}
-		if config.ServerName == "" {
-			config = cloneTLSConfig(config)
-			config.ServerName = host
-		}
-		// Do not make conn.Handshake() here because downstairs we will prepare
-		// i/o on this conn with proper context's timeout handling.
-		conn = tls.Client(conn, config)
+		conn = tlsClient(conn, hostname)
 	}
+
 	return
+}
+
+func (d Dialer) tlsClient(conn net.Conn, hostname string) net.Conn {
+	config := d.TLSConfig
+	if config == nil {
+		config = tlsDefaultConfig()
+	}
+	if config.ServerName == "" {
+		config = tlsCloneConfig(config)
+		config.ServerName = hostname
+	}
+	// Do not make conn.Handshake() here because downstairs we will prepare
+	// i/o on this conn with proper context's timeout handling.
+	return tls.Client(conn, config)
 }
 
 var (

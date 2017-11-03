@@ -4,7 +4,7 @@ package ws
 
 import "crypto/tls"
 
-func cloneTLSConfig(c *tls.Config) *tls.Config {
+func tlsCloneConfig(c *tls.Config) *tls.Config {
 	// NOTE: we copying SessionTicketsDisabled and SessionTicketKey here
 	// without calling inner c.initOnceServer somehow because we only could get
 	// here from the ws.Dialer code, which is obviously a client and makes
