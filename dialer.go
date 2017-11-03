@@ -108,6 +108,19 @@ type Dialer struct {
 	// non-nil and its ServerName is empty, then for every Dial() it will be
 	// cloned and appropriate ServerName will be set.
 	TLSConfig *tls.Config
+
+	// WrapConn is the optional callback that will be called when connection is
+	// prepared for an i/o. That is, it will be called after successful dial
+	// and TLS initialization (for "wss" schemes). It could be helpful for
+	// different user land purposes such as encrypting, debugging or collecting
+	// statistics for an i/o streams of raw connection.
+	//
+	// Note that in cases of debugging or collecting stats only for an http
+	// stage of connection, it is better to use raw net.Conn after WebSocket
+	// handshake. It is better for those who using `net.Buffers` to reduce
+	// number of system write calls.
+	// See https://github.com/golang/go/issues/21756
+	WrapConn func(conn net.Conn) net.Conn
 }
 
 // Dial connects to the url host and handshakes connection to websocket.
@@ -185,6 +198,9 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 			tlsClient = d.tlsClient
 		}
 		conn = tlsClient(conn, hostname)
+	}
+	if wrap := d.WrapConn; wrap != nil {
+		conn = wrap(conn)
 	}
 
 	return
