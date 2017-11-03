@@ -229,7 +229,7 @@ var (
 	aLongTimeAgo = time.Unix(42, 0)
 )
 
-// request sends request to the given connection and reads a request.
+// request sends request to the given connection and reads a response.
 // It returns response and some bytes which could be written by the peer right
 // after response and be caught by us during buffered read.
 func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *bufio.Reader, hs Handshake, err error) {
