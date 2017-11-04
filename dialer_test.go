@@ -600,10 +600,10 @@ func TestDialerCancelation(t *testing.T) {
 		},
 		{
 			dialer: Dialer{
-				HandshakeTimeout: time.Millisecond * 100,
+				Timeout: time.Millisecond * 100,
 			},
 			ctxTimeout: time.Millisecond * 150,
-			err:        ioErrDeadline,
+			err:        context.DeadlineExceeded,
 		},
 		{
 			ctxTimeout: time.Millisecond * 100,

@@ -55,9 +55,11 @@ type Dialer struct {
 	// If a size is zero then default value is used.
 	ReadBufferSize, WriteBufferSize int
 
-	// HandshakeTimeout allows to limit the time spent in i/o upgrade
-	// operations.
-	HandshakeTimeout time.Duration
+	// Timeout is the maximum amount of time a Dial() will wait for a connect
+	// and an handshake to complete.
+	//
+	// The default is no timeout.
+	Timeout time.Duration
 
 	// Protocols is the list of subprotocols that the client wants to speak,
 	// ordered by preference.
@@ -143,13 +145,16 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	if err != nil {
 		return
 	}
+	if t := d.Timeout; t != 0 {
+		deadline := time.Now().Add(t)
+		if d, ok := ctx.Deadline(); !ok || deadline.Before(d) {
+			subctx, cancel := context.WithDeadline(ctx, deadline)
+			defer cancel()
+			ctx = subctx
+		}
+	}
 	if conn, err = d.dial(ctx, u); err != nil {
 		return
-	}
-	if t := d.HandshakeTimeout; t != 0 {
-		d := time.Now().Add(t)
-		conn.SetDeadline(d)
-		defer conn.SetDeadline(noDeadline)
 	}
 	br, hs, err = d.request(ctx, conn, u)
 	if err != nil {
