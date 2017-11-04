@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 	_ "unsafe" // for go:linkname
 
 	"github.com/gobwas/httphead"
@@ -56,6 +57,12 @@ func Upgrade(conn io.ReadWriter) (Handshake, error) {
 // HTTPUpgrader contains options for upgrading connection to websocket from
 // net/http Handler arguments.
 type HTTPUpgrader struct {
+	// Timeout is the maximum amount of time an Upgrade() will spent while
+	// writing handshake response.
+	//
+	// The default is no timeout.
+	Timeout time.Duration
+
 	// Protocol is the select function that is used to select subprotocol from
 	// list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
@@ -170,6 +177,13 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	// Clear deadlines set by server.
+	conn.SetDeadline(noDeadline)
+	if t := u.Timeout; t != 0 {
+		conn.SetWriteDeadline(time.Now().Add(t))
+		defer conn.SetWriteDeadline(noDeadline)
 	}
 
 	var hw func(io.Writer)
@@ -308,6 +322,7 @@ func (w headerWriter) flush(to io.Writer) {
 
 // Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
 // as connection with incoming HTTP Upgrade request.
+// It is a caller responsibility to manage timeouts of upgrade.
 func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
