@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"strings"
 	"unsafe"
 
 	"github.com/gobwas/httphead"
@@ -86,13 +85,6 @@ func pow(a, b int) int {
 	return p
 }
 
-func split2(s string, sep byte) (a, b string) {
-	if i := strings.LastIndexByte(s, sep); i != -1 {
-		return s[:i], s[i+1:]
-	}
-	return s, ""
-}
-
 func bsplit3(bts []byte, sep byte) (b1, b2, b3 []byte) {
 	a := bytes.IndexByte(bts, sep)
 	b := bytes.IndexByte(bts[a+1:], sep)
@@ -101,13 +93,6 @@ func bsplit3(bts []byte, sep byte) (b1, b2, b3 []byte) {
 	}
 	b += a + 1
 	return bts[:a], bts[a+1 : b], bts[b+1:]
-}
-
-func bsplit2(bts []byte, sep byte) (b1, b2 []byte) {
-	if i := bytes.LastIndexByte(bts, sep); i != -1 {
-		return bts[:i], bts[i+1:]
-	}
-	return bts, nil
 }
 
 func btrim(bts []byte) []byte {

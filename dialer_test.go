@@ -755,6 +755,74 @@ func BenchmarkDialer(b *testing.B) {
 	}
 }
 
+func TestHostPort(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		host string
+		port string
+
+		expHostname string
+		expHostport string
+	}{
+		{
+			host:        "foo",
+			port:        ":80",
+			expHostname: "foo",
+			expHostport: "foo:80",
+		},
+		{
+			host:        "foo:1234",
+			port:        ":80",
+			expHostname: "foo",
+			expHostport: "foo:1234",
+		},
+		{
+			name:        "ipv4",
+			host:        "127.0.0.1",
+			port:        ":80",
+			expHostname: "127.0.0.1",
+			expHostport: "127.0.0.1:80",
+		},
+		{
+			name:        "ipv4",
+			host:        "127.0.0.1:1234",
+			port:        ":80",
+			expHostname: "127.0.0.1",
+			expHostport: "127.0.0.1:1234",
+		},
+		{
+			name:        "ipv6",
+			host:        "[0:0:0:0:0:0:0:1]",
+			port:        ":80",
+			expHostname: "[0:0:0:0:0:0:0:1]",
+			expHostport: "[0:0:0:0:0:0:0:1]:80",
+		},
+		{
+			name:        "ipv6",
+			host:        "[0:0:0:0:0:0:0:1]:1234",
+			port:        ":80",
+			expHostname: "[0:0:0:0:0:0:0:1]",
+			expHostport: "[0:0:0:0:0:0:0:1]:1234",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			actHostname, actHostport := hostport(test.host, test.port)
+			if actHostname != test.expHostname {
+				t.Errorf(
+					"actual hostname = %q; want %q",
+					actHostname, test.expHostname,
+				)
+			}
+			if actHostport != test.expHostport {
+				t.Errorf(
+					"actual hostname = %q; want %q",
+					actHostport, test.expHostport,
+				)
+			}
+		})
+	}
+}
+
 type stubConn struct {
 	read             func([]byte) (int, error)
 	write            func([]byte) (int, error)

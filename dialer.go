@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gobwas/httphead"
@@ -140,6 +141,14 @@ type Dialer struct {
 // If you want to dial non-ascii host name, take care of its name serialization
 // avoiding bad request issues. For more info see net/http Request.Write()
 // implementation, especially cleanHost() function.
+//
+// If you do not want to dial with RFC compliant url starting with "ws:" or
+// "wss:" scheme (which is rare case, but possible), you can use url with
+// custom scheme to specify a network name, and host or path as an address.
+// That is, for "unix*" schemes address is an url's path, for other networks
+// address is an url's host. For example, to dial unix domain socket you could
+// pass urlstr as "unix:/var/run/app.sock". Note that it is not possible to use
+// TLS for such connections.
 func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs Handshake, err error) {
 	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
@@ -175,29 +184,36 @@ func tlsDefaultConfig() *tls.Config {
 	return &tlsEmptyConfig
 }
 
-func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error) {
-	var addr string
-	// We use here fast split2 func instead of net.SplitHostPort() because we
-	// do not want to validate host value here.
-	hostname, port := split2(u.Host, ':')
-	switch {
-	case port != "":
-		// Port were forced, do nothing.
-		addr = u.Host
-	case u.Scheme == "wss":
-		addr = hostname + ":443"
-	default:
-		addr = hostname + ":80"
+func hostport(host string, defaultPort string) (hostname, addr string) {
+	var (
+		colon   = strings.LastIndexByte(host, ':')
+		bracket = strings.IndexByte(host, ']')
+	)
+	if colon > bracket {
+		return host[:colon], host
 	}
+	return host, host + defaultPort
+}
+
+func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error) {
 	dial := d.NetDial
 	if dial == nil {
 		dial = netEmptyDialer.DialContext
 	}
-	conn, err = dial(ctx, "tcp", addr)
-	if err != nil {
-		return
-	}
-	if u.Scheme == "wss" {
+	switch u.Scheme {
+	case "ws":
+		_, addr := hostport(u.Host, ":80")
+		conn, err = dial(ctx, "tcp", addr)
+	case "unix", "unixgram", "unixpacket":
+		conn, err = dial(ctx, u.Scheme, u.Path)
+	default:
+		conn, err = dial(ctx, u.Scheme, u.Host)
+	case "wss":
+		hostname, addr := hostport(u.Host, ":443")
+		conn, err = dial(ctx, "tcp", addr)
+		if err != nil {
+			return
+		}
 		tlsClient := d.TLSClient
 		if tlsClient == nil {
 			tlsClient = d.tlsClient
@@ -207,7 +223,6 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 	if wrap := d.WrapConn; wrap != nil {
 		conn = wrap(conn)
 	}
-
 	return
 }
 
