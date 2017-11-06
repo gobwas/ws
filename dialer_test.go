@@ -273,6 +273,7 @@ func TestDialerHandshake(t *testing.T) {
 			accept: acceptValid,
 		},
 		{
+			name: "resp with frames",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -289,6 +290,7 @@ func TestDialerHandshake(t *testing.T) {
 			wantBuffer: true,
 		},
 		{
+			name: "resp with body",
 			res: &http.Response{
 				StatusCode: 101,
 				ProtoMajor: 1,
@@ -324,8 +326,8 @@ func TestDialerHandshake(t *testing.T) {
 				ProtoMinor: 1,
 				Header:     make(http.Header),
 			},
-			err:        StatusError{400, http.StatusText(400)},
-			wantBuffer: true,
+			err:        StatusError(400),
+			wantBuffer: false,
 		},
 		{
 			name: "bad status with body",
@@ -339,8 +341,8 @@ func TestDialerHandshake(t *testing.T) {
 				)),
 				ContentLength: 24,
 			},
-			err:        StatusError{400, http.StatusText(400)},
-			wantBuffer: true,
+			err:        StatusError(400),
+			wantBuffer: false,
 		},
 		{
 			name: "bad upgrade",
@@ -478,17 +480,12 @@ func TestDialerHandshake(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			rb := &bytes.Buffer{}
-			wb := &bytes.Buffer{}
-			wbuf := bufio.NewReader(wb)
-
-			sig := make(chan struct{})
+			client, server := net.Pipe()
 			go func() {
 				// This routine is our fake web-server. It reads request after
 				// client wrote it. Then it optionally could send some frames
 				// set in test case.
-				<-sig
-				req, err := http.ReadRequest(wbuf)
+				req, err := http.ReadRequest(bufio.NewReader(client))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -507,25 +504,27 @@ func TestDialerHandshake(t *testing.T) {
 				}
 
 				test.res.Request = req
-				rb.Write(dumpResponse(test.res))
+				bts := dumpResponse(test.res)
 
+				var buf bytes.Buffer
 				for _, f := range test.frames {
-					if err := WriteFrame(rb, f); err != nil {
+					if err := WriteFrame(&buf, f); err != nil {
 						t.Fatal(err)
 					}
+					bts = append(bts, buf.Bytes()...)
+					buf.Reset()
 				}
 
-				sig <- struct{}{}
+				client.Write(bts)
+				client.Close()
 			}()
 
 			conn := &stubConn{
 				read: func(p []byte) (int, error) {
-					<-sig
-					return rb.Read(p)
+					return server.Read(p)
 				},
 				write: func(p []byte) (int, error) {
-					n, err := wb.Write(p)
-					sig <- struct{}{}
+					n, err := server.Write(p)
 					return n, err
 				},
 				close: func() error { return nil },
@@ -534,13 +533,28 @@ func TestDialerHandshake(t *testing.T) {
 			test.dialer.NetDial = func(_ context.Context, _, _ string) (net.Conn, error) {
 				return conn, nil
 			}
+			test.dialer.OnStatusError = func(status int, reason []byte, r io.Reader) {
+				res, err := http.ReadResponse(
+					bufio.NewReader(r),
+					nil,
+				)
+				if err != nil {
+					t.Errorf("read response inside OnStatusError error: %v", err)
+				}
+				if act, exp := dumpResponse(res), dumpResponse(test.res); !bytes.Equal(act, exp) {
+					t.Errorf(
+						"unexpected response from OnStatusError:\nact:\n%s\nexp:\n%s\n",
+						act, exp,
+					)
+				}
+			}
 
 			_, br, _, err := test.dialer.Dial(context.Background(), "ws://gobwas.com")
 			if test.err != err {
 				t.Fatalf("unexpected error: %v;\n\twant %v", err, test.err)
 			}
 
-			if test.wantBuffer && br == nil {
+			if (test.wantBuffer || len(test.frames) > 0) && br == nil {
 				t.Fatalf("Dial() returned empty bufio.Reader")
 			}
 			if !test.wantBuffer && br != nil {
