@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log"
 	"net"
 	"net/http"
 
@@ -99,8 +98,6 @@ func (r *responseLimitedReader) Read(p []byte) (n int, err error) {
 		r.b = bytes.NewReader(bts[:end])
 
 		*r.resp = bts[:end]
-
-		log.Printf("bts: %s", bts[:end])
 	}
 	if r.err != nil {
 		return 0, r.err
