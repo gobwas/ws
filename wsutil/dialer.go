@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"net/http"
 
 	"github.com/gobwas/pool/pbufio"
 	"github.com/gobwas/ws"
@@ -48,33 +47,13 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 			c = userWrap(c)
 		}
 		conn = c
-		br = pbufio.GetReader(conn, 4096)
-
 		return rwConn{conn,
-			// Limit read from conn inside Dialer.Dial() to read response only.
-			// That is, responseLimitedReader reads whole response on first Read().
-			// After that, it returns EOF when response bytes are all read, even if
-			// there present more bytes in buffer br.
-			//
-			// Note that this will lead Dial() to always return nil buffer.
-			// This will allow us to return conn and br without checking unread
-			// bytes from Dial()'s buffer.
-			&responseLimitedReader{
-				Source: br,
-				Buffer: &resBuf,
-			},
-			// Write end is much simplier – it just duplicates output stream
-			// into the request buffer.
+			io.TeeReader(conn, &resBuf),
 			io.MultiWriter(conn, &reqBuf),
 		}
 	}
 
-	_, _, hs, err = dialer.Dial(ctx, urlstr)
-	if br.Buffered() == 0 || err != nil {
-		// No payload left in the buffer.
-		pbufio.PutReader(br)
-		br = nil
-	}
+	_, br, hs, err = dialer.Dial(ctx, urlstr)
 	if err != nil {
 		return
 	}
@@ -83,40 +62,30 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		onRequest(reqBuf.Bytes())
 	}
 	if onResponse := d.OnResponse; onResponse != nil {
-		onResponse(resBuf.Bytes())
+		if br == nil {
+			onResponse(resBuf.Bytes())
+		} else {
+			p := resBuf.Bytes()
+			m := len(p) - br.Buffered()
+			res := p[:m]
+			rem := p[m:]
+
+			// Release reader.
+			ws.PutReader(br)
+
+			br = pbufio.GetReader(
+				io.MultiReader(
+					bytes.NewReader(rem),
+					conn,
+				),
+				len(p),
+			)
+
+			onResponse(res)
+		}
 	}
 
 	return conn, br, hs, nil
-}
-
-type responseLimitedReader struct {
-	Source io.Reader
-	Buffer *bytes.Buffer
-
-	resp io.Reader
-	err  error
-}
-
-var headersEnd = []byte("\r\n\r\n")
-
-func (r *responseLimitedReader) Read(p []byte) (n int, err error) {
-	if r.resp == nil {
-		var resp *http.Response
-		tee := io.TeeReader(r.Source, r.Buffer)
-		resp, r.err = http.ReadResponse(bufio.NewReader(tee), nil)
-
-		bts := r.Buffer.Bytes()
-		end := bytes.Index(bts, headersEnd)
-		end += len(headersEnd)
-		end += int(resp.ContentLength)
-
-		b.Buffer.Truncate(end)
-		r.resp = bytes.NewReader(bts[:end])
-	}
-	if r.err != nil {
-		return 0, r.err
-	}
-	return r.resp.Read(p)
 }
 
 type rwConn struct {
