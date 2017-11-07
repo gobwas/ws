@@ -1,6 +1,5 @@
 /*
-Package wsutil exports tools to simplify the work with WebSocket protocol.
-The main purpose of this subpackage is to export easy to use tools.
+Package wsutil provides utilities for working with WebSocket protocol.
 
 Overview:
 
