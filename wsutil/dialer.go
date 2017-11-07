@@ -12,13 +12,26 @@ import (
 	"github.com/gobwas/ws"
 )
 
+// DebugDialer is a wrapper around ws.Dialer. It tracks i/o of WebSocket
+// handshake. That is, it gives ability to receive copied HTTP request and
+// response bytes that made inside Dialer.Dial().
+//
+// Note that it must not be used in production applications that requires
+// Dial() efficiency.
 type DebugDialer struct {
-	Dialer     *ws.Dialer
-	OnRequest  func([]byte, *http.Request)
-	OnResponse func([]byte, *http.Response)
+	// Dialer points to a Dialer that will make Dial(). If Dialer is nil then
+	// the empty Dialer will be used.
+	Dialer *ws.Dialer
+
+	// OnRequest and OnResponse are the callbacks that will be called with the
+	// HTTP request and response respectively.
+	OnRequest, OnResponse func([]byte)
 }
 
+// Dial connects to the url host and upgrades connection to WebSocket. It makes
+// it by calling d.Dialer.Dial().
 func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs ws.Handshake, err error) {
+	// Need to copy Dialer to prevent original object mutation.
 	var dialer ws.Dialer
 	if d.Dialer == nil {
 		dialer = ws.Dialer{}
@@ -26,32 +39,39 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		dialer = *d.Dialer
 	}
 	var (
-		rawConn net.Conn
-		reqBuf  bytes.Buffer
-
-		req  *http.Request
-		reqp []byte
-
-		res  *http.Response
-		resp []byte
+		reqBuf bytes.Buffer
+		resBuf bytes.Buffer
 	)
 	userWrap := dialer.WrapConn
-	dialer.WrapConn = func(conn net.Conn) net.Conn {
+	dialer.WrapConn = func(c net.Conn) net.Conn {
 		if userWrap != nil {
-			conn = userWrap(conn)
+			c = userWrap(c)
 		}
-		rawConn = conn
-		br = pbufio.GetReader(rawConn, 4096)
+		conn = c
+		br = pbufio.GetReader(conn, 4096)
 
-		return rwConn{
-			rawConn,
-			&responseLimitedReader{r: br, res: &res, resp: &resp},
-			io.MultiWriter(rawConn, &reqBuf),
+		return rwConn{conn,
+			// Limit read from conn inside Dialer.Dial() to read response only.
+			// That is, responseLimitedReader reads whole response on first Read().
+			// After that, it returns EOF when response bytes are all read, even if
+			// there present more bytes in buffer br.
+			//
+			// Note that this will lead Dial() to always return nil buffer.
+			// This will allow us to return conn and br without checking unread
+			// bytes from Dial()'s buffer.
+			&responseLimitedReader{
+				Source: br,
+				Buffer: &resBuf,
+			},
+			// Write end is much simplier – it just duplicates output stream
+			// into the request buffer.
+			io.MultiWriter(conn, &reqBuf),
 		}
 	}
 
 	_, _, hs, err = dialer.Dial(ctx, urlstr)
 	if br.Buffered() == 0 || err != nil {
+		// No payload left in the buffer.
 		pbufio.PutReader(br)
 		br = nil
 	}
@@ -59,54 +79,48 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		return
 	}
 
-	reqp = reqBuf.Bytes()
-	reqbr := pbufio.GetReader(&reqBuf, 4096)
-	defer pbufio.PutReader(reqbr)
-	if req, err = http.ReadRequest(reqbr); err != nil {
-		return
-	}
 	if onRequest := d.OnRequest; onRequest != nil {
-		onRequest(reqp, req)
+		onRequest(reqBuf.Bytes())
 	}
 	if onResponse := d.OnResponse; onResponse != nil {
-		onResponse(resp, res)
+		onResponse(resBuf.Bytes())
 	}
 
-	return rawConn, br, hs, nil
+	return conn, br, hs, nil
 }
 
 type responseLimitedReader struct {
-	r   io.Reader
-	b   io.Reader
-	n   int
-	err error
+	Source io.Reader
+	Buffer *bytes.Buffer
 
-	res  **http.Response
-	resp *[]byte
+	resp io.Reader
+	err  error
 }
 
+var headersEnd = []byte("\r\n\r\n")
+
 func (r *responseLimitedReader) Read(p []byte) (n int, err error) {
-	if r.b == nil {
-		buf := bytes.Buffer{}
-		tee := io.TeeReader(r.r, &buf)
-		*r.res, r.err = http.ReadResponse(bufio.NewReader(tee), nil)
+	if r.resp == nil {
+		var resp *http.Response
+		tee := io.TeeReader(r.Source, r.Buffer)
+		resp, r.err = http.ReadResponse(bufio.NewReader(tee), nil)
 
-		bts := buf.Bytes()
-		end := bytes.Index(bts, []byte("\r\n\r\n"))
-		end += int((*r.res).ContentLength)
-		end += 4
-		r.b = bytes.NewReader(bts[:end])
+		bts := r.Buffer.Bytes()
+		end := bytes.Index(bts, headersEnd)
+		end += len(headersEnd)
+		end += int(resp.ContentLength)
 
-		*r.resp = bts[:end]
+		r.resp = bytes.NewReader(bts[:end])
 	}
 	if r.err != nil {
 		return 0, r.err
 	}
-	return r.b.Read(p)
+	return r.resp.Read(p)
 }
 
 type rwConn struct {
 	net.Conn
+
 	r io.Reader
 	w io.Writer
 }
