@@ -110,6 +110,7 @@ func (r *responseLimitedReader) Read(p []byte) (n int, err error) {
 		end += len(headersEnd)
 		end += int(resp.ContentLength)
 
+		b.Buffer.Truncate(end)
 		r.resp = bytes.NewReader(bts[:end])
 	}
 	if r.err != nil {
