@@ -5,9 +5,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/ioutil"
 	"net"
+	"net/http"
 
-	"github.com/gobwas/pool/pbufio"
 	"github.com/gobwas/ws"
 )
 
@@ -40,52 +41,72 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 	var (
 		reqBuf bytes.Buffer
 		resBuf bytes.Buffer
+
+		resContentLength int64
 	)
 	userWrap := dialer.WrapConn
 	dialer.WrapConn = func(c net.Conn) net.Conn {
 		if userWrap != nil {
 			c = userWrap(c)
 		}
+
+		// Save the pointer to the raw connection.
 		conn = c
-		return rwConn{conn,
-			io.TeeReader(conn, &resBuf),
-			io.MultiWriter(conn, &reqBuf),
+
+		var (
+			r io.Reader = conn
+			w io.Writer = conn
+		)
+		if d.OnResponse != nil {
+			r = &prefetchResponseReader{
+				source:        conn,
+				buffer:        &resBuf,
+				contentLength: &resContentLength,
+			}
 		}
+		if d.OnRequest != nil {
+			w = io.MultiWriter(conn, &reqBuf)
+		}
+		return rwConn{conn, r, w}
 	}
 
 	_, br, hs, err = dialer.Dial(ctx, urlstr)
-	if err != nil {
-		return
-	}
 
 	if onRequest := d.OnRequest; onRequest != nil {
 		onRequest(reqBuf.Bytes())
 	}
 	if onResponse := d.OnResponse; onResponse != nil {
-		if br == nil {
-			onResponse(resBuf.Bytes())
-		} else {
-			p := resBuf.Bytes()
-			m := len(p) - br.Buffered()
-			res := p[:m]
-			rem := p[m:]
+		// We must split response iniside buffered bytes from other received
+		// bytes from server.
+		p := resBuf.Bytes()
+		n := bytes.Index(p, headEnd)
+		h := n + len(headEnd)         // Head end index.
+		n = h + int(resContentLength) // Body end index.
 
-			// Release reader.
-			ws.PutReader(br)
+		onResponse(p[:n])
 
-			br = pbufio.GetReader(
-				io.MultiReader(
-					bytes.NewReader(rem),
+		if br != nil {
+			// If br is non-nil, then it mean two things. First is that
+			// handshake is OK and server has sent additional bytes – probably
+			// response body or immediate sent frames. Second, the bad one, is
+			// that br buffer's source is now rwConn instance from
+			// above WrapConn call. It is incorrect, so we must fix it.
+			// That is, it must read from raw net.Conn, not the wrapped on from
+			// above.
+			var r io.Reader = conn
+			if h < len(p) {
+				r = io.MultiReader(
+					bytes.NewReader(p[h:]),
 					conn,
-				),
-				len(p),
-			)
-
-			onResponse(res)
+				)
+			}
+			br.Reset(r)
+			// Must make br.Buffered() non-zero.
+			br.Peek(len(p[h:]))
 		}
 	}
 
-	return conn, br, hs, nil
+	return conn, br, hs, err
 }
 
 type rwConn struct {
@@ -100,4 +121,32 @@ func (rwc rwConn) Read(p []byte) (int, error) {
 }
 func (rwc rwConn) Write(p []byte) (int, error) {
 	return rwc.w.Write(p)
+}
+
+var headEnd = []byte("\r\n\r\n")
+
+type prefetchResponseReader struct {
+	source io.Reader
+	reader io.Reader
+	buffer *bytes.Buffer
+
+	contentLength *int64
+}
+
+func (r *prefetchResponseReader) Read(p []byte) (int, error) {
+	if r.reader == nil {
+		resp, err := http.ReadResponse(bufio.NewReader(
+			io.TeeReader(r.source, r.buffer),
+		), nil)
+		if err == nil {
+			*r.contentLength, _ = io.Copy(ioutil.Discard, resp.Body)
+			resp.Body.Close()
+		}
+		bts := r.buffer.Bytes()
+		r.reader = io.MultiReader(
+			bytes.NewReader(bts),
+			r.source,
+		)
+	}
+	return r.reader.Read(p)
 }
