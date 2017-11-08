@@ -100,7 +100,7 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 				)
 			}
 			br.Reset(r)
-			// Must make br.Buffered() non-zero.
+			// Must make br.Buffered() to be non-zero.
 			br.Peek(len(p[h:]))
 		}
 	}
