@@ -91,10 +91,9 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 			// response body or immediate sent frames. Second, the bad one, is
 			// that br buffer's source is now rwConn instance from
 			// above WrapConn call. It is incorrect, so we must fix it.
-			// That is, it must read from raw net.Conn, not the wrapped on from
-			// above.
 			var r io.Reader = conn
-			if h < len(p) {
+			if len(p) > h {
+				// Buffer contains more than just HTTP headers bytes.
 				r = io.MultiReader(
 					bytes.NewReader(p[h:]),
 					conn,
