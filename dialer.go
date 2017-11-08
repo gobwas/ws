@@ -142,14 +142,6 @@ type Dialer struct {
 // If you want to dial non-ascii host name, take care of its name serialization
 // avoiding bad request issues. For more info see net/http Request.Write()
 // implementation, especially cleanHost() function.
-//
-// If you do not want to dial with RFC compliant url starting with "ws:" or
-// "wss:" scheme (which is rare case, but possible), you can use url with
-// custom scheme to specify a network name, and host or path as an address.
-// That is, for "unix*" schemes address is an url's path, for other networks
-// address is an url's host. For example, to dial unix domain socket you could
-// pass urlstr as "unix:/var/run/app.sock". Note that it is not possible to use
-// TLS for such connections.
 func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs Handshake, err error) {
 	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
@@ -205,10 +197,6 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 	case "ws":
 		_, addr := hostport(u.Host, ":80")
 		conn, err = dial(ctx, "tcp", addr)
-	case "unix", "unixgram", "unixpacket":
-		conn, err = dial(ctx, u.Scheme, u.Path)
-	default:
-		conn, err = dial(ctx, u.Scheme, u.Host)
 	case "wss":
 		hostname, addr := hostport(u.Host, ":443")
 		conn, err = dial(ctx, "tcp", addr)
@@ -220,6 +208,8 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 			tlsClient = d.tlsClient
 		}
 		conn = tlsClient(conn, hostname)
+	default:
+		return nil, fmt.Errorf("unexpected websocket scheme: %q", u.Scheme)
 	}
 	if wrap := d.WrapConn; wrap != nil {
 		conn = wrap(conn)
