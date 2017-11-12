@@ -292,7 +292,7 @@ func main() {
 			}
 			return
 		},
-		BeforeUpgrade: func() (headerWriter func(io.Writer), err error, code int) {
+		OnBeforeUpgrade: func() (headerWriter func(io.Writer), err error, code int) {
 			return ws.HeaderWriter(header), nil, 0
 		},
 	}
