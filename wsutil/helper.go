@@ -161,7 +161,7 @@ func WriteClientBinary(w io.Writer, p []byte) error {
 // HandleClientControl handles control frame from conn and writes
 // response when needed. It considers that caller represents server
 // side.
-func HandleClientControl(conn io.ReadWriter, op ws.OpCode, p []byte) error {
+func HandleClientControl(conn io.Writer, op ws.OpCode, p []byte) error {
 	return ControlHandler(conn, ws.StateServerSide)(ws.Header{
 		Length: int64(len(p)),
 		OpCode: op,
