@@ -458,12 +458,6 @@ func PutReader(br *bufio.Reader) {
 	pbufio.PutReader(br)
 }
 
-type timeoutError struct{}
-
-func (timeoutError) Timeout() bool   { return true }
-func (timeoutError) Temporary() bool { return true }
-func (timeoutError) Error() string   { return "client timeout" }
-
 // StatusError contains an unexpected status-line code from the server.
 type StatusError int
 
