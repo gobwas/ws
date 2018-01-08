@@ -209,7 +209,7 @@ type Upgrader struct {
 	// If a size is zero then default value is used.
 	//
 	// Usually it is useful to set read buffer size bigger than write buffer
-	// size because incoming request could contain long header values, such
+	// size because incoming request could contain long header values, such as
 	// Cookie. Response, in other way, could be big only if user write multiple
 	// custom headers. Usually response takes less than 256 bytes.
 	ReadBufferSize, WriteBufferSize int
@@ -322,7 +322,13 @@ func (w headerWriter) flush(to io.Writer) {
 
 // Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
 // as connection with incoming HTTP Upgrade request.
-// It is a caller responsibility to manage timeouts of upgrade.
+//
+// It is a caller responsibility to manage i/o timeouts on conn.
+//
+// Non-nil error means that request for the WebSocket upgrade is invalid or
+// malformed and connection should be closed. Even when error is non-nil
+// Upgrade will write appropriate response into connection in compliance with
+// RFC.
 func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
@@ -367,12 +373,14 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
+	// Prepare buffered writer for response.
 	if bw == nil {
 		bw = pbufio.GetWriter(conn,
 			nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
 		)
 		defer pbufio.PutWriter(bw)
 	}
+
 	// Use default http status code for errors.
 	code := http.StatusBadRequest
 
