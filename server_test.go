@@ -332,8 +332,6 @@ func TestHTTPUpgrader(t *testing.T) {
 				return
 			}
 
-			fmt.Printf("BYTES: %s", res.Bytes())
-
 			actRespBts := sortHeaders(res.Bytes())
 			expRespBts := sortHeaders(dumpResponse(test.res))
 			if !bytes.Equal(actRespBts, expRespBts) {
