@@ -84,33 +84,33 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
 	if r.Method != http.MethodGet {
 		err = ErrHandshakeBadMethod
-		http.Error(w, err.Error(), http.StatusMethodNotAllowed)
+		httpError(w, err.Error(), http.StatusMethodNotAllowed)
 		return
 	}
 	if r.ProtoMajor < 1 || (r.ProtoMajor == 1 && r.ProtoMinor < 1) {
 		err = ErrHandshakeBadProtocol
-		http.Error(w, err.Error(), http.StatusHTTPVersionNotSupported)
+		httpError(w, err.Error(), http.StatusHTTPVersionNotSupported)
 		return
 	}
 	if r.Host == "" {
 		err = ErrHandshakeBadHost
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if u := httpGetHeader(r.Header, headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
 		err = ErrHandshakeBadUpgrade
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if c := httpGetHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	nonce := httpGetHeader(r.Header, headerSecKey)
 	if len(nonce) != nonceSize {
 		err = ErrHandshakeBadSecKey
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if v := httpGetHeader(r.Header, headerSecVersion); v != "13" {
@@ -134,9 +134,9 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 		// not present or empty – it is 400.
 		if v != "" {
 			w.Header().Set(headerSecVersion, "13")
-			http.Error(w, err.Error(), http.StatusUpgradeRequired)
+			httpError(w, err.Error(), http.StatusUpgradeRequired)
 		} else {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err.Error(), http.StatusBadRequest)
 		}
 		return
 	}
@@ -147,7 +147,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 			hs.Protocol, ok = strSelectProtocol(v, check)
 			if !ok {
 				err = ErrMalformedRequest
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				httpError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			if hs.Protocol != "" {
@@ -161,7 +161,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 			hs.Extensions, ok = strSelectExtensions(v, hs.Extensions, check)
 			if !ok {
 				err = ErrMalformedRequest
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				httpError(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 		}

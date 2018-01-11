@@ -736,20 +736,22 @@ func mustMakeResponse(code int, headers http.Header) *http.Response {
 }
 
 func mustMakeErrResponse(code int, err error, headers http.Header) *http.Response {
+	// Body text.
+	body := err.Error()
+
 	res := &http.Response{
 		StatusCode: code,
 		Status:     http.StatusText(code),
 		Header: http.Header{
-			"Content-Type":           []string{"text/plain; charset=utf-8"},
-			"X-Content-Type-Options": []string{"nosniff"},
+			"Content-Type": []string{"text/plain; charset=utf-8"},
 		},
 		ProtoMajor:    1,
 		ProtoMinor:    1,
-		ContentLength: -1,
+		ContentLength: int64(len(body)),
 	}
-	if err != nil {
-		res.Body = ioutil.NopCloser(strings.NewReader(err.Error() + "\n"))
-	}
+	res.Body = ioutil.NopCloser(
+		strings.NewReader(body),
+	)
 	for k, v := range headers {
 		res.Header[k] = v
 	}

@@ -14,13 +14,27 @@ import (
 )
 
 const (
-	textErrorContent    = "Content-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\n"
-	textUpgrade         = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-	textBadRequest      = "HTTP/1.1 400 Bad Request\r\n" + textErrorContent
-	textUpgradeRequired = "HTTP/1.1 426 Upgrade Required\r\n" + textErrorContent
-	crlf                = "\r\n"
-	colonAndSpace       = ": "
-	commaAndSpace       = ", "
+	crlf          = "\r\n"
+	colonAndSpace = ": "
+	commaAndSpace = ", "
+)
+
+const (
+	textHeadUpgrade = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+)
+
+var (
+	textHeadBadRequest      = statusText(http.StatusBadRequest)
+	textHeadUpgradeRequired = statusText(http.StatusUpgradeRequired)
+
+	textTailErrHandshakeBadProtocol   = errorText(ErrHandshakeBadProtocol)
+	textTailErrHandshakeBadMethod     = errorText(ErrHandshakeBadMethod)
+	textTailErrHandshakeBadHost       = errorText(ErrHandshakeBadHost)
+	textTailErrHandshakeBadUpgrade    = errorText(ErrHandshakeBadUpgrade)
+	textTailErrHandshakeBadConnection = errorText(ErrHandshakeBadConnection)
+	textTailErrHandshakeBadSecAccept  = errorText(ErrHandshakeBadSecAccept)
+	textTailErrHandshakeBadSecKey     = errorText(ErrHandshakeBadSecKey)
+	textTailErrHandshakeBadSecVersion = errorText(ErrHandshakeBadSecVersion)
 )
 
 // Errors returned when HTTP request or response can not be parsed.
@@ -274,7 +288,7 @@ func httpWriteUpgradeRequest(
 }
 
 func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, hw func(io.Writer)) {
-	bw.WriteString(textUpgrade)
+	bw.WriteString(textHeadUpgrade)
 
 	httpWriteHeaderKey(bw, headerSecAccept)
 	writeAccept(bw, nonce)
@@ -298,25 +312,85 @@ func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, hw f
 func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Writer)) {
 	switch code {
 	case http.StatusBadRequest:
-		bw.WriteString(textBadRequest)
+		bw.WriteString(textHeadBadRequest)
 	case http.StatusUpgradeRequired:
-		bw.WriteString(textUpgradeRequired)
+		bw.WriteString(textHeadUpgradeRequired)
 	default:
-		bw.WriteString("HTTP/1.1 ")
-		bw.WriteString(strconv.FormatInt(int64(code), 10))
-		bw.WriteByte(' ')
-		bw.WriteString(http.StatusText(code))
-		bw.WriteString(crlf)
-		bw.WriteString(textErrorContent)
+		writeStatusText(bw, code)
 	}
 	if hw != nil {
+		// Write custom headers.
 		hw(bw)
 	}
-	bw.WriteString(crlf)
-	if err != nil {
-		bw.WriteString(err.Error())
-		bw.WriteByte('\n') // Just to be consistent with http.Error().
+	switch err {
+	case ErrHandshakeBadProtocol:
+		bw.WriteString(textTailErrHandshakeBadProtocol)
+	case ErrHandshakeBadMethod:
+		bw.WriteString(textTailErrHandshakeBadMethod)
+	case ErrHandshakeBadHost:
+		bw.WriteString(textTailErrHandshakeBadHost)
+	case ErrHandshakeBadUpgrade:
+		bw.WriteString(textTailErrHandshakeBadUpgrade)
+	case ErrHandshakeBadConnection:
+		bw.WriteString(textTailErrHandshakeBadConnection)
+	case ErrHandshakeBadSecAccept:
+		bw.WriteString(textTailErrHandshakeBadSecAccept)
+	case ErrHandshakeBadSecKey:
+		bw.WriteString(textTailErrHandshakeBadSecKey)
+	case ErrHandshakeBadSecVersion:
+		bw.WriteString(textTailErrHandshakeBadSecVersion)
+	case nil:
+		bw.WriteString(crlf)
+	default:
+		writeErrorText(bw, err)
 	}
+}
+
+func writeStatusText(bw *bufio.Writer, code int) {
+	bw.WriteString("HTTP/1.1 ")
+	bw.WriteString(strconv.FormatInt(int64(code), 10))
+	bw.WriteByte(' ')
+	bw.WriteString(http.StatusText(code))
+	bw.WriteString(crlf)
+	bw.WriteString("Content-Type: text/plain; charset=utf-8")
+	bw.WriteString(crlf)
+}
+
+func writeErrorText(bw *bufio.Writer, err error) {
+	body := err.Error()
+	bw.WriteString("Content-Length: ")
+	bw.WriteString(strconv.Itoa(len(body)))
+	bw.WriteString(crlf)
+	bw.WriteString(crlf)
+	bw.WriteString(body)
+}
+
+// httpError is like the http.Error with WebSocket context exception.
+func httpError(w http.ResponseWriter, body string, code int) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(code)
+	w.Write([]byte(body))
+}
+
+// statusText is a non-performant status text generator.
+// NOTE: Used only to generate constants.
+func statusText(code int) string {
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	writeStatusText(bw, code)
+	bw.Flush()
+	return buf.String()
+}
+
+// errorText is a non-performant error text generator.
+// NOTE: Used only to generate constants.
+func errorText(err error) string {
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	writeErrorText(bw, err)
+	bw.Flush()
+	return buf.String()
 }
 
 // HeaderWriter creates callback function that will dump h into recevied
