@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -74,19 +73,14 @@ func TestDialerRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var ErrStub = errors.New("stub")
 			var buf bytes.Buffer
-			conn := stubConn{
-				read: func(p []byte) (int, error) {
-					return 0, ErrStub
-				},
-				write: func(p []byte) (int, error) {
-					return buf.Write(p)
-				},
-			}
+			conn := struct {
+				io.Reader
+				io.Writer
+			}{io.LimitReader(&buf, 0), &buf}
 
-			_, _, err = test.dialer.request(context.Background(), &conn, u)
-			if err == ErrStub {
+			_, _, err = test.dialer.Upgrade(&conn, u)
+			if err == io.EOF {
 				err = nil
 			}
 			if test.err && err == nil {

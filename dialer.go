@@ -158,10 +158,24 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	if conn, err = d.dial(ctx, u); err != nil {
 		return
 	}
-	br, hs, err = d.request(ctx, conn, u)
+
+	// Register connection I/O interrupter before performing Upgrade() call.
+	done := contextIO(ctx, conn)
+
+	br, hs, err = d.Upgrade(conn, u)
+
+	// Map Upgrade() error to a possible context expiration error.
+	// That is, even if Upgrade() err is nil, context could be already expired
+	// and connection "poisoned" by SetDeadline() call. In that case we must
+	// not return non-nil error and connection at all.
+	err = done(err)
 	if err != nil {
 		conn.Close()
+		// Set br to nil because Upgrade() could be successful but ContextIO's
+		// done failed connection after context racy expiration.
+		return nil, nil, Handshake{}, err
 	}
+
 	return
 }
 
@@ -240,10 +254,14 @@ var (
 	aLongTimeAgo = time.Unix(42, 0)
 )
 
-// request sends request to the given connection and reads a response.
-// It returns response and some bytes which could be written by the peer right
-// after response and be caught by us during buffered read.
-func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *bufio.Reader, hs Handshake, err error) {
+// Upgrade writes an upgrade request to the given io.ReadWriter conn at given
+// url u and reads a response from it.
+//
+// It is a caller responsibility to manage I/O deadlines on conn.
+//
+// It returns handshake info and some bytes which could be written by the peer
+// right after response and be caught by us during buffered read.
+func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
 	const (
@@ -259,47 +277,21 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 			headerSeenSecAccept
 	)
 
-	if ctx != context.Background() {
-		// Context could be canceled or its deadline could be exceeded.
-		// Start the interrupter goroutine to handle context cancelation.
-		var (
-			done      = make(chan struct{})
-			interrupt = make(chan error, 1)
-		)
-		defer func() {
-			close(done)
-			// If ctx.Err() is non-nil and the original err is net.Error with
-			// Timeout() == true, then it means that i/o was canceled by us by
-			// SetDeadline(aLongTimeAgo) call, or by somebody else previously
-			// by conn.SetDeadline(x). In both cases, context is canceled too.
-			// Even on race condition when both connection deadline (set not by
-			// us) and request context are exceeded, we prefer ctx.Err() to be
-			// returned just to be consistent.
-			if ctxErr := <-interrupt; ctxErr != nil && (err == nil || isTimeoutError(err)) {
-				err = ctxErr
-				if br != nil {
-					pbufio.PutReader(br)
-					br = nil
-				}
-			}
-		}()
-		// TODO(gobwas): use goroutine pool here maybe?
-		go func() {
-			select {
-			case <-done:
-				interrupt <- nil
-			case <-ctx.Done():
-				// Cancel i/o immediately.
-				conn.SetDeadline(aLongTimeAgo)
-				interrupt <- ctx.Err()
-			}
-		}()
-	}
-
+	br = pbufio.GetReader(conn,
+		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
+	)
 	bw := pbufio.GetWriter(conn,
 		nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize),
 	)
-	defer pbufio.PutWriter(bw)
+	defer func() {
+		pbufio.PutWriter(bw)
+		if br.Buffered() == 0 || err != nil {
+			// Server does not wrote additional bytes to the connection or
+			// error occurred. That is, no reason to return buffer.
+			pbufio.PutReader(br)
+			br = nil
+		}
+	}()
 
 	// Stick nonce bytes to the stack.
 	var n nonce
@@ -311,17 +303,6 @@ func (d Dialer) request(ctx context.Context, conn net.Conn, u *url.URL) (br *buf
 		return
 	}
 
-	br = pbufio.GetReader(conn,
-		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
-	)
-	defer func() {
-		if br.Buffered() == 0 || err != nil {
-			// Server does not wrote additional bytes to the connection or
-			// error occurred. That is, no reason to return buffer.
-			pbufio.PutReader(br)
-			br = nil
-		}
-	}()
 	// Read HTTP status line like "HTTP/1.1 101 Switching Protocols".
 	sl, err := readLine(br)
 	if err != nil {
@@ -516,4 +497,61 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 		return received, ErrHandshakeBadExtensions
 	}
 	return received, err
+}
+
+// contextIO is a helper function that starts connection I/O interrupter
+// goroutine.
+//
+// Started goroutine calls SetDeadline() with long time ago value when context
+// become expired to make any I/O operations failed. It returns done function
+// that stops started goroutine and maps error received from conn I/O methods
+// to possible context expiration error.
+//
+// In concern with possible SetDeadline() call inside interrupter goroutine,
+// caller must use done() result as resulting I/O error on conn.
+// That is, even if I/O error is nil, context could be already expired and
+// connection "poisoned" by SetDeadline() call. In that case done(err) will
+// return non-nil ctx.Err() error.
+//
+// For example:
+//   done := contextIO(ctx, conn)
+//   _, err := conn.Read(p)
+//   if err = done(err); err != nil {
+//       // handle error
+//   }
+func contextIO(ctx context.Context, conn net.Conn) (done func(error) error) {
+	if ctx == context.Background() {
+		return func(err error) error { return err }
+	}
+	// Context could be canceled or its deadline could be exceeded.
+	// Start the interrupter goroutine to handle context cancelation.
+	var (
+		quit      = make(chan struct{})
+		interrupt = make(chan error, 1)
+	)
+	// TODO(gobwas): use goroutine pool here maybe?
+	go func() {
+		select {
+		case <-quit:
+			interrupt <- nil
+		case <-ctx.Done():
+			// Cancel i/o immediately.
+			conn.SetDeadline(aLongTimeAgo)
+			interrupt <- ctx.Err()
+		}
+	}()
+	return func(err error) error {
+		close(quit)
+		// If ctx.Err() is non-nil and the original err is net.Error with
+		// Timeout() == true, then it means that i/o was canceled by us by
+		// SetDeadline(aLongTimeAgo) call, or by somebody else previously
+		// by conn.SetDeadline(x). In both cases, context is canceled too.
+		// Even on race condition when both connection deadline (set not by
+		// us) and request context are exceeded, we prefer ctx.Err() to be
+		// returned just to be consistent.
+		if ctxErr := <-interrupt; ctxErr != nil && (err == nil || isTimeoutError(err)) {
+			return ctxErr
+		}
+		return err
+	}
 }
