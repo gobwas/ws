@@ -13,6 +13,7 @@ import (
 	"net/http/httputil"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -330,6 +331,8 @@ func TestHTTPUpgrader(t *testing.T) {
 				)
 				return
 			}
+
+			fmt.Printf("BYTES: %s", res.Bytes())
 
 			actRespBts := sortHeaders(res.Bytes())
 			expRespBts := sortHeaders(dumpResponse(test.res))
@@ -662,7 +665,17 @@ func (r *recorder) Bytes() []byte {
 	if r.hijacked {
 		return r.ResponseRecorder.Body.Bytes()
 	}
-	return dumpResponse(r.Result())
+
+	// TODO(gobwas): remove this when support for go 1.7 will end.
+	resp := r.Result()
+	cs := strings.TrimSpace(resp.Header.Get("Content-Length"))
+	if n, err := strconv.ParseInt(cs, 10, 64); err == nil {
+		resp.ContentLength = n
+	} else {
+		resp.ContentLength = -1
+	}
+
+	return dumpResponse(resp)
 }
 
 func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
