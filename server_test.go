@@ -589,22 +589,19 @@ func dumpRequest(req *http.Request) []byte {
 }
 
 func dumpResponse(res *http.Response) []byte {
-	cleanClose := !res.Close
-	if cleanClose {
+	if !res.Close {
 		for _, v := range res.Header[headerConnection] {
 			if v == "close" {
-				cleanClose = false
+				res.Close = true
 				break
 			}
 		}
 	}
-
 	bts, err := httputil.DumpResponse(res, true)
 	if err != nil {
 		panic(err)
 	}
-
-	if cleanClose {
+	if !res.Close {
 		bts = bytes.Replace(bts, []byte("Connection: close\r\n"), nil, -1)
 	}
 
