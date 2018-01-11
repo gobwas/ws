@@ -170,12 +170,12 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		err = ErrNotHijacker
-		w.WriteHeader(http.StatusInternalServerError)
+		httpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	conn, rw, err = hj.Hijack()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		httpError(w, "", http.StatusInternalServerError)
 		return
 	}
 
