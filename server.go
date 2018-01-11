@@ -203,9 +203,6 @@ type Upgrader struct {
 	// They used to read and write http data while upgrading to WebSocket.
 	// Allocated buffers are pooled with sync.Pool to avoid extra allocations.
 	//
-	// If *bufio.ReadWriter is given to Upgrade() no allocation will be made
-	// and this sizes will not be used.
-	//
 	// If a size is zero then default value is used.
 	//
 	// Usually it is useful to set read buffer size bigger than write buffer
@@ -326,9 +323,9 @@ func (w headerWriter) flush(to io.Writer) {
 // It is a caller responsibility to manage i/o timeouts on conn.
 //
 // Non-nil error means that request for the WebSocket upgrade is invalid or
-// malformed and connection should be closed. Even when error is non-nil
-// Upgrade will write appropriate response into connection in compliance with
-// RFC.
+// malformed and usually connection should be closed.
+// Even when error is non-nil Upgrade will write appropriate response into
+// connection in compliance with RFC.
 func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
@@ -349,19 +346,18 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			headerSeenSecKey
 	)
 
-	var (
-		br *bufio.Reader
-		bw *bufio.Writer
+	// Prepare i/o buffers.
+	br := pbufio.GetReader(conn,
+		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
 	)
-	if brw, ok := conn.(*bufio.ReadWriter); ok {
-		br = brw.Reader
-		bw = brw.Writer
-	} else {
-		br = pbufio.GetReader(conn,
-			nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
-		)
-		defer pbufio.PutReader(br)
-	}
+	bw := pbufio.GetWriter(conn,
+		nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
+	)
+	defer func() {
+		pbufio.PutReader(br)
+		pbufio.PutWriter(bw)
+	}()
+
 	// Read HTTP request line like "GET /ws HTTP/1.1".
 	rl, err := readLine(br)
 	if err != nil {
@@ -371,14 +367,6 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	req, err := httpParseRequestLine(rl)
 	if err != nil {
 		return
-	}
-
-	// Prepare buffered writer for response.
-	if bw == nil {
-		bw = pbufio.GetWriter(conn,
-			nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
-		)
-		defer pbufio.PutWriter(bw)
 	}
 
 	// Use default http status code for errors.
