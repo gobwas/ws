@@ -298,25 +298,6 @@ type Upgrader struct {
 	// error missing header callback?
 }
 
-type headerWriter struct {
-	cb [3]func(io.Writer)
-	n  int
-}
-
-func (w *headerWriter) add(cb func(io.Writer)) {
-	if w.n == len(w.cb) {
-		panic("header callbacks overflow")
-	}
-	w.cb[w.n] = cb
-	w.n++
-}
-
-func (w headerWriter) flush(to io.Writer) {
-	for i := 0; i < w.n; i++ {
-		w.cb[i](to)
-	}
-}
-
 // Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
 // as connection with incoming HTTP Upgrade request.
 //
@@ -569,6 +550,25 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	err = bw.Flush()
 
 	return
+}
+
+type headerWriter struct {
+	cb [3]func(io.Writer)
+	n  int
+}
+
+func (w *headerWriter) add(cb func(io.Writer)) {
+	if w.n == len(w.cb) {
+		panic("header callbacks overflow")
+	}
+	w.cb[w.n] = cb
+	w.n++
+}
+
+func (w headerWriter) flush(to io.Writer) {
+	for i := 0; i < w.n; i++ {
+		w.cb[i](to)
+	}
 }
 
 func headerWriterSecVersion(w io.Writer) {
