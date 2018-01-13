@@ -147,34 +147,47 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	if err != nil {
 		return
 	}
+
+	// Prepare context to dial with. Initially it is the same as original, but
+	// if d.Timeout is non-zero and points to time that is before ctx.Deadline,
+	// we use more shorter context for dial.
+	dialctx := ctx
+
+	var deadline time.Time
 	if t := d.Timeout; t != 0 {
-		deadline := time.Now().Add(t)
+		deadline = time.Now().Add(t)
 		if d, ok := ctx.Deadline(); !ok || deadline.Before(d) {
-			subctx, cancel := context.WithDeadline(ctx, deadline)
+			var cancel context.CancelFunc
+			dialctx, cancel = context.WithDeadline(ctx, deadline)
 			defer cancel()
-			ctx = subctx
 		}
 	}
-	if conn, err = d.dial(ctx, u); err != nil {
+	if conn, err = d.dial(dialctx, u); err != nil {
 		return
 	}
-
-	// Register connection I/O interrupter before performing Upgrade() call.
-	done := contextIO(ctx, conn)
+	defer func() {
+		if err != nil {
+			conn.Close()
+		}
+	}()
+	if ctx == context.Background() {
+		// No need to start I/O interrupter goroutine which is not zero-cost.
+		conn.SetDeadline(deadline)
+		defer conn.SetDeadline(noDeadline)
+	} else {
+		// Context could be canceled or its deadline could be exceeded.
+		// Start the interrupter goroutine to handle context cancelation.
+		done := setupContextDeadliner(conn, ctx)
+		defer func() {
+			// Map Upgrade() error to a possible context expiration error. That
+			// is, even if Upgrade() err is nil, context could be already
+			// expired and connection be "poisoned" by SetDeadline() call.
+			// In that case we must not return ctx.Err() error.
+			done(&err)
+		}()
+	}
 
 	br, hs, err = d.Upgrade(conn, u)
-
-	// Map Upgrade() error to a possible context expiration error.
-	// That is, even if Upgrade() err is nil, context could be already expired
-	// and connection "poisoned" by SetDeadline() call. In that case we must
-	// not return non-nil error and connection at all.
-	err = done(err)
-	if err != nil {
-		conn.Close()
-		// Set br to nil because Upgrade() could be successful but ContextIO's
-		// done failed connection after context racy expiration.
-		return nil, nil, Handshake{}, err
-	}
 
 	return
 }
@@ -499,8 +512,8 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 	return received, err
 }
 
-// contextIO is a helper function that starts connection I/O interrupter
-// goroutine.
+// setupContextDeadliner is a helper function that starts connection I/O
+// interrupter goroutine.
 //
 // Started goroutine calls SetDeadline() with long time ago value when context
 // become expired to make any I/O operations failed. It returns done function
@@ -508,28 +521,16 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 // to possible context expiration error.
 //
 // In concern with possible SetDeadline() call inside interrupter goroutine,
-// caller must use done() result as resulting I/O error on conn.
+// caller passes pointer to its I/O error (even if it is nil) to done(&err).
 // That is, even if I/O error is nil, context could be already expired and
-// connection "poisoned" by SetDeadline() call. In that case done(err) will
-// return non-nil ctx.Err() error.
-//
-// For example:
-//   done := contextIO(ctx, conn)
-//   _, err := conn.Read(p)
-//   if err = done(err); err != nil {
-//       // handle error
-//   }
-func contextIO(ctx context.Context, conn net.Conn) (done func(error) error) {
-	if ctx == context.Background() {
-		return func(err error) error { return err }
-	}
-	// Context could be canceled or its deadline could be exceeded.
-	// Start the interrupter goroutine to handle context cancelation.
+// connection "poisoned" by SetDeadline() call. In that case done(&err) will
+// store at *err ctx.Err() result. If err is caused not by timeout, it will
+// leaved untouched.
+func setupContextDeadliner(conn net.Conn, ctx context.Context) (done func(*error)) {
 	var (
 		quit      = make(chan struct{})
 		interrupt = make(chan error, 1)
 	)
-	// TODO(gobwas): use goroutine pool here maybe?
 	go func() {
 		select {
 		case <-quit:
@@ -540,18 +541,18 @@ func contextIO(ctx context.Context, conn net.Conn) (done func(error) error) {
 			interrupt <- ctx.Err()
 		}
 	}()
-	return func(err error) error {
+	return func(err *error) {
 		close(quit)
 		// If ctx.Err() is non-nil and the original err is net.Error with
-		// Timeout() == true, then it means that i/o was canceled by us by
+		// Timeout() == true, then it means that I/O was canceled by us by
 		// SetDeadline(aLongTimeAgo) call, or by somebody else previously
-		// by conn.SetDeadline(x). In both cases, context is canceled too.
-		// Even on race condition when both connection deadline (set not by
-		// us) and request context are exceeded, we prefer ctx.Err() to be
-		// returned just to be consistent.
-		if ctxErr := <-interrupt; ctxErr != nil && (err == nil || isTimeoutError(err)) {
-			return ctxErr
+		// by conn.SetDeadline(x).
+		//
+		// Even on race condition when both deadlines are expired
+		// (SetDeadline() made not by us and context's), we prefer ctx.Err() to
+		// be returned.
+		if ctxErr := <-interrupt; ctxErr != nil && (*err == nil || isTimeoutError(*err)) {
+			*err = ctxErr
 		}
-		return err
 	}
 }
