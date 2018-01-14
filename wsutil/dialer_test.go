@@ -94,7 +94,7 @@ func TestDebugDialer(t *testing.T) {
 				expReq, expRes []byte
 			)
 			dd := DebugDialer{
-				Dialer: &ws.Dialer{
+				Dialer: ws.Dialer{
 					NetDial: func(_ context.Context, _, _ string) (net.Conn, error) {
 						return client, nil
 					},

@@ -17,11 +17,10 @@ import (
 // response bytes that made inside Dialer.Dial().
 //
 // Note that it must not be used in production applications that requires
-// Dial() efficiency.
+// Dial() to be efficient.
 type DebugDialer struct {
-	// Dialer points to a Dialer that will make Dial(). If Dialer is nil then
-	// the empty Dialer will be used.
-	Dialer *ws.Dialer
+	// Dialer contains WebSocket connection establishement options.
+	Dialer ws.Dialer
 
 	// OnRequest and OnResponse are the callbacks that will be called with the
 	// HTTP request and response respectively.
@@ -32,12 +31,7 @@ type DebugDialer struct {
 // it by calling d.Dialer.Dial().
 func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs ws.Handshake, err error) {
 	// Need to copy Dialer to prevent original object mutation.
-	var dialer ws.Dialer
-	if d.Dialer == nil {
-		dialer = ws.Dialer{}
-	} else {
-		dialer = *d.Dialer
-	}
+	dialer := d.Dialer
 	var (
 		reqBuf bytes.Buffer
 		resBuf bytes.Buffer
