@@ -88,9 +88,10 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		if br != nil {
 			// If br is non-nil, then it mean two things. First is that
 			// handshake is OK and server has sent additional bytes – probably
-			// response body or immediate sent frames. Second, the bad one, is
-			// that br buffer's source is now rwConn instance from
-			// above WrapConn call. It is incorrect, so we must fix it.
+			// immediate sent frames (or weird but possible response body).
+			// Second, the bad one, is that br buffer's source is now rwConn
+			// instance from above WrapConn call. It is incorrect, so we must
+			// fix it.
 			var r io.Reader = conn
 			if len(p) > h {
 				// Buffer contains more than just HTTP headers bytes.
@@ -125,8 +126,8 @@ func (rwc rwConn) Write(p []byte) (int, error) {
 var headEnd = []byte("\r\n\r\n")
 
 type prefetchResponseReader struct {
-	source io.Reader
-	reader io.Reader
+	source io.Reader // Original connection source.
+	reader io.Reader // Wrapped reader used to read from by clients.
 	buffer *bytes.Buffer
 
 	contentLength *int64
