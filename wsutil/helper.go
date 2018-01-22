@@ -63,12 +63,18 @@ func ReadServerMessage(r io.Reader, m []Message) ([]Message, error) {
 // It takes care on handling all control frames. It will write response on
 // control frames to the write part of rw. It blocks until some data frame
 // will be received.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadData(rw io.ReadWriter, s ws.State) ([]byte, ws.OpCode, error) {
 	return readData(rw, s, ws.OpText|ws.OpBinary)
 }
 
 // ReadClientData reads next data message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadClientData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 	return ReadData(rw, ws.StateServerSide)
 }
@@ -76,6 +82,9 @@ func ReadClientData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 // ReadClientText reads next text message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
 // It discards received binary messages.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadClientText(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateServerSide, ws.OpText)
 	return p, err
@@ -84,6 +93,9 @@ func ReadClientText(rw io.ReadWriter) ([]byte, error) {
 // ReadClientBinary reads next binary message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
 // It discards received text messages.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadClientBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateServerSide, ws.OpBinary)
 	return p, err
@@ -91,6 +103,9 @@ func ReadClientBinary(rw io.ReadWriter) ([]byte, error) {
 
 // ReadServerData reads next data message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadServerData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 	return ReadData(rw, ws.StateClientSide)
 }
@@ -98,6 +113,9 @@ func ReadServerData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 // ReadServerText reads next text message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
 // It discards received binary messages.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpText)
 	return p, err
@@ -106,6 +124,9 @@ func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 // ReadServerBinary reads next binary message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
 // It discards received text messages.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpBinary)
 	return p, err
@@ -171,6 +192,9 @@ func HandleClientControl(conn io.Writer, op ws.OpCode, p []byte) error {
 // HandleServerControl handles control frame from conn and writes
 // response when needed. It considers that caller represents client
 // side.
+//
+// Note this may handle and write control frames into the writer part of a given
+//  io.ReadWriter.
 func HandleServerControl(conn io.ReadWriter, op ws.OpCode, p []byte) error {
 	return ControlHandler(conn, ws.StateClientSide)(ws.Header{
 		Length: int64(len(p)),
