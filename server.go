@@ -197,6 +197,12 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 	return
 }
 
+// UpgradeResult used to store result from different stages when upgrading
+type UpgradeResult struct {
+	OnHeader  map[string]interface{}
+	OnRequest interface{}
+}
+
 // Upgrader contains options for upgrading connection to websocket.
 type Upgrader struct {
 	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
@@ -266,6 +272,9 @@ type Upgrader struct {
 	// with appropriate http status.
 	OnRequest func(host, uri []byte) (err error, code int)
 
+	// OnRequestWithResult just like OnRequest, except this can result result to store
+	OnRequestWithResult func(host, uri []byte) (err error, result interface{}, code int)
+
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
 	// it will be called with non-websocket headers, which could be relevant
@@ -276,6 +285,9 @@ type Upgrader struct {
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
 	OnHeader func(key, value []byte) (err error, code int)
+
+	// OnHeaderWithResult just like onHeader, except this can result result to store
+	OnHeaderWithResult func(key, value []byte) (err error, result interface{}, code int)
 
 	// OnBeforeUpgrade is a callback that will be called before sending
 	// successful upgrade response.
@@ -308,8 +320,17 @@ type Upgrader struct {
 // Even when error is non-nil Upgrade will write appropriate response into
 // connection in compliance with RFC.
 func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
+	hs, _, err = u.UpgradeWithResult(conn)
+	return
+}
+
+// UpgradeWithResult this is the sub method of upgrade which will store result from each stage
+func (u Upgrader) UpgradeWithResult(conn io.ReadWriter) (hs Handshake, result UpgradeResult, err error) {
 	// headerSeen constants helps to report whether or not some header was seen
 	// during reading request bytes.
+	result = UpgradeResult{}
+	result.OnHeader = make(map[string]interface{})
+
 	const (
 		headerSeenHost = 1 << iota
 		headerSeenUpgrade
@@ -423,6 +444,13 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 					err = e
 					code = c
 				}
+			} else if onRequestWithResult := u.OnRequestWithResult; onRequestWithResult != nil {
+				e, r, c := onRequestWithResult(v, req.uri)
+				if e != nil {
+					err = e
+					code = c
+				}
+				result.OnRequest = r
 			}
 
 		case headerUpgrade:
@@ -493,6 +521,13 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 					err = e
 					code = c
 				}
+			} else if onHeaderWithResult := u.OnHeaderWithResult; onHeaderWithResult != nil {
+				e, r, c := onHeaderWithResult(k, v)
+				if e != nil {
+					err = e
+					code = c
+				}
+				result.OnHeader[string(k)] = r
 			}
 		}
 	}
@@ -574,3 +609,4 @@ func (w headerWriter) flush(to io.Writer) {
 func headerWriterSecVersion(w io.Writer) {
 	w.Write(btsErrorVersion)
 }
+
