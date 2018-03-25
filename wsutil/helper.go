@@ -195,7 +195,7 @@ func HandleClientControl(conn io.Writer, op ws.OpCode, p []byte) error {
 //
 // Note this may handle and write control frames into the writer part of a given
 //  io.ReadWriter.
-func HandleServerControl(conn io.ReadWriter, op ws.OpCode, p []byte) error {
+func HandleServerControl(conn io.Writer, op ws.OpCode, p []byte) error {
 	return ControlHandler(conn, ws.StateClientSide)(ws.Header{
 		Length: int64(len(p)),
 		OpCode: op,

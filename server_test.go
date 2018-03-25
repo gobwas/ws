@@ -774,8 +774,3 @@ func mustMakeNonce() (ret []byte) {
 	initNonce(ret)
 	return
 }
-
-func mustMakeNonceStr() string {
-	n := mustMakeNonce()
-	return string(n[:])
-}
