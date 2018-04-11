@@ -635,7 +635,7 @@ func TestDialerCancelation(t *testing.T) {
 					if t.IsZero() {
 						return nil
 					}
-					d := time.Until(t)
+					d := t.Sub(time.Now())
 					if d < 0 {
 						deadline <- ioErrDeadline
 					} else {
