@@ -14,6 +14,99 @@ import (
 // TODO(gobwas): test continuation discard.
 //				 test discard when NextFrame().
 
+var eofReader = bytes.NewReader(nil)
+
+func TestReaderNoFrameAdvance(t *testing.T) {
+	r := Reader{
+		Source: eofReader,
+	}
+	if _, err := r.Read(make([]byte, 10)); err != ErrNoFrameAdvance {
+		t.Errorf("Read() returned %v; want %v", err, ErrNoFrameAdvance)
+	}
+}
+
+func TestReaderNextFrameAndReadEOF(t *testing.T) {
+	for _, test := range []struct {
+		source       func() io.Reader
+		nextFrameErr error
+		readErr      error
+	}{
+		{
+			source:       func() io.Reader { return eofReader },
+			nextFrameErr: io.EOF,
+			readErr:      ErrNoFrameAdvance,
+		},
+		{
+			source: func() io.Reader {
+				// This case tests that ReadMessage still fails after
+				// successfully reading header bytes frame via ws.ReadHeader()
+				// and non-successfully read of the body.
+				var buf bytes.Buffer
+				f := NewTextFrame("this part will be lost")
+				if err := WriteHeader(&buf, f.Header); err != nil {
+					panic(err)
+				}
+				return &buf
+			},
+			nextFrameErr: nil,
+			readErr:      io.ErrUnexpectedEOF,
+		},
+		{
+			source: func() io.Reader {
+				var buf bytes.Buffer
+				f := NewTextFrame("foobar")
+				if err := WriteHeader(&buf, f.Header); err != nil {
+					panic(err)
+				}
+				buf.WriteString("foo")
+				return &buf
+			},
+			nextFrameErr: nil,
+			readErr:      io.ErrUnexpectedEOF,
+		},
+		{
+			source: func() io.Reader {
+				var buf bytes.Buffer
+				f := NewFrame(OpText, false, []byte("payload"))
+				if err := WriteFrame(&buf, f); err != nil {
+					panic(err)
+				}
+				return &buf
+			},
+			nextFrameErr: nil,
+			readErr:      io.ErrUnexpectedEOF,
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			r := Reader{
+				Source: test.source(),
+			}
+			_, err := r.NextFrame()
+			if err != test.nextFrameErr {
+				t.Errorf("NextFrame() = %v; want %v", err, test.nextFrameErr)
+			}
+			var (
+				p = make([]byte, 4096)
+				i = 0
+			)
+			for {
+				if i == 100 {
+					t.Fatal(io.ErrNoProgress)
+				}
+				_, err := r.Read(p)
+				if err == nil {
+					continue
+				}
+				if err != test.readErr {
+					t.Errorf("Read() = %v; want %v", err, test.readErr)
+				}
+				break
+			}
+		})
+	}
+
+}
+
 func TestReaderUTF8(t *testing.T) {
 	yo := []byte("Ё")
 	if !utf8.ValidString(string(yo)) {
@@ -32,7 +125,9 @@ func TestReaderUTF8(t *testing.T) {
 		Source:    &buf,
 		CheckUTF8: true,
 	}
-
+	if _, err := r.NextFrame(); err != nil {
+		t.Fatal(err)
+	}
 	bts, err := ioutil.ReadAll(&r)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -42,7 +137,7 @@ func TestReaderUTF8(t *testing.T) {
 	}
 }
 
-func TestReader(t *testing.T) {
+func TestNextReader(t *testing.T) {
 	for i, test := range []struct {
 		label string
 		seq   []Frame
