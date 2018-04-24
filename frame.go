@@ -182,9 +182,9 @@ type Header struct {
 	Fin    bool
 	Rsv    byte
 	OpCode OpCode
-	Length int64
 	Masked bool
 	Mask   [4]byte
+	Length int64
 }
 
 // Rsv1 reports whether the header has first rsv bit set.

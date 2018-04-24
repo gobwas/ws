@@ -12,7 +12,7 @@ Upgrade to WebSocket (or WebSocket handshake) can be done in two ways.
 The first way is to use `net/http` server:
 
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	  conn, err := ws.UpgradeHTTP(r, w, nil)
+	  conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
   })
 
 The second and much more efficient way is so-called "zero-copy upgrade". It
