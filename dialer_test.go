@@ -692,8 +692,7 @@ func TestDialerCancelation(t *testing.T) {
 
 func BenchmarkDialer(b *testing.B) {
 	for _, test := range []struct {
-		dialer   Dialer
-		response *http.Response
+		dialer Dialer
 	}{
 		{
 			dialer: DefaultDialer,
@@ -868,31 +867,3 @@ func (s stubConn) SetWriteDeadline(t time.Time) error {
 	}
 	return nil
 }
-
-func makeNonceFrom(bts []byte) (ret [nonceSize]byte) {
-	base64.StdEncoding.Encode(ret[:], bts)
-	return
-}
-
-func nonceAsSlice(bts [nonceSize]byte) []byte {
-	return bts[:]
-}
-
-type stubPool struct {
-	getCalls int
-	putCalls int
-}
-
-type stubWritePool struct {
-	stubPool
-}
-
-func (s *stubWritePool) Get(w io.Writer) *bufio.Writer { s.getCalls++; return bufio.NewWriter(w) }
-func (s *stubWritePool) Put(bw *bufio.Writer)          { s.putCalls++ }
-
-type stubReadPool struct {
-	stubPool
-}
-
-func (s *stubReadPool) Get(r io.Reader) *bufio.Reader { s.getCalls++; return bufio.NewReader(r) }
-func (s *stubReadPool) Put(br *bufio.Reader)          { s.putCalls++ }

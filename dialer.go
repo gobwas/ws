@@ -109,7 +109,7 @@ type Dialer struct {
 	// If it is not nil, then it is used instead of net.Dialer.
 	NetDial func(ctx context.Context, network, addr string) (net.Conn, error)
 
-	// TLSClient is the callback that will be called after succesful dial with
+	// TLSClient is the callback that will be called after successful dial with
 	// received connection and its remote host name. If it is nil, then the
 	// default tls.Client() will be used.
 	// If it is not nil, then TLSConfig field is ignored.
