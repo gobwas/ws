@@ -64,6 +64,7 @@ func WriteHeader(w io.Writer, h Header) error {
 		Cap:  MaxHeaderSize,
 	}
 	bts := *(*[]byte)(unsafe.Pointer(bh))
+	_ = bts[MaxHeaderSize-1] // bounds check hint to compiler.
 
 	if h.Fin {
 		bts[0] |= bit0
@@ -79,12 +80,12 @@ func WriteHeader(w io.Writer, h Header) error {
 
 	case h.Length <= len16:
 		bts[1] = 126
-		binary.BigEndian.PutUint16(bts[2:], uint16(h.Length))
+		binary.BigEndian.PutUint16(bts[2:4], uint16(h.Length))
 		n = 4
 
 	case h.Length <= len64:
 		bts[1] = 127
-		binary.BigEndian.PutUint64(bts[2:], uint64(h.Length))
+		binary.BigEndian.PutUint64(bts[2:10], uint64(h.Length))
 		n = 10
 
 	default:
