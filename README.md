@@ -152,7 +152,6 @@ We can apply the same pattern to read and write structured responses through a J
 		}
 	}
 	...
-}
 ```
 
 The lower-level example without `wsutil`:
