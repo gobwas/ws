@@ -27,8 +27,9 @@ type upgradeCase struct {
 
 	protocol  func(string) bool
 	extension func(httphead.Option) bool
+	onRequest func(u []byte) (error, int)
+	onHost    func(h []byte) (error, int)
 	onHeader  func(k, v []byte) (error, int)
-	onRequest func(h, u []byte) (error, int)
 
 	nonce        []byte
 	removeSecKey bool
@@ -202,7 +203,10 @@ var upgradeCases = []upgradeCase{
 			headerConnection:  []string{"Upgrade"},
 			headerSecVersion:  []string{"13"},
 		}),
-		onRequest: func(_, _ []byte) (error, int) {
+		onRequest: func(_ []byte) (error, int) {
+			return nil, 0
+		},
+		onHost: func(_ []byte) (error, int) {
 			return nil, 0
 		},
 		onHeader: func(k, v []byte) (error, int) {

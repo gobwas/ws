@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"time"
-	_ "unsafe" // for go:linkname
 
 	"github.com/gobwas/httphead"
 	"github.com/gobwas/pool/pbufio"
@@ -256,15 +255,27 @@ type Upgrader struct {
 	// upgrading.
 	Header func(io.Writer)
 
-	// OnRequest is a callback that will be called after request line and
-	// "Host" header successful parsing. Setting this field helps to implement
-	// some application logic.
+	// OnRequest is a callback that will be called after request line
+	// successful parsing.
 	//
 	// The arguments are only valid until the callback returns.
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnRequest func(host, uri []byte) (err error, code int)
+	OnRequest func(uri []byte) (err error, code int)
+
+	// OnHost is a callback that will be called after "Host" header successful
+	// parsing.
+	//
+	// The arguments are only valid until the callback returns.
+	//
+	// Returned value could be used to prevent processing request and response
+	// with appropriate http status.
+	//
+	// It is separated from OnHeader callback because the Host header must be
+	// present in each request since HTTP/1.1. Thus Host header is non-optional
+	// and required for every WebSocket handshake.
+	OnHost func(host []byte) (err error, code int)
 
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
@@ -293,6 +304,8 @@ type Upgrader struct {
 	//
 	// Note that header writer callback will be called even if err is non-nil.
 	OnBeforeUpgrade func() (header func(io.Writer), err error, code int)
+
+	// TODO(gobwas): OnBeforeReject
 
 	// TODO(gobwas): maybe use here io.WriterTo or something similar instead of
 	// error missing header callback?
@@ -327,7 +340,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			headerSeenSecKey
 	)
 
-	// Prepare i/o buffers.
+	// Prepare I/O buffers.
 	// TODO: make it configurable.
 	br := pbufio.GetReader(conn,
 		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
@@ -385,6 +398,12 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		bw.Flush()
 		return
 	}
+	if onRequest := u.OnRequest; onRequest != nil {
+		if e, c := onRequest(req.uri); e != nil {
+			err = e
+			code = c
+		}
+	}
 	// Start headers read/parse loop.
 	var (
 		// headerSeen reports which header was seen by setting corresponding
@@ -419,8 +438,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		switch btsToString(k) {
 		case headerHost:
 			headerSeen |= headerSeenHost
-			if onRequest := u.OnRequest; onRequest != nil {
-				if e, c := onRequest(v, req.uri); e != nil {
+			if onHost := u.OnHost; onHost != nil {
+				if e, c := onHost(v); e != nil {
 					err = e
 					code = c
 				}

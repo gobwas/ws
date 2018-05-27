@@ -159,6 +159,7 @@ func canonicalizeHeaderKey(k []byte) {
 //
 // We could control I/O operations on br and do not need to make additional
 // copy for safety.
+// TODO: return copied flag.
 func readLine(br *bufio.Reader) ([]byte, error) {
 	var line []byte
 	for {

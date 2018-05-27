@@ -3,13 +3,19 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
+	"net/http"
 	"net/textproto"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 var compareWithStd = flag.Bool("std", false, "compare with standard library implementation (if exists)")
@@ -89,6 +95,216 @@ func BenchmarkReadLine(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestUpgradeSlowClient(t *testing.T) {
+	for _, test := range []struct {
+		lim limitWriter
+	}{
+		{
+			lim: limitWriter{
+				Bandwidth: 100,
+				Period:    time.Second,
+				Burst:     10,
+			},
+		},
+		{
+			lim: limitWriter{
+				Bandwidth: 100,
+				Period:    time.Second,
+				Burst:     100,
+			},
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			client, server, err := socketPair()
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.lim.Dest = server
+
+			header := http.Header{
+				"X-Websocket-Test-1": []string{"Yes"},
+				"X-Websocket-Test-2": []string{"Yes"},
+				"X-Websocket-Test-3": []string{"Yes"},
+				"X-Websocket-Test-4": []string{"Yes"},
+			}
+			d := Dialer{
+				NetDial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return connWithWriter{server, &test.lim}, nil
+				},
+				Header: func(w io.Writer) {
+					header.Write(w)
+				},
+			}
+			var (
+				expHost = "example.org"
+				expURI  = "/path/to/ws"
+			)
+			receivedHeader := http.Header{}
+			u := Upgrader{
+				OnRequest: func(uri []byte) (error, int) {
+					if u := string(uri); u != expURI {
+						t.Errorf(
+							"unexpected URI in OnRequest() callback: %q; want %q",
+							u, expURI,
+						)
+					}
+					return nil, 0
+				},
+				OnHost: func(host []byte) (error, int) {
+					if h := string(host); h != expHost {
+						t.Errorf(
+							"unexpected host in OnRequest() callback: %q; want %q",
+							h, expHost,
+						)
+					}
+					return nil, 0
+				},
+				OnHeader: func(key, value []byte) (error, int) {
+					receivedHeader.Add(string(key), string(value))
+					return nil, 0
+				},
+			}
+			upgrade := make(chan error, 1)
+			go func() {
+				_, err := u.Upgrade(client)
+				upgrade <- err
+			}()
+
+			_, _, _, err = d.Dial(context.Background(), "ws://"+expHost+expURI)
+			if err != nil {
+				t.Errorf("Dial() error: %v", err)
+			}
+
+			if err := <-upgrade; err != nil {
+				t.Errorf("Upgrade() error: %v", err)
+			}
+			for key, values := range header {
+				act, has := receivedHeader[key]
+				if !has {
+					t.Errorf("OnHeader() was not called with %q header key", key)
+				}
+				if !reflect.DeepEqual(act, values) {
+					t.Errorf("OnHeader(%q) different values: %v; want %v", act, values)
+				}
+			}
+		})
+	}
+}
+
+type connWithWriter struct {
+	net.Conn
+	w io.Writer
+}
+
+func (w connWithWriter) Write(p []byte) (int, error) {
+	return w.w.Write(p)
+}
+
+type limitWriter struct {
+	Dest      io.Writer
+	Bandwidth int
+	Burst     int
+	Period    time.Duration
+
+	mu      sync.Mutex
+	cond    sync.Cond
+	once    sync.Once
+	done    chan struct{}
+	tickets int
+}
+
+func (w *limitWriter) init() {
+	w.once.Do(func() {
+		w.cond.L = &w.mu
+		w.done = make(chan struct{})
+
+		tick := w.Period / time.Duration(w.Bandwidth)
+		go func() {
+			t := time.NewTicker(tick)
+			for {
+				select {
+				case <-t.C:
+					w.mu.Lock()
+					w.tickets = w.Burst
+					w.mu.Unlock()
+					w.cond.Signal()
+				case <-w.done:
+					t.Stop()
+					return
+				}
+			}
+		}()
+	})
+}
+
+func (w *limitWriter) allow(n int) (allowed int) {
+	w.init()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for w.tickets == 0 {
+		w.cond.Wait()
+	}
+	if w.tickets < 0 {
+		return -1
+	}
+	allowed = min(w.tickets, n)
+	w.tickets -= allowed
+	return allowed
+}
+
+func (w *limitWriter) Close() error {
+	w.init()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.tickets < 0 {
+		return nil
+	}
+	w.tickets = -1
+	close(w.done)
+	w.cond.Broadcast()
+	return nil
+}
+
+func (w limitWriter) Write(p []byte) (n int, err error) {
+	w.init()
+	for n < len(p) {
+		m := w.allow(len(p))
+		if m < 0 {
+			return 0, io.ErrClosedPipe
+		}
+		if _, err := w.Dest.Write(p[n : n+m]); err != nil {
+			return n, err
+		}
+		n += m
+	}
+	return n, nil
+}
+
+func socketPair() (client, server net.Conn, err error) {
+	ln, err := net.Listen("tcp", "localhost:")
+	if err != nil {
+		return nil, nil, err
+	}
+	type connAndError struct {
+		conn net.Conn
+		err  error
+	}
+	dial := make(chan connAndError, 1)
+	go func() {
+		conn, err := net.Dial("tcp", ln.Addr().String())
+		dial <- connAndError{conn, err}
+	}()
+	server, err = ln.Accept()
+	if err != nil {
+		return nil, nil, err
+	}
+	ce := <-dial
+	if err := ce.err; err != nil {
+		return nil, nil, err
+	}
+	return ce.conn, server, nil
 }
 
 func TestHasToken(t *testing.T) {
