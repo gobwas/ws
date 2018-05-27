@@ -272,13 +272,18 @@ func main() {
 	}
 
 	u := ws.Upgrader{
-		OnRequest: func(host, uri []byte) (err error, code int) {
+		OnHost: func(host []byte) error {
 			if string(host) == "github.com" {
-				return fmt.Errorf("unexpected host: %s", host), 403
+				return nil
 			}
-			return
+			return &ws.RejectConnectionError{
+				Code: 403,
+				Header: ws.HeaderWriter(http.Header{
+					"X-Want-Host": []string{"github.com"},
+				}),
+			}
 		},
-		OnHeader: func(key, value []byte) (err error, code int) {
+		OnHeader: func(key, value []byte) error {
 			if string(key) != "Cookie" {
 				return
 			}
@@ -287,13 +292,16 @@ func main() {
 				// Maybe copy some values for future use.
 				return true
 			})
-			if !ok {
-				return fmt.Errorf("bad cookie"), 400
+			if ok {
+				return nil
 			}
-			return
+			return &ws.RejectConnectionError{
+				Reason: "bad cookie",
+				Code:   400,
+			}
 		},
-		OnBeforeUpgrade: func() (headerWriter func(io.Writer), err error, code int) {
-			return ws.HeaderWriter(header), nil, 0
+		OnBeforeUpgrade: func() (headerWriter func(io.Writer), err error) {
+			return ws.HeaderWriter(header), nil
 		},
 	}
 

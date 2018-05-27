@@ -3,7 +3,6 @@ package ws
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
@@ -24,8 +23,9 @@ const (
 )
 
 var (
-	textHeadBadRequest      = statusText(http.StatusBadRequest)
-	textHeadUpgradeRequired = statusText(http.StatusUpgradeRequired)
+	textHeadBadRequest          = statusText(http.StatusBadRequest)
+	textHeadInternalServerError = statusText(http.StatusInternalServerError)
+	textHeadUpgradeRequired     = statusText(http.StatusUpgradeRequired)
 
 	textTailErrHandshakeBadProtocol   = errorText(ErrHandshakeBadProtocol)
 	textTailErrHandshakeBadMethod     = errorText(ErrHandshakeBadMethod)
@@ -35,12 +35,7 @@ var (
 	textTailErrHandshakeBadSecAccept  = errorText(ErrHandshakeBadSecAccept)
 	textTailErrHandshakeBadSecKey     = errorText(ErrHandshakeBadSecKey)
 	textTailErrHandshakeBadSecVersion = errorText(ErrHandshakeBadSecVersion)
-)
-
-// Errors returned when HTTP request or response can not be parsed.
-var (
-	ErrMalformedRequest  = fmt.Errorf("malformed HTTP request")
-	ErrMalformedResponse = fmt.Errorf("malformed HTTP response")
+	textTailErrUpgradeRequired        = errorText(ErrHandshakeUpgradeRequired)
 )
 
 var (
@@ -313,15 +308,19 @@ func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Wr
 	switch code {
 	case http.StatusBadRequest:
 		bw.WriteString(textHeadBadRequest)
+	case http.StatusInternalServerError:
+		bw.WriteString(textHeadInternalServerError)
 	case http.StatusUpgradeRequired:
 		bw.WriteString(textHeadUpgradeRequired)
 	default:
 		writeStatusText(bw, code)
 	}
+
+	// Write custom headers.
 	if hw != nil {
-		// Write custom headers.
 		hw(bw)
 	}
+
 	switch err {
 	case ErrHandshakeBadProtocol:
 		bw.WriteString(textTailErrHandshakeBadProtocol)
@@ -339,6 +338,8 @@ func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Wr
 		bw.WriteString(textTailErrHandshakeBadSecKey)
 	case ErrHandshakeBadSecVersion:
 		bw.WriteString(textTailErrHandshakeBadSecVersion)
+	case ErrHandshakeUpgradeRequired:
+		bw.WriteString(textTailErrUpgradeRequired)
 	case nil:
 		bw.WriteString(crlf)
 	default:
@@ -392,6 +393,8 @@ func errorText(err error) string {
 	bw.Flush()
 	return buf.String()
 }
+
+// TODO: type Header interface { io.WriterTo }
 
 // HeaderWriter creates callback function that will dump h into recevied
 // io.Writer inside created callback.

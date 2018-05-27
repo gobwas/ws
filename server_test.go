@@ -22,14 +22,16 @@ import (
 	"github.com/gobwas/httphead"
 )
 
+// TODO(gobwas): upgradeGenericCase with methods like configureUpgrader,
+// configureHTTPUpgrader.
 type upgradeCase struct {
 	label string
 
 	protocol  func(string) bool
 	extension func(httphead.Option) bool
-	onRequest func(u []byte) (error, int)
-	onHost    func(h []byte) (error, int)
-	onHeader  func(k, v []byte) (error, int)
+	onRequest func(u []byte) error
+	onHost    func(h []byte) error
+	onHeader  func(k, v []byte) error
 
 	nonce        []byte
 	removeSecKey bool
@@ -203,15 +205,11 @@ var upgradeCases = []upgradeCase{
 			headerConnection:  []string{"Upgrade"},
 			headerSecVersion:  []string{"13"},
 		}),
-		onRequest: func(_ []byte) (error, int) {
-			return nil, 0
-		},
-		onHost: func(_ []byte) (error, int) {
-			return nil, 0
-		},
-		onHeader: func(k, v []byte) (error, int) {
-			return nil, 0
-		},
+
+		onRequest: func([]byte) error { return nil },
+		onHost:    func([]byte) error { return nil },
+		onHeader:  func(k, v []byte) error { return nil },
+
 		res: mustMakeErrResponse(400, ErrHandshakeBadUpgrade, nil),
 		err: ErrHandshakeBadUpgrade,
 	},
@@ -268,7 +266,7 @@ var upgradeCases = []upgradeCase{
 		res: mustMakeErrResponse(426, ErrHandshakeBadSecVersion, http.Header{
 			headerSecVersion: []string{"13"},
 		}),
-		err: ErrHandshakeBadSecVersion,
+		err: ErrHandshakeUpgradeRequired,
 	},
 	{
 		label:        "bad_sec_key",
@@ -293,6 +291,36 @@ var upgradeCases = []upgradeCase{
 		}),
 		res: mustMakeErrResponse(400, ErrHandshakeBadSecKey, nil),
 		err: ErrHandshakeBadSecKey,
+	},
+	{
+		label: "bad_ws_extension",
+		nonce: mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:       []string{"websocket"},
+			headerConnection:    []string{"Upgrade"},
+			headerSecVersion:    []string{"13"},
+			headerSecExtensions: []string{"=["},
+		}),
+		extension: func(opt httphead.Option) bool {
+			return false
+		},
+		res: mustMakeErrResponse(400, ErrMalformedRequest, nil),
+		err: ErrMalformedRequest,
+	},
+	{
+		label: "bad_subprotocol",
+		nonce: mustMakeNonce(),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecVersion:  []string{"13"},
+			headerSecProtocol: []string{"=["},
+		}),
+		protocol: func(string) bool {
+			return false
+		},
+		res: mustMakeErrResponse(400, ErrMalformedRequest, nil),
+		err: ErrMalformedRequest,
 	},
 }
 
