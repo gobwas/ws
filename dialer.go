@@ -79,12 +79,12 @@ type Dialer struct {
 	// See https://tools.ietf.org/html/rfc6455#section-9.1
 	Extensions []httphead.Option
 
-	// Header is the callback that will be called with io.Writer.
-	// Write() calls to the given writer will put data in a request http
-	// headers section.
+	// Header is an optional HandshakeHeader instance that could be used to
+	// write additional headers to the handshake request.
 	//
-	// It used instead of http.Header mapping to avoid allocations in user land.
-	Header func(io.Writer)
+	// It used instead of any key-value mappings to avoid allocations in user
+	// land.
+	Header HandshakeHeader
 
 	// OnStatusError is the callback that will be called after receiving non
 	// "101 Continue" HTTP response status. It receives an io.Reader object

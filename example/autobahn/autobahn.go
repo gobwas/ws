@@ -50,7 +50,7 @@ var (
 
 func helpersHighLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return
@@ -74,7 +74,7 @@ func helpersHighLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 
 func helpersLowLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return
@@ -110,7 +110,7 @@ func helpersLowLevelHandler() func(w http.ResponseWriter, r *http.Request) {
 
 func wsutilHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(resp http.ResponseWriter, req *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(req, resp, nil)
+		conn, _, _, err := ws.UpgradeHTTP(req, resp)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return
@@ -157,7 +157,7 @@ func wsutilHandler() func(w http.ResponseWriter, r *http.Request) {
 
 func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			log.Printf("upgrade error: %s", err)
 			return

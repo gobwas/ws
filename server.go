@@ -76,7 +76,7 @@ var ErrMalformedRequest = RejectConnectionError(
 // server is capable of understanding.
 var ErrHandshakeUpgradeRequired = RejectConnectionError(
 	RejectionStatus(http.StatusUpgradeRequired),
-	RejectionHeader(headerWriterSecVersion),
+	RejectionHeader(HandshakeHeaderString(headerSecVersion+": 13\r\n")),
 	RejectionReason(fmt.Sprintf("handshake error: bad %q header", headerSecVersion)),
 )
 
@@ -92,9 +92,8 @@ var ErrNotHijacker = RejectConnectionError(
 var DefaultHTTPUpgrader HTTPUpgrader
 
 // UpgradeHTTP is like HTTPUpgrader{}.Upgrade().
-// TODO: remove h
-func UpgradeHTTP(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
-	return DefaultHTTPUpgrader.Upgrade(r, w, h)
+func UpgradeHTTP(r *http.Request, w http.ResponseWriter) (net.Conn, *bufio.ReadWriter, Handshake, error) {
+	return DefaultHTTPUpgrader.Upgrade(r, w)
 }
 
 // DefaultUpgrader is an Upgrader that holds no options and is used by Upgrade
@@ -115,6 +114,12 @@ type HTTPUpgrader struct {
 	// The default is no timeout.
 	Timeout time.Duration
 
+	// Header is an optional http.Header mapping that could be used to
+	// write additional headers to the handshake response.
+	//
+	// Note that if present, it will be written in any result of handshake.
+	Header http.Header
+
 	// Protocol is the select function that is used to select subprotocol from
 	// list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
@@ -131,7 +136,7 @@ type HTTPUpgrader struct {
 // It hijacks net.Conn from w and returns recevied net.Conn and
 // bufio.ReadWriter. On successful handshake it returns Handshake struct
 // describing handshake info.
-func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Header) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
+func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
 	// Hijack connection first to get the ability to write rejection errors the
 	// same way as in Upgrader.
 	hj, ok := w.(http.Hijacker)
@@ -212,23 +217,23 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter, h http.Hea
 		defer conn.SetWriteDeadline(noDeadline)
 	}
 
-	var hw func(io.Writer)
+	var header handshakeHeader
+	if h := u.Header; h != nil {
+		header[0] = HandshakeHeaderHTTP(h)
+	}
 	if err == nil {
-		if h != nil {
-			hw = HeaderWriter(h)
-		}
-		httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, hw)
+		httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, header.WriteTo)
 		err = rw.Writer.Flush()
 	} else {
 		var code int
 		if rej, ok := err.(*rejectConnectionError); ok {
 			code = rej.code
-			hw = rej.header
+			header[1] = rej.header
 		}
 		if code == 0 {
 			code = http.StatusInternalServerError
 		}
-		httpWriteResponseError(rw.Writer, err, code, hw)
+		httpWriteResponseError(rw.Writer, err, code, header.WriteTo)
 		// Do not store Flush() error to not override already existing one.
 		rw.Writer.Flush()
 	}
@@ -284,15 +289,14 @@ type Upgrader struct {
 	// If ExtensionCustom is set, it used instead of Extension function.
 	ExtensionCustom func([]byte, []httphead.Option) ([]httphead.Option, bool)
 
-	// Header is a callback that will be called with io.Writer.
-	// Write() calls that writer will put data in the response http headers
-	// section.
+	// Header is an optional HandshakeHeader instance that could be used to
+	// write additional headers to the handshake response.
 	//
-	// It used instead of http.Header mapping to avoid allocations in user land.
+	// It used instead of any key-value mappings to avoid allocations in user
+	// land.
 	//
-	// Note that if present, this callback will be called for any result of
-	// upgrading.
-	Header func(io.Writer)
+	// Note that if present, it will be written in any result of handshake.
+	Header HandshakeHeader
 
 	// OnRequest is a callback that will be called after request line
 	// successful parsing.
@@ -338,20 +342,15 @@ type Upgrader struct {
 	//
 	// Setting OnBeforeUpgrade allows user to make final application-level
 	// checks and decide whether this connection is allowed to successfully
-	// upgrade to WebSocket. That is, the session checks and other application
-	// logic could be contained inside this callback.
+	// upgrade to WebSocket.
 	//
-	// If err is nil and returned header writer callback is not, then it will
-	// be called to add user's HTTP headers in response.
+	// It must return non-nil either HandshakeHeader or error and never both.
 	//
 	// If returned error is non-nil then connection is rejected and response is
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	OnBeforeUpgrade func() (header func(io.Writer), err error)
-
-	// TODO(gobwas): maybe use here io.WriterTo or something similar instead of
-	// error missing header callback?
+	OnBeforeUpgrade func() (header HandshakeHeader, err error)
 }
 
 // Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
@@ -407,6 +406,11 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
+	// Prepare stack-based handshake header list.
+	header := handshakeHeader{
+		0: u.Header,
+	}
+
 	// Parse and check HTTP request.
 	// As RFC6455 says:
 	//   The client's opening handshake consists of the following parts. If the
@@ -444,12 +448,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		// bit on.
 		headerSeen byte
 		nonce      nonce
-		hcb        func(io.Writer)
-		hw         headerWriter
 	)
-	if u.Header != nil {
-		hw.add(u.Header)
-	}
 	for err == nil {
 		line, e := readLine(br)
 		if e != nil {
@@ -569,53 +568,38 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		}
 
 	case err == nil && u.OnBeforeUpgrade != nil:
-		hcb, err = u.OnBeforeUpgrade()
-		if err == nil && hcb != nil {
-			hw.add(hcb)
-		}
+		header[1], err = u.OnBeforeUpgrade()
 	}
 	if err != nil {
 		var code int
 		if rej, ok := err.(*rejectConnectionError); ok {
 			code = rej.code
-			if h := rej.header; h != nil {
-				hw.add(h)
-			}
+			header[1] = rej.header
 		}
 		if code == 0 {
 			code = http.StatusInternalServerError
 		}
-		httpWriteResponseError(bw, err, code, hw.flush)
+		httpWriteResponseError(bw, err, code, header.WriteTo)
 		// Do not store Flush() error to not override already existing one.
 		bw.Flush()
 		return
 	}
 
-	httpWriteResponseUpgrade(bw, nonce.bytes(), hs, hw.flush)
+	httpWriteResponseUpgrade(bw, nonce.bytes(), hs, header.WriteTo)
 	err = bw.Flush()
 
 	return
 }
 
-type headerWriter struct {
-	cb [3]func(io.Writer)
-	n  int
-}
+type handshakeHeader [2]HandshakeHeader
 
-func (w *headerWriter) add(cb func(io.Writer)) {
-	if w.n == len(w.cb) {
-		panic("header callbacks overflow")
+func (hs handshakeHeader) WriteTo(w io.Writer) (n int64, err error) {
+	for i := 0; i < len(hs) && err == nil; i++ {
+		if h := hs[i]; h != nil {
+			var m int64
+			m, err = h.WriteTo(w)
+			n += m
+		}
 	}
-	w.cb[w.n] = cb
-	w.n++
-}
-
-func (w headerWriter) flush(to io.Writer) {
-	for i := 0; i < w.n; i++ {
-		w.cb[i](to)
-	}
-}
-
-func headerWriterSecVersion(w io.Writer) {
-	w.Write(btsErrorVersion)
+	return n, err
 }

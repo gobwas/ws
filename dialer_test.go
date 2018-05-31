@@ -45,11 +45,9 @@ func TestDialerRequest(t *testing.T) {
 					}),
 					httphead.NewOption("baz", nil),
 				},
-				Header: func(w io.Writer) {
-					http.Header{
-						"Origin": []string{"who knows"},
-					}.Write(w)
-				},
+				Header: HandshakeHeaderHTTP(http.Header{
+					"Origin": []string{"who knows"},
+				}),
 			},
 			url: "wss://example.org/chat",
 			exp: setProto(1, 1,

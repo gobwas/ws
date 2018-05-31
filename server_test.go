@@ -355,7 +355,7 @@ func TestHTTPUpgrader(t *testing.T) {
 				Protocol:  test.protocol,
 				Extension: test.extension,
 			}
-			_, _, hs, err := u.Upgrade(req, res, nil)
+			_, _, hs, err := u.Upgrade(req, res)
 			if test.err != err {
 				t.Errorf(
 					"expected error to be '%v', got '%v';\non request:\n====\n%s\n====",
@@ -476,7 +476,7 @@ func BenchmarkHTTPUpgrader(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					w := res[atomic.AddInt64(i, 1)-1]
-					u.Upgrade(bench.req, w, nil)
+					u.Upgrade(bench.req, w)
 				}
 			})
 		})

@@ -267,9 +267,9 @@ func main() {
 		// handle error
 	}
 
-	header := http.Header{
+	header := ws.HandshakeHeaderHTTP(http.Header{
 		"X-Go-Version": []string{runtime.Version()},
-	}
+	})
 
 	u := ws.Upgrader{
 		OnHost: func(host []byte) error {
@@ -300,8 +300,8 @@ func main() {
 				Code:   400,
 			}
 		},
-		OnBeforeUpgrade: func() (headerWriter func(io.Writer), err error) {
-			return ws.HeaderWriter(header), nil
+		OnBeforeUpgrade: func() (HandshakeHeader, error) {
+			return header, nil
 		},
 	}
 
