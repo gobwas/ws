@@ -2,7 +2,6 @@ package ws
 
 import (
 	"bufio"
-	"io"
 	"io/ioutil"
 	"net/url"
 	"testing"
@@ -53,7 +52,7 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 		url        *url.URL
 		protocols  []string
 		extensions []httphead.Option
-		headers    func(io.Writer)
+		headers    HandshakeHeaderFunc
 	}{
 		{
 			url: makeURL("ws://example.org"),

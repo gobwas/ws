@@ -133,9 +133,7 @@ func TestUpgradeSlowClient(t *testing.T) {
 				NetDial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return connWithWriter{server, &test.lim}, nil
 				},
-				Header: func(w io.Writer) {
-					header.Write(w)
-				},
+				Header: HandshakeHeaderHTTP(header),
 			}
 			var (
 				expHost = "example.org"
@@ -186,7 +184,7 @@ func TestUpgradeSlowClient(t *testing.T) {
 					t.Errorf("OnHeader() was not called with %q header key", key)
 				}
 				if !reflect.DeepEqual(act, values) {
-					t.Errorf("OnHeader(%q) different values: %v; want %v", act, values)
+					t.Errorf("OnHeader(%q) different values: %v; want %v", key, act, values)
 				}
 			}
 		})

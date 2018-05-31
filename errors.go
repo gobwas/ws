@@ -1,7 +1,5 @@
 package ws
 
-import "io"
-
 // RejectOption represents an option used to control the way connection is
 // rejected.
 type RejectOption func(*rejectConnectionError)
@@ -24,7 +22,7 @@ func RejectionStatus(code int) RejectOption {
 
 // RejectionHeader returns an option that makes connection to be rejected with
 // given HTTP headers.
-func RejectionHeader(h func(io.Writer)) RejectOption {
+func RejectionHeader(h HandshakeHeader) RejectOption {
 	return func(err *rejectConnectionError) {
 		err.header = h
 	}
@@ -47,7 +45,7 @@ func RejectConnectionError(options ...RejectOption) error {
 type rejectConnectionError struct {
 	reason string
 	code   int
-	header func(io.Writer)
+	header HandshakeHeader
 }
 
 // Error implements error interface.

@@ -39,10 +39,6 @@ var (
 )
 
 var (
-	btsErrorVersion = []byte(headerSecVersion + ": 13\r\n")
-)
-
-var (
 	headerHost          = textproto.CanonicalMIMEHeaderKey("Host")
 	headerUpgrade       = textproto.CanonicalMIMEHeaderKey("Upgrade")
 	headerConnection    = textproto.CanonicalMIMEHeaderKey("Connection")
@@ -245,7 +241,7 @@ func httpWriteUpgradeRequest(
 	nonce []byte,
 	protocols []string,
 	extensions []httphead.Option,
-	hw func(io.Writer),
+	header HandshakeHeader,
 ) {
 	bw.WriteString("GET ")
 	bw.WriteString(u.RequestURI())
@@ -275,14 +271,14 @@ func httpWriteUpgradeRequest(
 		bw.WriteString(crlf)
 	}
 
-	if hw != nil {
-		hw(bw)
+	if header != nil {
+		header.WriteTo(bw)
 	}
 
 	bw.WriteString(crlf)
 }
 
-func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, hw func(io.Writer)) {
+func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, header HandshakeHeaderFunc) {
 	bw.WriteString(textHeadUpgrade)
 
 	httpWriteHeaderKey(bw, headerSecAccept)
@@ -297,14 +293,14 @@ func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte, hs Handshake, hw f
 		httphead.WriteOptions(bw, hs.Extensions)
 		bw.WriteString(crlf)
 	}
-	if hw != nil {
-		hw(bw)
+	if header != nil {
+		header(bw)
 	}
 
 	bw.WriteString(crlf)
 }
 
-func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Writer)) {
+func httpWriteResponseError(bw *bufio.Writer, err error, code int, header HandshakeHeaderFunc) {
 	switch code {
 	case http.StatusBadRequest:
 		bw.WriteString(textHeadBadRequest)
@@ -317,8 +313,8 @@ func httpWriteResponseError(bw *bufio.Writer, err error, code int, hw func(io.Wr
 	}
 
 	// Write custom headers.
-	if hw != nil {
-		hw(bw)
+	if header != nil {
+		header(bw)
 	}
 
 	switch err {
@@ -394,12 +390,65 @@ func errorText(err error) string {
 	return buf.String()
 }
 
-// TODO: type Header interface { io.WriterTo }
+// HandshakeHeader is the interface that writes both upgrade request or
+// response headers into a given io.Writer.
+type HandshakeHeader interface {
+	io.WriterTo
+}
 
-// HeaderWriter creates callback function that will dump h into recevied
-// io.Writer inside created callback.
-func HeaderWriter(h http.Header) func(io.Writer) {
-	return func(w io.Writer) {
-		h.Write(w)
-	}
+// HandshakeHeaderString is an adapter to allow the use of headers represented
+// by ordinary string as HandshakeHeader.
+type HandshakeHeaderString string
+
+// WriteTo implements HandshakeHeader (and io.WriterTo) interface.
+func (s HandshakeHeaderString) WriteTo(w io.Writer) (int64, error) {
+	n, err := io.WriteString(w, string(s))
+	return int64(n), err
+}
+
+// HandshakeHeaderBytes is an adapter to allow the use of headers represented
+// by ordinary slice of bytes as HandshakeHeader.
+type HandshakeHeaderBytes []byte
+
+// WriteTo implements HandshakeHeader (and io.WriterTo) interface.
+func (b HandshakeHeaderBytes) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(b)
+	return int64(n), err
+}
+
+// HandshakeHeaderFunc is an adapter to allow the use of headers represented by
+// ordinary function as HandshakeHeader.
+type HandshakeHeaderFunc func(io.Writer) (int64, error)
+
+// WriteTo implements HandshakeHeader (and io.WriterTo) interface.
+func (f HandshakeHeaderFunc) WriteTo(w io.Writer) (int64, error) {
+	return f(w)
+}
+
+// HandshakeHeaderHTTP is an adapter to allow the use of http.Header as
+// HandshakeHeader.
+type HandshakeHeaderHTTP http.Header
+
+// WriteTo implements HandshakeHeader (and io.WriterTo) interface.
+func (h HandshakeHeaderHTTP) WriteTo(w io.Writer) (int64, error) {
+	wr := writer{w: w}
+	err := http.Header(h).Write(&wr)
+	return wr.n, err
+}
+
+type writer struct {
+	n int64
+	w io.Writer
+}
+
+func (w *writer) WriteString(s string) (int, error) {
+	n, err := io.WriteString(w.w, s)
+	w.n += int64(n)
+	return n, err
+}
+
+func (w *writer) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	w.n += int64(n)
+	return n, err
 }
