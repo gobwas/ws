@@ -16,6 +16,7 @@ type Message struct {
 	Payload []byte
 }
 
+// TODO(gobwas): add DefaultReader with buffer size options.
 // ReadMessage is a helper function that reads next message from r. It appends
 // received message(s) to the third argument and returns the result of it and
 // an error if some failure happened. That is, it probably could receive more
@@ -40,11 +41,21 @@ func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
 	if err != nil {
 		return m, err
 	}
-	p := make([]byte, h.Length)
-	if _, err := io.ReadFull(&rd, p); err != nil {
+	var p []byte
+	if h.Fin {
+		// No more frames will be read. Use fixed sized buffer to read payload.
+		p = make([]byte, h.Length)
 		// It is not possible to receive io.EOF here because Reader does not
-		// return EOF if frame header was successfuly fetched.
-		// Thus we consistent here with Reader behavior.
+		// return EOF if frame payload was successfuly fetched.
+		// Thus we consistent here with io.Reader behavior.
+		_, err = io.ReadFull(&rd, p)
+	} else {
+		// Frame is fragmented, thus use ioutil.ReadAll behavior.
+		var buf bytes.Buffer
+		_, err = buf.ReadFrom(&rd)
+		p = buf.Bytes()
+	}
+	if err != nil {
 		return m, err
 	}
 	return append(m, Message{h.OpCode, p}), nil
