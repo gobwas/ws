@@ -36,9 +36,10 @@ type Reader struct {
 	OnContinuation FrameHandler
 	OnIntermediate FrameHandler
 
-	frame io.Reader        // Used to as frame reader.
-	raw   io.LimitedReader // Used to discard frames without cipher.
-	utf8  UTF8Reader       // Used to check UTF8 sequences if CheckUTF8 is true.
+	opCode ws.OpCode        // Used to store message op code on fragmentation.
+	frame  io.Reader        // Used to as frame reader.
+	raw    io.LimitedReader // Used to discard frames without cipher.
+	utf8   UTF8Reader       // Used to check UTF8 sequences if CheckUTF8 is true.
 }
 
 // NewReader creates new frame reader that reads from r keeping given state to
@@ -73,7 +74,7 @@ func NewServerSideReader(r io.Reader) *Reader {
 // reading next message bytes.
 func (r *Reader) Read(p []byte) (n int, err error) {
 	if r.frame == nil {
-		if !r.State.Is(ws.StateFragmented) {
+		if !r.fragmented() {
 			// Every new Read() must be preceded by NextFrame() call.
 			return 0, ErrNoFrameAdvance
 		}
@@ -89,22 +90,23 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	}
 
 	n, err = r.frame.Read(p)
+	if err != io.EOF {
+		return
+	}
 
-	if err == io.EOF {
-		switch {
-		case r.raw.N != 0:
-			err = io.ErrUnexpectedEOF
+	switch {
+	case r.raw.N != 0:
+		err = io.ErrUnexpectedEOF
 
-		case r.State.Is(ws.StateFragmented):
-			err = nil
-			r.resetFragment()
+	case r.fragmented():
+		err = nil
+		r.resetFragment()
 
-		case r.CheckUTF8 && r.utf8.Source != nil && !r.utf8.Valid():
-			err = ErrInvalidUTF8
+	case r.CheckUTF8 && r.utf8.Source != nil && !r.utf8.Valid():
+		err = ErrInvalidUTF8
 
-		default:
-			r.reset()
-		}
+	default:
+		r.reset()
 	}
 
 	return
@@ -118,7 +120,7 @@ func (r *Reader) Discard() (err error) {
 		if err != nil {
 			break
 		}
-		if !r.State.Is(ws.StateFragmented) {
+		if !r.fragmented() {
 			break
 		}
 		if _, err = r.NextFrame(); err != nil {
@@ -136,23 +138,21 @@ func (r *Reader) Discard() (err error) {
 // all current message bytes.
 func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	hdr, err = ws.ReadHeader(r.Source)
-	if err != nil {
-		if err == io.EOF && r.State.Is(ws.StateFragmented) {
-			// If we are in fragmented state EOF means that is was totally
-			// unexpected.
-			//
-			// NOTE: This is necessary to prevent callers such that
-			// ioutil.ReadAll to receive some amount of bytes without an error.
-			// ReadAll() ignores an io.EOF error, thus caller may think that
-			// whole message fetched, but actually only part of it.
-			err = io.ErrUnexpectedEOF
-		}
-		return
+	if err == io.EOF && r.fragmented() {
+		// If we are in fragmented state EOF means that is was totally
+		// unexpected.
+		//
+		// NOTE: This is necessary to prevent callers such that
+		// ioutil.ReadAll to receive some amount of bytes without an error.
+		// ReadAll() ignores an io.EOF error, thus caller may think that
+		// whole message fetched, but actually only part of it.
+		err = io.ErrUnexpectedEOF
 	}
-	if !r.SkipHeaderCheck {
-		if err = ws.CheckHeader(hdr, r.State); err != nil {
-			return
-		}
+	if err == nil && !r.SkipHeaderCheck {
+		err = ws.CheckHeader(hdr, r.State)
+	}
+	if err != nil {
+		return hdr, err
 	}
 
 	// Save raw reader to use it on discarding frame without ciphering and
@@ -163,17 +163,21 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	if hdr.Masked {
 		frame = NewCipherReader(frame, hdr.Mask)
 	}
-	if r.State.Is(ws.StateFragmented) && hdr.OpCode.IsControl() {
-		if cb := r.OnIntermediate; cb != nil {
-			err = cb(hdr, frame)
+	if r.fragmented() {
+		if hdr.OpCode.IsControl() {
+			if cb := r.OnIntermediate; cb != nil {
+				err = cb(hdr, frame)
+			}
+			if err == nil {
+				// Ensure that src is empty.
+				_, err = io.Copy(ioutil.Discard, &r.raw)
+			}
+			return
 		}
-		if err == nil {
-			// Ensure that src is empty.
-			_, err = io.Copy(ioutil.Discard, &r.raw)
-		}
-		return
+	} else {
+		r.opCode = hdr.OpCode
 	}
-	if r.CheckUTF8 && hdr.OpCode == ws.OpText {
+	if r.CheckUTF8 && (hdr.OpCode == ws.OpText || (r.fragmented() && r.opCode == ws.OpText)) {
 		r.utf8.Source = frame
 		frame = &r.utf8
 	}
@@ -187,15 +191,23 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 		}
 	}
 
-	r.State = r.State.SetOrClearIf(!hdr.Fin, ws.StateFragmented)
+	if hdr.Fin {
+		r.State = r.State.Clear(ws.StateFragmented)
+	} else {
+		r.State = r.State.Set(ws.StateFragmented)
+	}
 
 	return
+}
+
+func (r *Reader) fragmented() bool {
+	return r.State.Is(ws.StateFragmented)
 }
 
 func (r *Reader) resetFragment() {
 	r.raw = io.LimitedReader{}
 	r.frame = nil
-	// Reset source of UTF8Reader, not the state.
+	// Reset source of the UTF8Reader, but not the state.
 	r.utf8.Source = nil
 }
 
@@ -203,6 +215,7 @@ func (r *Reader) reset() {
 	r.raw = io.LimitedReader{}
 	r.frame = nil
 	r.utf8 = UTF8Reader{}
+	r.opCode = 0
 }
 
 // NextReader prepares next message read from r. It returns header that
