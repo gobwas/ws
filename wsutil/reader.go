@@ -90,7 +90,10 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	}
 
 	n, err = r.frame.Read(p)
-	if err != io.EOF {
+	if err != nil && err != io.EOF {
+		return
+	}
+	if err == nil && r.raw.N != 0 {
 		return
 	}
 
@@ -102,11 +105,13 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		err = nil
 		r.resetFragment()
 
-	case r.CheckUTF8 && r.utf8.Source != nil && !r.utf8.Valid():
+	case r.CheckUTF8 && !r.utf8.Valid():
+		n = r.utf8.Accepted()
 		err = ErrInvalidUTF8
 
 	default:
 		r.reset()
+		err = io.EOF
 	}
 
 	return
@@ -242,6 +247,5 @@ func NextReader(r io.Reader, s ws.State) (ws.Header, io.Reader, error) {
 	if err != nil {
 		return header, nil, err
 	}
-
 	return header, rd, nil
 }
