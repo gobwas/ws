@@ -9,6 +9,13 @@ autobahn:
 test:
 	go test -run=$(TEST) -cover ./...
 
+bin/reporter:
+	go build -o bin/reporter ./autobahn
+
+rfcd: bin/reporter
+	./autobahn/script/test.sh
+	bin/reporter $(PWD)/autobahn/report/index.json
+
 testrfc: PID:=$(shell mktemp -t autobahn.XXXX)
 testrfc: autobahn
 	./bin/autobahn & echo $$! > $(PID)
