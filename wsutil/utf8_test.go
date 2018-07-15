@@ -7,10 +7,11 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestUTF8ReaderReadFull(t *testing.T) {
-	for i, test := range []struct {
+	for _, test := range []struct {
 		hex   string
 		err   bool
 		valid bool
@@ -20,13 +21,13 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
 			err:   true,
 			valid: false,
-			n:     12,
+			n:     11,
 		},
 		{
 			hex:   "cebae1bdb9cf83cebcceb5eda080656469746564",
 			valid: false,
 			err:   true,
-			n:     12,
+			n:     11,
 		},
 		{
 			hex:   "7f7f7fdf",
@@ -41,7 +42,7 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			err:   false,
 		},
 	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+		t.Run("", func(t *testing.T) {
 			bts, err := hex.DecodeString(test.hex)
 			if err != nil {
 				t.Fatal(err)
@@ -53,6 +54,14 @@ func TestUTF8ReaderReadFull(t *testing.T) {
 			p := make([]byte, src.Len())
 			n, err := io.ReadFull(r, p)
 
+			if err != nil && !utf8.Valid(bts[:n]) {
+				// Should return only number of valid bytes read.
+				t.Errorf("read n bytes is actually invalid utf8 sequence")
+			}
+			if n := r.Accepted(); err == nil && !utf8.Valid(bts[:n]) {
+				// Should return only number of valid bytes read.
+				t.Errorf("read n bytes is actually invalid utf8 sequence")
+			}
 			if test.err && err == nil {
 				t.Errorf("expected read error; got nil")
 			}
