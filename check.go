@@ -33,16 +33,6 @@ func (s State) Clear(v State) State {
 	return s & (^v)
 }
 
-// SetOrClearIf enables or disables v state on s depending on cond.
-func (s State) SetOrClearIf(cond bool, v State) (ret State) {
-	if cond {
-		ret = s.Set(v)
-	} else {
-		ret = s.Clear(v)
-	}
-	return
-}
-
 // ProtocolError describes error during checking/parsing websocket frames or
 // headers.
 type ProtocolError string
