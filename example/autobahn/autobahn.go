@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
@@ -28,12 +26,10 @@ func main() {
 	log.Printf("reports dir is set to: %s", *reports)
 	log.Printf("static dir is set to: %s", *static)
 
-	http.HandleFunc("/", handlerIndex())
 	http.HandleFunc("/ws", wsHandler())
 	http.HandleFunc("/wsutil", wsutilHandler())
 	http.HandleFunc("/helpers/low", helpersLowLevelHandler())
 	http.HandleFunc("/helpers/high", helpersHighLevelHandler())
-	http.Handle("/reports/", http.StripPrefix("/reports/", http.FileServer(http.Dir(*reports))))
 
 	log.Printf("ready to listen on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
@@ -275,33 +271,6 @@ func wsHandler() func(w http.ResponseWriter, r *http.Request) {
 			header.Masked = false
 			ws.WriteHeader(conn, header)
 			conn.Write(payload)
-		}
-	}
-}
-
-func handlerIndex() func(w http.ResponseWriter, r *http.Request) {
-	index, err := os.Open(*static + "/index.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-	bts, err := ioutil.ReadAll(index)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("reqeust to %s", r.URL)
-		switch r.URL.Path {
-		case "/":
-			buf := bytes.NewBuffer(bts)
-			_, err := buf.WriteTo(w)
-			if err != nil {
-				log.Printf("write index bytes error: %s", err)
-			}
-		case "/favicon.ico":
-			w.WriteHeader(http.StatusNotFound)
-		default:
-			w.WriteHeader(http.StatusNotFound)
 		}
 	}
 }

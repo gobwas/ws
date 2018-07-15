@@ -1,0 +1,15 @@
+version: "3"
+services:
+  autobahn:
+    depends_on:
+      - ws
+    build:
+      context: .
+      dockerfile: autobahn/docker/autobahn/Dockerfile
+    volumes:
+      - ./autobahn/config:/config
+      - ./autobahn/report:/report
+  ws:
+    build:
+      context: .
+      dockerfile: autobahn/docker/ws/Dockerfile
