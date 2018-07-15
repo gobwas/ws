@@ -2,7 +2,6 @@ package wsutil
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"testing"
@@ -138,34 +137,34 @@ func TestReaderUTF8(t *testing.T) {
 }
 
 func TestNextReader(t *testing.T) {
-	for i, test := range []struct {
-		label string
-		seq   []Frame
-		chop  int
-		exp   []byte
-		err   error
+	for _, test := range []struct {
+		name string
+		seq  []Frame
+		chop int
+		exp  []byte
+		err  error
 	}{
 		{
-			label: "empty",
-			seq:   []Frame{},
-			err:   io.EOF,
+			name: "empty",
+			seq:  []Frame{},
+			err:  io.EOF,
 		},
 		{
-			label: "single",
+			name: "single",
 			seq: []Frame{
 				NewTextFrame("Привет, Мир!"),
 			},
 			exp: []byte("Привет, Мир!"),
 		},
 		{
-			label: "single_masked",
+			name: "single_masked",
 			seq: []Frame{
 				MaskFrame(NewTextFrame("Привет, Мир!")),
 			},
 			exp: []byte("Привет, Мир!"),
 		},
 		{
-			label: "fragmented",
+			name: "fragmented",
 			seq: []Frame{
 				NewFrame(OpText, false, []byte("Привет,")),
 				NewFrame(OpContinuation, false, []byte(" о дивный,")),
@@ -177,7 +176,7 @@ func TestNextReader(t *testing.T) {
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
 		{
-			label: "fragmented_masked",
+			name: "fragmented_masked",
 			seq: []Frame{
 				MaskFrame(NewFrame(OpText, false, []byte("Привет,"))),
 				MaskFrame(NewFrame(OpContinuation, false, []byte(" о дивный,"))),
@@ -189,7 +188,7 @@ func TestNextReader(t *testing.T) {
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
 		{
-			label: "fragmented_and_control",
+			name: "fragmented_and_control",
 			seq: []Frame{
 				NewFrame(OpText, false, []byte("Привет,")),
 				NewFrame(OpPing, true, nil),
@@ -203,7 +202,7 @@ func TestNextReader(t *testing.T) {
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
 		{
-			label: "fragmented_and_control_mask",
+			name: "fragmented_and_control_mask",
 			seq: []Frame{
 				MaskFrame(NewFrame(OpText, false, []byte("Привет,"))),
 				MaskFrame(NewFrame(OpPing, true, nil)),
@@ -217,7 +216,7 @@ func TestNextReader(t *testing.T) {
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
 	} {
-		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			// Prepare input.
 			buf := &bytes.Buffer{}
 			for _, f := range test.seq {
