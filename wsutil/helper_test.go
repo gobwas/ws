@@ -60,7 +60,7 @@ func TestReadMessageEOF(t *testing.T) {
 				t.Errorf("unexpected error: %v; want %v", err, test.err)
 			}
 			if n := len(ms); n != len(test.messages) {
-				t.Fatal("unexpected number of read messages: %d; want %d", n, 0)
+				t.Fatalf("unexpected number of read messages: %d; want %d", n, 0)
 			}
 			for i, exp := range test.messages {
 				act := ms[i]
