@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 LOG_AUTOBAHN=0
 LOG_WS=0
