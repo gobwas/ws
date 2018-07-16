@@ -7,7 +7,6 @@ services:
 
 os:
   - linux
-  - osx
 
 go:
   - 1.7.x
