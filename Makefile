@@ -8,9 +8,7 @@ autobahn: bin/reporter
 	./autobahn/script/test.sh \
 		--build ws \
 		--build autobahn \
-		--network ts0 \
-		--log ws \
-		--log autobahn
+		--network ts0
 	bin/reporter $(PWD)/autobahn/report/index.json
 
 
