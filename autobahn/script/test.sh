@@ -3,9 +3,16 @@
 LOG_AUTOBAHN=0
 LOG_WS=0
 
+NETWORK=docker_default
+
 while [[ $# -gt 0 ]]; do
 	key="$1"
 	case $key in
+		--network)
+		NETWORK="$2"
+		docker network create --driver bridge "$NETWORK"
+		shift
+		;;
 		-b|--build)
 		case "$2" in
 			autobahn)
@@ -53,8 +60,8 @@ with_prefix() {
 	rm $out $err
 }
 
-docker run -itd --name=ws_test --network=docker_default --network-alias=ws ws
-docker run -itd --name=autobahn_test -v $(pwd)/autobahn/config:/config -v $(pwd)/autobahn/report:/report --network=docker_default autobahn
+docker run -itd --name=ws_test --network="$NETWORK" --network-alias=ws ws
+docker run -itd --name=autobahn_test -v $(pwd)/autobahn/config:/config -v $(pwd)/autobahn/report:/report --network="$NETWORK" autobahn
 
 docker wait autobahn_test >/dev/null
 if [[ $LOG_AUTOBAHN -eq 1 ]]; then
