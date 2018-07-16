@@ -5,7 +5,7 @@ bin/reporter:
 	go build -o bin/reporter ./autobahn
 
 autobahn: bin/reporter
-	./autobahn/script/test.sh
+	./autobahn/script/test.sh --build ws --build autobahn
 	bin/reporter $(PWD)/autobahn/report/index.json
 
 
