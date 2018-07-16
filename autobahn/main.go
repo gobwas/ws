@@ -113,9 +113,7 @@ func main() {
 		for id := range report[server] {
 			cases = append(cases, id)
 		}
-		sort.Slice(cases, func(i, j int) bool {
-			return compareBySegment(cases[i], cases[j]) < 0
-		})
+		sortBySegment(cases)
 		for _, id := range cases {
 			c := report[server][id]
 
