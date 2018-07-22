@@ -11,7 +11,7 @@ bin/gocovmerge:
 	go build -o bin/gocovmerge github.com/wadey/gocovmerge
 
 autobahn: bin/reporter
-	./autobahn/script/test.sh --build --follow-logs
+	./autobahn/script/test.sh --build
 	bin/reporter $(PWD)/autobahn/report/index.json
 
 test:
