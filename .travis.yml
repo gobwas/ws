@@ -19,5 +19,5 @@ install:
   - go get github.com/gobwas/httphead
 
 script:
-  - go test ./...
+  - make test
   - make autobahn 

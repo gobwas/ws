@@ -1,16 +1,25 @@
 BENCH     ?=.
 BENCH_BASE?=master
 
+clean:
+	rm -f bin/reporter
+
 bin/reporter:
 	go build -o bin/reporter ./autobahn
 
+bin/gocovmerge:
+	go build -o bin/gocovmerge github.com/wadey/gocovmerge
+
 autobahn: bin/reporter
-	./autobahn/script/test.sh \
-		--build ws \
-		--build autobahn \
-		--network ts0
+	./autobahn/script/test.sh --build --follow-logs
 	bin/reporter $(PWD)/autobahn/report/index.json
 
+test:
+	go test -coverprofile=ws.coverage .
+	go test -coverprofile=wsutil.coverage ./wsutil
+
+cover: bin/gocovmerge test autobahn
+	bin/gocovmerge ws.coverage wsutil.coverage autobahn/report/server.coverage > total.coverage
 
 benchcmp: BENCH_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 benchcmp: BENCH_OLD:=$(shell mktemp -t old.XXXX)

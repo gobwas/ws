@@ -1,39 +1,42 @@
 #!/bin/bash
 
-LOG_AUTOBAHN=0
-LOG_WS=0
-
-NETWORK=docker_default
+FOLLOW_LOGS=0
 
 while [[ $# -gt 0 ]]; do
 	key="$1"
 	case $key in
 		--network)
 		NETWORK="$2"
-		docker network create --driver bridge "$NETWORK"
-		shift
-		;;
-		-b|--build)
-		case "$2" in
-			autobahn)
-			docker build . -f autobahn/docker/autobahn/Dockerfile -t autobahn
-			;;
-			ws)
-			docker build . -f autobahn/docker/ws/Dockerfile -t ws
-			;;
-		esac
 		shift
 		;;
 
-		--log)
+		--build)
 		case "$2" in
 			autobahn)
-			LOG_AUTOBAHN=1
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag autobahn
+				shift
 			;;
-			ws)
-			LOG_WS=1
+			server)
+				docker build . --file autobahn/docker/server/Dockerfile --tag server
+				shift
+			;;
+			*)
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag autobahn
+				docker build . --file autobahn/docker/server/Dockerfile --tag server
 			;;
 		esac
+		;;
+
+		--run)
+		docker run \
+			--interactive \
+			--tty \
+			${@:2}
+		exit $?
+		;;
+
+		--follow-logs)
+		FOLLOW_LOGS=1
 		shift
 		;;
 	esac
@@ -60,20 +63,54 @@ with_prefix() {
 	rm $out $err
 }
 
-docker run -itd --name=ws_test --network="$NETWORK" --network-alias=ws ws
-docker run -itd --name=autobahn_test -v $(pwd)/autobahn/config:/config -v $(pwd)/autobahn/report:/report --network="$NETWORK" autobahn
+random=$(xxd -l 4 -p /dev/random)
+server="${random}_server"
+autobahn="${random}_autobahn"
 
-docker wait autobahn_test >/dev/null
-if [[ $LOG_AUTOBAHN -eq 1 ]]; then
-	with_prefix "$(tput setaf 3)[autobahn]: $(tput sgr0)" docker logs --follow autobahn_test
+network="ws-$random"
+docker network create --driver bridge "$network"
+
+docker run \
+	--interactive \
+	--tty \
+	--detach \
+	--network="$network" \
+	--network-alias="server" \
+	-v $(pwd)/autobahn/report:/report \
+	--name="$server" \
+	"server"
+
+docker run \
+	--interactive \
+	--tty \
+	--detach \
+	--network="$network" \
+	-v $(pwd)/autobahn/config:/config \
+	-v $(pwd)/autobahn/report:/report \
+   	--name="$autobahn" \
+	"autobahn"
+
+
+if [[ $FOLLOW_LOGS -eq 1 ]]; then
+	(with_prefix "$(tput setaf 3)[autobahn]: $(tput sgr0)" docker logs --follow "$autobahn")&
+	(with_prefix "$(tput setaf 5)[server]:   $(tput sgr0)" docker logs --follow "$server")&
 fi
 
-if [[ $LOG_WS -eq 1 ]]; then
-	with_prefix "$(tput setaf 3)[ws]:       $(tput sgr0)" docker logs --follow ws_test
-fi
-docker stop ws_test >/dev/null
+trap ctrl_c INT
+ctrl_c () {
+	echo "SIGINT received; cleaning up"
+	docker kill --signal INT "$autobahn" >/dev/null
+	docker kill --signal INT "$server" >/dev/null
+	cleanup
+	exit 130
+} 
 
-docker rm ws_test >/dev/null
-docker rm autobahn_test >/dev/null
+cleanup() {
+	docker rm "$server" >/dev/null
+	docker rm "$autobahn" >/dev/null
+}
 
+docker wait "$autobahn" >/dev/null
+docker stop "$server" >/dev/null
 
+cleanup
