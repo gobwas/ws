@@ -65,11 +65,11 @@ docker run -itd --name=autobahn_test -v $(pwd)/autobahn/config:/config -v $(pwd)
 
 docker wait autobahn_test >/dev/null
 if [[ $LOG_AUTOBAHN -eq 1 ]]; then
-	with_prefix "$(tput setaf 3)[autobahn]: $(tput sgr0)" docker logs autobahn_test
+	with_prefix "$(tput setaf 3)[autobahn]: $(tput sgr0)" docker logs --follow autobahn_test
 fi
 
 if [[ $LOG_WS -eq 1 ]]; then
-	with_prefix "$(tput setaf 3)[ws]:       $(tput sgr0)" docker logs ws_test
+	with_prefix "$(tput setaf 3)[ws]:       $(tput sgr0)" docker logs --follow ws_test
 fi
 docker stop ws_test >/dev/null
 
