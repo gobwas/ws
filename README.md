@@ -9,7 +9,8 @@
 
 - Zero-copy upgrade
 - No intermediate allocations during I/O
-- Low-level API which allows to build your own logic of packet handling and buffers reuse
+- Low-level API which allows to build your own logic of packet handling and
+  buffers reuse
 - High-level wrappers and helpers around API in `wsutil` package, which allow
   to start fast without digging the protocol internals
 
@@ -19,23 +20,27 @@
 
 # Why
 
-Existing WebSocket implementations do not allow users to reuse I/O buffers between
-connections in clear way. This library aims to export efficient low-level interface for
-working with the protocol without forcing only one way it could be used.
+Existing WebSocket implementations do not allow users to reuse I/O buffers
+between connections in clear way. This library aims to export efficient
+low-level interface for working with the protocol without forcing only one way
+it could be used.
 
-By the way, if you want get the higher-level tools, you can use `wsutil` sub-package.
+By the way, if you want get the higher-level tools, you can use `wsutil`
+package.
 
 # Status
 
-This implementation of RFC6455 passes [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
-71.6% coverage (see `example/autobahn` folder for details).
-
-The library is not tagged as `v1.0.0` yet so it can be broken during some
+Library is tagged as `v1*` so its API must not be broken during some
 improvements or refactoring.
+
+This implementation of RFC6455 passes [Autobahn Test
+Suite](https://github.com/crossbario/autobahn-testsuite) and currently has
+about 78% coverage.
 
 # Examples
 
-Example applications using `ws` are developed in separate repository [ws-examples](https://github.com/gobwas/ws-examples).
+Example applications using `ws` are developed in separate repository
+[ws-examples](https://github.com/gobwas/ws-examples).
 
 # Usage
 
@@ -53,11 +58,10 @@ import (
 
 func main() {
 	http.ListenAndServe(":8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			// handle error
 		}
-
 		go func() {
 			defer conn.Close()
 
@@ -90,11 +94,10 @@ import (
 
 func main() {
 	http.ListenAndServe(":8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, _, _, err := ws.UpgradeHTTP(r, w, nil)
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			// handle error
 		}
-
 		go func() {
 			defer conn.Close()
 
@@ -115,7 +118,6 @@ func main() {
 				if _, err = io.Copy(writer, reader); err != nil {
 					// handle error
 				}
-
 				if err = writer.Flush(); err != nil {
 					// handle error
 				}
@@ -216,14 +218,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	u := ws.Upgrader{
-		OnHeader: func(key, value []byte) (err error, code int) {
+		OnHeader: func(key, value []byte) (err error) {
 			log.Printf("non-websocket header: %q=%q", key, value)
 			return
 		},
 	}
-
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -238,8 +238,8 @@ func main() {
 }
 ```
 
-Usage of `ws.Upgrader` here brings ability to control incoming connections on tcp
-level and simply not to accept them by some logic.
+Usage of `ws.Upgrader` here brings ability to control incoming connections on
+tcp level and simply not to accept them by some logic.
 
 Zero-copy upgrade is for high-load services which have to control many
 resources such as connections buffers.
@@ -267,6 +267,7 @@ func main() {
 		// handle error
 	}
 
+	// Prepare handshake header writer from http.Header mapping.
 	header := ws.HandshakeHeaderHTTP(http.Header{
 		"X-Go-Version": []string{runtime.Version()},
 	})
@@ -276,12 +277,12 @@ func main() {
 			if string(host) == "github.com" {
 				return nil
 			}
-			return &ws.RejectConnectionError{
-				Code: 403,
-				Header: ws.HeaderWriter(http.Header{
-					"X-Want-Host": []string{"github.com"},
-				}),
-			}
+			return &ws.RejectConnectionError(
+				ws.RejectionStatus(403),
+				ws.RejectionHeader(ws.HandshakeHeaderString(
+					"X-Want-Host: github.com",
+				)),
+			)
 		},
 		OnHeader: func(key, value []byte) error {
 			if string(key) != "Cookie" {
@@ -295,16 +296,15 @@ func main() {
 			if ok {
 				return nil
 			}
-			return &ws.RejectConnectionError{
-				Reason: "bad cookie",
-				Code:   400,
-			}
+			return &ws.RejectConnectionError(
+				ws.RejectionReason("bad cookie"),
+				ws.RejectionStatus(400),
+			)
 		},
 		OnBeforeUpgrade: func() (HandshakeHeader, error) {
 			return header, nil
 		},
 	}
-
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
