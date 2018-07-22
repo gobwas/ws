@@ -177,7 +177,7 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 	} else {
 		// Context could be canceled or its deadline could be exceeded.
 		// Start the interrupter goroutine to handle context cancelation.
-		done := setupContextDeadliner(conn, ctx)
+		done := setupContextDeadliner(ctx, conn)
 		defer func() {
 			// Map Upgrade() error to a possible context expiration error. That
 			// is, even if Upgrade() err is nil, context could be already
@@ -526,7 +526,7 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 // connection "poisoned" by SetDeadline() call. In that case done(&err) will
 // store at *err ctx.Err() result. If err is caused not by timeout, it will
 // leaved untouched.
-func setupContextDeadliner(conn net.Conn, ctx context.Context) (done func(*error)) {
+func setupContextDeadliner(ctx context.Context, conn net.Conn) (done func(*error)) {
 	var (
 		quit      = make(chan struct{})
 		interrupt = make(chan error, 1)
