@@ -21,17 +21,17 @@ var (
 )
 
 const (
-	StatusOK            = "OK"
-	StatusInformational = "INFORMATIONAL"
-	StatusUnimplemented = "UNIMPLEMENTED"
-	StatusNonStrict     = "NON-STRICT"
-	StatusUnclean       = "UNCLEAN"
-	StatusFailed        = "FAILED"
+	statusOK            = "OK"
+	statusInformational = "INFORMATIONAL"
+	statusUnimplemented = "UNIMPLEMENTED"
+	statusNonStrict     = "NON-STRICT"
+	statusUnclean       = "UNCLEAN"
+	statusFailed        = "FAILED"
 )
 
 func failing(behavior string) bool {
 	switch behavior {
-	case StatusUnclean, StatusFailed, StatusNonStrict:
+	case statusUnclean, statusFailed, statusNonStrict:
 		return true
 	default:
 		return false
@@ -51,17 +51,17 @@ type statusCounter struct {
 func (c *statusCounter) Inc(s string) {
 	c.Total++
 	switch s {
-	case StatusOK:
+	case statusOK:
 		c.OK++
-	case StatusInformational:
+	case statusInformational:
 		c.Informational++
-	case StatusNonStrict:
+	case statusNonStrict:
 		c.NonStrict++
-	case StatusUnimplemented:
+	case statusUnimplemented:
 		c.Unimplemented++
-	case StatusUnclean:
+	case statusUnclean:
 		c.Unclean++
-	case StatusFailed:
+	case statusFailed:
 		c.Failed++
 	default:
 		panic(fmt.Sprintf("unexpected status %q", s))
@@ -147,29 +147,29 @@ func main() {
 		}
 		var status string
 		if srvFailed {
-			status = StatusFailed
+			status = statusFailed
 		} else {
-			status = StatusOK
+			status = statusOK
 		}
 		n, _ := fmt.Fprintf(tw, "AGENT %q SUMMARY (%s)\n", server, status)
 		fmt.Fprintf(tw, "%s\n", strings.Repeat("=", n-1))
 
 		fmt.Fprintf(tw, "TOTAL:\t%d\n", counter.Total)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusOK, counter.OK)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusInformational, counter.Informational)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusUnimplemented, counter.Unimplemented)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusNonStrict, counter.NonStrict)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusUnclean, counter.Unclean)
-		fmt.Fprintf(tw, "%s:\t%d\n", StatusFailed, counter.Failed)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusOK, counter.OK)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusInformational, counter.Informational)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusUnimplemented, counter.Unimplemented)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusNonStrict, counter.NonStrict)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusUnclean, counter.Unclean)
+		fmt.Fprintf(tw, "%s:\t%d\n", statusFailed, counter.Failed)
 		fmt.Fprint(tw, "\n")
 		tw.Flush()
 	}
 	var rc int
 	if failed {
 		rc = 1
-		fmt.Fprintf(tw, "\n\nTEST %s\n\n", StatusFailed)
+		fmt.Fprintf(tw, "\n\nTEST %s\n\n", statusFailed)
 	} else {
-		fmt.Fprintf(tw, "\n\nTEST %s\n\n", StatusOK)
+		fmt.Fprintf(tw, "\n\nTEST %s\n\n", statusOK)
 	}
 
 	tw.Flush()
