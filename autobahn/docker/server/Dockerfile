@@ -5,6 +5,6 @@ RUN	apk add --no-cache git && \
 	go get github.com/gobwas/pool/... 
 
 COPY . /go/src/github.com/gobwas/ws
-RUN go build -o /usr/local/bin/ws github.com/gobwas/ws/example/autobahn
+RUN go test -c -tags autobahn -coverpkg "github.com/gobwas/ws/..." github.com/gobwas/ws/example/autobahn
 
-CMD ["/usr/local/bin/ws"]
+CMD ["./autobahn.test", "-test.coverprofile", "/report/server.coverage"]
