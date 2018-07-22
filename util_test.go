@@ -99,17 +99,17 @@ func BenchmarkReadLine(b *testing.B) {
 
 func TestUpgradeSlowClient(t *testing.T) {
 	for _, test := range []struct {
-		lim limitWriter
+		lim *limitWriter
 	}{
 		{
-			lim: limitWriter{
+			lim: &limitWriter{
 				Bandwidth: 100,
 				Period:    time.Second,
 				Burst:     10,
 			},
 		},
 		{
-			lim: limitWriter{
+			lim: &limitWriter{
 				Bandwidth: 100,
 				Period:    time.Second,
 				Burst:     100,
@@ -131,7 +131,7 @@ func TestUpgradeSlowClient(t *testing.T) {
 			}
 			d := Dialer{
 				NetDial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return connWithWriter{server, &test.lim}, nil
+					return connWithWriter{server, test.lim}, nil
 				},
 				Header: HandshakeHeaderHTTP(header),
 			}
@@ -265,7 +265,7 @@ func (w *limitWriter) Close() error {
 	return nil
 }
 
-func (w limitWriter) Write(p []byte) (n int, err error) {
+func (w *limitWriter) Write(p []byte) (n int, err error) {
 	w.init()
 	for n < len(p) {
 		m := w.allow(len(p))
