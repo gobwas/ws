@@ -345,7 +345,7 @@ func httpWriteResponseError(bw *bufio.Writer, err error, code int, header Handsh
 
 func writeStatusText(bw *bufio.Writer, code int) {
 	bw.WriteString("HTTP/1.1 ")
-	bw.WriteString(strconv.FormatInt(int64(code), 10))
+	bw.WriteString(strconv.Itoa(code))
 	bw.WriteByte(' ')
 	bw.WriteString(http.StatusText(code))
 	bw.WriteString(crlf)
