@@ -16,13 +16,14 @@ type Message struct {
 	Payload []byte
 }
 
-// TODO(gobwas): add DefaultReader with buffer size options.
 // ReadMessage is a helper function that reads next message from r. It appends
 // received message(s) to the third argument and returns the result of it and
 // an error if some failure happened. That is, it probably could receive more
 // than one message when peer sending fragmented message in multiple frames and
 // want to send some control frame between fragments. Then returned slice will
 // contain those control frames at first, and then result of gluing fragments.
+//
+// TODO(gobwas): add DefaultReader with buffer size options.
 func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
 	rd := Reader{
 		Source:    r,
