@@ -37,7 +37,7 @@ func TestControlWriter(t *testing.T) {
 		{
 			state: server,
 			op:    ws.OpPing,
-			exp:   ws.PingFrame,
+			exp:   ws.NewPingFrame(nil),
 		},
 		{
 			write: []byte("0123456789"),
@@ -238,20 +238,20 @@ func TestWriter(t *testing.T) {
 			data: [][]byte{
 				{},
 			},
-			expBts: ws.MustCompileFrame(ws.NewTextFrame("")),
+			expBts: ws.MustCompileFrame(ws.NewTextFrame(nil)),
 		},
 		{
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
-			expBts: ws.MustCompileFrame(ws.NewTextFrame("hello, world!")),
+			expBts: ws.MustCompileFrame(ws.NewTextFrame([]byte("hello, world!"))),
 		},
 		{
 			state: ws.StateClientSide,
 			data: [][]byte{
 				[]byte("hello, world!"),
 			},
-			expFrm: []ws.Frame{ws.MaskFrame(ws.NewTextFrame("hello, world!"))},
+			expFrm: []ws.Frame{ws.MaskFrame(ws.NewTextFrame([]byte("hello, world!")))},
 		},
 		{
 			size: 5,

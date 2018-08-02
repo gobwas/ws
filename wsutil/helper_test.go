@@ -24,7 +24,7 @@ func TestReadMessageEOF(t *testing.T) {
 				// successfully reading header bytes frame via ws.ReadHeader()
 				// and non-successfully read of the body.
 				var buf bytes.Buffer
-				f := ws.NewTextFrame("this part will be lost")
+				f := ws.NewTextFrame([]byte("this part will be lost"))
 				if err := ws.WriteHeader(&buf, f.Header); err != nil {
 					panic(err)
 				}
