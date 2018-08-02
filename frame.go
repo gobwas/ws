@@ -346,7 +346,8 @@ func CompileFrame(f Frame) (bts []byte, err error) {
 	return
 }
 
-// MustCompileFrame is like CompileFrame but panics if frame cannot be encoded.
+// MustCompileFrame is like CompileFrame but panics if frame can not be
+// encoded.
 func MustCompileFrame(f Frame) []byte {
 	bts, err := CompileFrame(f)
 	if err != nil {
