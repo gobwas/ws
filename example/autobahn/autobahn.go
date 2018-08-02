@@ -62,10 +62,14 @@ func main() {
 
 var (
 	closeInvalidPayload = ws.MustCompileFrame(
-		ws.NewCloseFrame(ws.StatusInvalidFramePayloadData, ""),
+		ws.NewCloseFrame(ws.NewCloseFrameBody(
+			ws.StatusInvalidFramePayloadData, "",
+		)),
 	)
 	closeProtocolError = ws.MustCompileFrame(
-		ws.NewCloseFrame(ws.StatusProtocolError, ""),
+		ws.NewCloseFrame(ws.NewCloseFrameBody(
+			ws.StatusProtocolError, "",
+		)),
 	)
 )
 
@@ -277,7 +281,9 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("invalid close data: %s", err)
 					conn.Write(closeProtocolError)
 				} else {
-					ws.WriteFrame(conn, ws.NewCloseFrame(code, ""))
+					ws.WriteFrame(conn, ws.NewCloseFrame(ws.NewCloseFrameBody(
+						code, "",
+					)))
 				}
 				return
 			}
