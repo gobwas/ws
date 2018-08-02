@@ -277,7 +277,7 @@ func TestDialerHandshake(t *testing.T) {
 			},
 			accept: acceptValid,
 			frames: []Frame{
-				NewTextFrame("hello, gopherizer!"),
+				NewTextFrame([]byte("hello, gopherizer!")),
 			},
 			wantBuffer: true,
 		},

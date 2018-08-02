@@ -85,14 +85,19 @@ const (
 	StatusProtocolError           StatusCode = 1002
 	StatusUnsupportedData         StatusCode = 1003
 	StatusNoMeaningYet            StatusCode = 1004
-	StatusNoStatusRcvd            StatusCode = 1005
-	StatusAbnormalClosure         StatusCode = 1006
 	StatusInvalidFramePayloadData StatusCode = 1007
 	StatusPolicyViolation         StatusCode = 1008
 	StatusMessageTooBig           StatusCode = 1009
 	StatusMandatoryExt            StatusCode = 1010
 	StatusInternalServerError     StatusCode = 1011
 	StatusTLSHandshake            StatusCode = 1015
+
+	// StatusAbnormalClosure is a special code designated for use in
+	// applications.
+	StatusAbnormalClosure StatusCode = 1006
+
+	// StatusNoStatusRcvd is a special code designated for use in applications.
+	StatusNoStatusRcvd StatusCode = 1005
 )
 
 // In reports whether the code is defined in given range.
@@ -161,19 +166,24 @@ func (s StatusCode) IsProtocolReserved() bool {
 	}
 }
 
-// Common frames with no special meaning.
-var (
-	PingFrame  = Frame{Header{Fin: true, OpCode: OpPing}, nil}
-	PongFrame  = Frame{Header{Fin: true, OpCode: OpPong}, nil}
-	CloseFrame = Frame{Header{Fin: true, OpCode: OpClose}, nil}
-)
-
 // Compiled control frames for common use cases.
 // For construct-serialize optimizations.
 var (
-	CompiledPing  = MustCompileFrame(PingFrame)
-	CompiledPong  = MustCompileFrame(PongFrame)
-	CompiledClose = MustCompileFrame(CloseFrame)
+	CompiledPing  = MustCompileFrame(NewPingFrame(nil))
+	CompiledPong  = MustCompileFrame(NewPongFrame(nil))
+	CompiledClose = MustCompileFrame(NewCloseFrame(nil))
+
+	CompiledCloseNormalClosure           = MustCompileFrame(closeFrameNormalClosure)
+	CompiledCloseGoingAway               = MustCompileFrame(closeFrameGoingAway)
+	CompiledCloseProtocolError           = MustCompileFrame(closeFrameProtocolError)
+	CompiledCloseUnsupportedData         = MustCompileFrame(closeFrameUnsupportedData)
+	CompiledCloseNoMeaningYet            = MustCompileFrame(closeFrameNoMeaningYet)
+	CompiledCloseInvalidFramePayloadData = MustCompileFrame(closeFrameInvalidFramePayloadData)
+	CompiledClosePolicyViolation         = MustCompileFrame(closeFramePolicyViolation)
+	CompiledCloseMessageTooBig           = MustCompileFrame(closeFrameMessageTooBig)
+	CompiledCloseMandatoryExt            = MustCompileFrame(closeFrameMandatoryExt)
+	CompiledCloseInternalServerError     = MustCompileFrame(closeFrameInternalServerError)
+	CompiledCloseTLSHandshake            = MustCompileFrame(closeFrameTLSHandshake)
 )
 
 // Header represents websocket frame header.
@@ -216,59 +226,70 @@ func NewFrame(op OpCode, fin bool, p []byte) Frame {
 	}
 }
 
-// NewTextFrame creates text frame with s as payload.
-// Note that the s is copied in the returned frame payload.
-func NewTextFrame(s string) Frame {
-	p := make([]byte, len(s))
-	copy(p, s)
+// NewTextFrame creates text frame with p as payload.
+// Note that p is not copied.
+func NewTextFrame(p []byte) Frame {
 	return NewFrame(OpText, true, p)
 }
 
 // NewBinaryFrame creates binary frame with p as payload.
-// Note that p is left as is in the returned frame without copying.
+// Note that p is not copied.
 func NewBinaryFrame(p []byte) Frame {
 	return NewFrame(OpBinary, true, p)
 }
 
 // NewPingFrame creates ping frame with p as payload.
-// Note that p is left as is in the returned frame without copying.
+// Note that p is not copied.
+// Note that p must have length of MaxControlFramePayloadSize bytes or less due
+// to RFC.
 func NewPingFrame(p []byte) Frame {
 	return NewFrame(OpPing, true, p)
 }
 
 // NewPongFrame creates pong frame with p as payload.
-// Note that p is left as is in the returned frame.
+// Note that p is not copied.
+// Note that p must have length of MaxControlFramePayloadSize bytes or less due
+// to RFC.
 func NewPongFrame(p []byte) Frame {
 	return NewFrame(OpPong, true, p)
 }
 
-// NewCloseFrame creates close frame with given closure code and reason.
-// Note that it crops reason to fit the limit of control frames payload.
-// See https://tools.ietf.org/html/rfc6455#section-5.5
-func NewCloseFrame(code StatusCode, reason string) Frame {
-	return NewFrame(OpClose, true, NewCloseFrameData(code, reason))
+// NewCloseFrame creates close frame with given close body.
+// Note that p is not copied.
+// Note that p must have length of MaxControlFramePayloadSize bytes or less due
+// to RFC.
+func NewCloseFrame(p []byte) Frame {
+	return NewFrame(OpClose, true, p)
 }
 
-// NewCloseFrameData makes byte representation of code and reason.
+// NewCloseFrameBody encodes a closure code and a reason into a binary
+// representation.
 //
-// Note that returned slice is at most 125 bytes length.
-// If reason is too big it will crop it to fit the limit defined by thte spec.
+// It returns slice which is at most MaxControlFramePayloadSize bytes length.
+// If the reason is too big it will be cropped to fit the limit defined by the
+// spec.
 //
 // See https://tools.ietf.org/html/rfc6455#section-5.5
-func NewCloseFrameData(code StatusCode, reason string) []byte {
-	n := min(2+len(reason), MaxControlFramePayloadSize) // 2 is for status code uint16 encoding.
+func NewCloseFrameBody(code StatusCode, reason string) []byte {
+	n := min(2+len(reason), MaxControlFramePayloadSize)
 	p := make([]byte, n)
-	PutCloseFrameData(p, code, reason)
+
+	crop := min(MaxControlFramePayloadSize-2, len(reason))
+	PutCloseFrameBody(p, code, reason[:crop])
+
 	return p
 }
 
-// PutCloseFrameData encodes code and reason into buf and returns the number of bytes written.
-// If the buffer is too small to accommodate at least code, PutCloseFrameData will panic.
-// Note that it does not checks maximum control frame payload size limit.
-func PutCloseFrameData(p []byte, code StatusCode, reason string) int {
+// PutCloseFrameBody encodes code and reason into buf.
+//
+// It will panic if the buffer is too small to accommodate a code or a reason.
+//
+// PutCloseFrameBody does not check buffer to be RFC compliant, but note that
+// by RFC it must be at most MaxControlFramePayloadSize.
+func PutCloseFrameBody(p []byte, code StatusCode, reason string) {
+	_ = p[1+len(reason)]
 	binary.BigEndian.PutUint16(p, uint16(code))
-	n := copy(p[2:], reason)
-	return n + 2
+	copy(p[2:], reason)
 }
 
 // MaskFrame masks frame and returns frame with masked payload and Mask header's field set.
@@ -347,3 +368,23 @@ func Rsv(r1, r2, r3 bool) (rsv byte) {
 	}
 	return rsv
 }
+
+func makeCloseFrame(code StatusCode, reason string) Frame {
+	return NewCloseFrame(NewCloseFrameBody(
+		code, reason,
+	))
+}
+
+var (
+	closeFrameNormalClosure           = makeCloseFrame(StatusNormalClosure, "")
+	closeFrameGoingAway               = makeCloseFrame(StatusGoingAway, "")
+	closeFrameProtocolError           = makeCloseFrame(StatusProtocolError, "")
+	closeFrameUnsupportedData         = makeCloseFrame(StatusUnsupportedData, "")
+	closeFrameNoMeaningYet            = makeCloseFrame(StatusNoMeaningYet, "")
+	closeFrameInvalidFramePayloadData = makeCloseFrame(StatusInvalidFramePayloadData, "")
+	closeFramePolicyViolation         = makeCloseFrame(StatusPolicyViolation, "")
+	closeFrameMessageTooBig           = makeCloseFrame(StatusMessageTooBig, "")
+	closeFrameMandatoryExt            = makeCloseFrame(StatusMandatoryExt, "")
+	closeFrameInternalServerError     = makeCloseFrame(StatusInternalServerError, "")
+	closeFrameTLSHandshake            = makeCloseFrame(StatusTLSHandshake, "")
+)
