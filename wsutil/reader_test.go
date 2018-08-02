@@ -41,7 +41,7 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 				// successfully reading header bytes frame via ws.ReadHeader()
 				// and non-successfully read of the body.
 				var buf bytes.Buffer
-				f := NewTextFrame("this part will be lost")
+				f := NewTextFrame([]byte("this part will be lost"))
 				if err := WriteHeader(&buf, f.Header); err != nil {
 					panic(err)
 				}
@@ -53,7 +53,7 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 		{
 			source: func() io.Reader {
 				var buf bytes.Buffer
-				f := NewTextFrame("foobar")
+				f := NewTextFrame([]byte("foobar"))
 				if err := WriteHeader(&buf, f.Header); err != nil {
 					panic(err)
 				}
@@ -152,14 +152,14 @@ func TestNextReader(t *testing.T) {
 		{
 			name: "single",
 			seq: []Frame{
-				NewTextFrame("Привет, Мир!"),
+				NewTextFrame([]byte("Привет, Мир!")),
 			},
 			exp: []byte("Привет, Мир!"),
 		},
 		{
 			name: "single_masked",
 			seq: []Frame{
-				MaskFrame(NewTextFrame("Привет, Мир!")),
+				MaskFrame(NewTextFrame([]byte("Привет, Мир!"))),
 			},
 			exp: []byte("Привет, Мир!"),
 		},
@@ -171,7 +171,7 @@ func TestNextReader(t *testing.T) {
 				NewFrame(OpContinuation, false, []byte(" новый ")),
 				NewFrame(OpContinuation, true, []byte("Мир!")),
 
-				NewTextFrame("Hello, Brave New World!"),
+				NewTextFrame([]byte("Hello, Brave New World!")),
 			},
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
@@ -183,7 +183,7 @@ func TestNextReader(t *testing.T) {
 				MaskFrame(NewFrame(OpContinuation, false, []byte(" новый "))),
 				MaskFrame(NewFrame(OpContinuation, true, []byte("Мир!"))),
 
-				MaskFrame(NewTextFrame("Hello, Brave New World!")),
+				MaskFrame(NewTextFrame([]byte("Hello, Brave New World!"))),
 			},
 			exp: []byte("Привет, о дивный, новый Мир!"),
 		},
