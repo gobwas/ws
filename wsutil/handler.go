@@ -16,29 +16,19 @@ type FrameHandler func(h ws.Header, r io.Reader) error
 // ClosedError returned when peer has closed the connection with appropriate
 // code and a textual reason.
 type ClosedError struct {
-	code   ws.StatusCode
-	reason string
+	Code   ws.StatusCode
+	Reason string
 }
 
 // Error implements error interface.
 func (err ClosedError) Error() string {
-	return "ws closed: " + strconv.FormatUint(uint64(err.code), 10) + " " + err.reason
-}
-
-// Reason returns reason of closure as a textual phrase.
-func (err ClosedError) Reason() string {
-	return err.reason
-}
-
-// Code returns code of closure.
-func (err ClosedError) Code() ws.StatusCode {
-	return err.code
+	return "ws closed: " + strconv.FormatUint(uint64(err.Code), 10) + " " + err.Reason
 }
 
 // PingHandler returns FrameHandler that handles ping frame and writes
 // specification compatible response to the w.
 func PingHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
+	return func(h ws.Header, r io.Reader) (err error) {
 		if h.Length == 0 {
 			// The most common case when ping is empty.
 			return ws.WriteHeader(w, ws.Header{
@@ -46,6 +36,10 @@ func PingHandler(w io.Writer, state ws.State) FrameHandler {
 				OpCode: ws.OpPong,
 				Masked: state.Is(ws.StateClientSide),
 			})
+		}
+		if err = ws.CheckHeader(h, state); err != nil {
+			sendProtocolErrorCloseFrame(w, state, err)
+			return
 		}
 
 		// In other way reply with Pong frame with copied payload.
@@ -59,7 +53,7 @@ func PingHandler(w io.Writer, state ws.State) FrameHandler {
 		defer pbytes.Put(p)
 
 		w := NewControlWriterBuffer(w, state, ws.OpPong, p)
-		_, err = io.Copy(w, rd)
+		_, err = io.Copy(w, r)
 		if err == nil {
 			err = w.Flush()
 		}
@@ -70,9 +64,13 @@ func PingHandler(w io.Writer, state ws.State) FrameHandler {
 
 // PongHandler returns FrameHandler that handles pong frame by discarding it.
 func PongHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
+	return func(h ws.Header, r io.Reader) (err error) {
 		if h.Length == 0 {
 			return nil
+		}
+		if err = ws.CheckHeader(h, state); err != nil {
+			sendProtocolErrorCloseFrame(w, state, err)
+			return
 		}
 
 		// int(h.Length) is safe here because control frame could be < 125
@@ -84,7 +82,7 @@ func PongHandler(w io.Writer, state ws.State) FrameHandler {
 		// A Pong frame MAY be sent unsolicited. This serves as a
 		// unidirectional heartbeat. A response to an unsolicited Pong frame
 		// is not expected.
-		_, err = io.CopyBuffer(ioutil.Discard, rd, buf)
+		_, err = io.CopyBuffer(ioutil.Discard, r, buf)
 
 		return
 	}
@@ -93,48 +91,51 @@ func PongHandler(w io.Writer, state ws.State) FrameHandler {
 // CloseHandler returns FrameHandler that handles close frame, makes protocol
 // validity checks and writes specification compatible response to the w.
 func CloseHandler(w io.Writer, state ws.State) FrameHandler {
-	return func(h ws.Header, rd io.Reader) (err error) {
+	return func(h ws.Header, r io.Reader) (err error) {
+		if err = ws.CheckHeader(h, state); err != nil {
+			sendProtocolErrorCloseFrame(w, state, err)
+			return
+		}
 		var (
 			f      ws.Frame
 			code   ws.StatusCode
 			reason string
 		)
 		if h.Length == 0 {
-			f = ws.CloseFrame
+			// Respond with no close status code.
+			// This is okay by RFC.
+			f = ws.NewCloseFrame(nil)
+			// Due to RFC, we should interpret the code as no status code
+			// received:
+			//   If this Close control frame contains no status code, _The WebSocket
+			//   Connection Close Code_ is considered to be 1005.
+			//
+			// See https://tools.ietf.org/html/rfc6455#section-7.1.5
 			code = ws.StatusNoStatusRcvd
 		} else {
-			// int(h.Length) is safe here because control frame could be < 125
-			// bytes length by RFC.
 			p := pbytes.GetLen(int(h.Length))
 			defer pbytes.Put(p)
-
-			_, err = io.ReadFull(rd, p)
+			_, err = io.ReadFull(r, p)
 			if err != nil {
 				return
 			}
 
 			code, reason = ws.ParseCloseFrameData(p)
-
-			if e := ws.CheckCloseFrameData(code, reason); e != nil {
-				f = ws.NewCloseFrame(ws.StatusProtocolError, e.Error())
-			} else {
-				// RFC6455#5.5.1:
-				// If an endpoint receives a Close frame and did not previously
-				// send a Close frame, the endpoint MUST send a Close frame in
-				// response. (When sending a Close frame in response, the endpoint
-				// typically echos the status code it received.)
-				f = ws.NewCloseFrame(code, "")
+			if err = ws.CheckCloseFrameData(code, reason); err != nil {
+				sendProtocolErrorCloseFrame(w, state, err)
+				return
 			}
-		}
 
-		if state.Is(ws.StateClientSide) {
-			f = ws.MaskFrameInPlace(f)
+			// RFC6455#5.5.1:
+			// If an endpoint receives a Close frame and did not previously
+			// send a Close frame, the endpoint MUST send a Close frame in
+			// response. (When sending a Close frame in response, the endpoint
+			// typically echos the status code it received.)
+			f = ws.NewCloseFrame(p[:2])
 		}
-
-		if err = ws.WriteFrame(w, f); err == nil {
+		if err = sendFrame(w, state, f); err == nil {
 			err = ClosedError{code, reason}
 		}
-
 		return
 	}
 }
@@ -147,15 +148,29 @@ func ControlHandler(w io.Writer, state ws.State) FrameHandler {
 	pongHandler := PongHandler(w, state)
 	closeHandler := CloseHandler(w, state)
 
-	return func(h ws.Header, rd io.Reader) (err error) {
+	return func(h ws.Header, r io.Reader) (err error) {
 		switch h.OpCode {
 		case ws.OpPing:
-			return pingHandler(h, rd)
+			return pingHandler(h, r)
 		case ws.OpPong:
-			return pongHandler(h, rd)
+			return pongHandler(h, r)
 		case ws.OpClose:
-			return closeHandler(h, rd)
+			return closeHandler(h, r)
 		}
 		return
 	}
+}
+
+func sendProtocolErrorCloseFrame(w io.Writer, state ws.State, err error) error {
+	f := ws.NewCloseFrame(ws.NewCloseFrameBody(
+		ws.StatusProtocolError, err.Error(),
+	))
+	return sendFrame(w, state, f)
+}
+
+func sendFrame(w io.Writer, state ws.State, f ws.Frame) error {
+	if state.Is(ws.StateClientSide) {
+		f = ws.MaskFrameInPlace(f)
+	}
+	return ws.WriteFrame(w, f)
 }
