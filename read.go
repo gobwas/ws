@@ -119,6 +119,15 @@ func ReadFrame(r io.Reader) (f Frame, err error) {
 	return
 }
 
+// MustReadFrame is like ReadFrame but panics if frame can not be read.
+func MustReadFrame(r io.Reader) Frame {
+	f, err := ReadFrame(r)
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
+
 // ParseCloseFrameData parses close frame status code and closure reason if any provided.
 // If there is no status code in the payload
 // the empty status code is returned (code.Empty()) with empty string as a reason.
