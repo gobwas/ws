@@ -82,8 +82,8 @@ func ReadServerMessage(r io.Reader, m []Message) ([]Message, error) {
 // control frames to the write part of rw. It blocks until some data frame
 // will be received.
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
+// Note this may handle and write control frames into the writer part of a
+// given io.ReadWriter.
 func ReadData(rw io.ReadWriter, s ws.State) ([]byte, ws.OpCode, error) {
 	return readData(rw, s, ws.OpText|ws.OpBinary)
 }
@@ -91,8 +91,8 @@ func ReadData(rw io.ReadWriter, s ws.State) ([]byte, ws.OpCode, error) {
 // ReadClientData reads next data message from rw, considering that caller
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
+// Note this may handle and write control frames into the writer part of a
+// given io.ReadWriter.
 func ReadClientData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 	return ReadData(rw, ws.StateServerSide)
 }
@@ -101,8 +101,8 @@ func ReadClientData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 // represents server side. It is a shortcut for ReadData(rw, ws.StateServerSide).
 // It discards received binary messages.
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
+// Note this may handle and write control frames into the writer part of a
+// given io.ReadWriter.
 func ReadClientText(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateServerSide, ws.OpText)
 	return p, err
@@ -122,8 +122,8 @@ func ReadClientBinary(rw io.ReadWriter) ([]byte, error) {
 // ReadServerData reads next data message from rw, considering that caller
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
+// Note this may handle and write control frames into the writer part of a
+// given io.ReadWriter.
 func ReadServerData(rw io.ReadWriter) ([]byte, ws.OpCode, error) {
 	return ReadData(rw, ws.StateClientSide)
 }
@@ -143,8 +143,8 @@ func ReadServerText(rw io.ReadWriter) ([]byte, error) {
 // represents client side. It is a shortcut for ReadData(rw, ws.StateClientSide).
 // It discards received text messages.
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
+// Note this may handle and write control frames into the writer part of a
+// given io.ReadWriter.
 func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 	p, _, err := readData(rw, ws.StateClientSide, ws.OpBinary)
 	return p, err
@@ -197,46 +197,70 @@ func WriteClientBinary(w io.Writer, p []byte) error {
 	return WriteClientMessage(w, ws.OpBinary, p)
 }
 
-// HandleClientControl handles control frame from conn and writes
-// response when needed. It considers that caller represents server
-// side.
-func HandleClientControl(conn io.Writer, op ws.OpCode, p []byte) error {
-	return ControlHandler(conn, ws.StateServerSide)(ws.Header{
-		Length: int64(len(p)),
-		OpCode: op,
-	}, bytes.NewReader(p))
+// HandleClientControlMessage handles control frame from conn and writes
+// response when needed.
+//
+// It considers that caller represents server side.
+func HandleClientControlMessage(conn io.Writer, msg Message) error {
+	return HandleControlMessage(conn, ws.StateServerSide, msg)
 }
 
-// HandleServerControl handles control frame from conn and writes
-// response when needed. It considers that caller represents client
-// side.
+// HandleServerControlMessage handles control frame from conn and writes
+// response when needed.
 //
-// Note this may handle and write control frames into the writer part of a given
-//  io.ReadWriter.
-func HandleServerControl(conn io.Writer, op ws.OpCode, p []byte) error {
-	return ControlHandler(conn, ws.StateClientSide)(ws.Header{
-		Length: int64(len(p)),
-		OpCode: op,
-	}, bytes.NewReader(p))
+// It considers that caller represents client side.
+func HandleServerControlMessage(conn io.Writer, msg Message) error {
+	return HandleControlMessage(conn, ws.StateClientSide, msg)
+}
+
+// HandleControlMessage handles message which was read by ReadMessage()
+// functions.
+//
+// That is, it is expected, that payload is already unmasked and frame header
+// were checked by ws.CheckHeader() call.
+func HandleControlMessage(conn io.Writer, state ws.State, msg Message) error {
+	return (ControlHandler{
+		DisableSrcCiphering: true,
+		Src:                 bytes.NewReader(msg.Payload),
+		Dst:                 conn,
+		State:               state,
+	}).Handle(ws.Header{
+		Length: int64(len(msg.Payload)),
+		OpCode: msg.OpCode,
+		Fin:    true,
+		Masked: state.Is(ws.StateServerSide),
+	})
+}
+
+// ControlFrameHandler returns FrameHandlerFunc for handling control frames.
+// For more info see ControlHandler docs.
+func ControlFrameHandler(w io.Writer, state ws.State) FrameHandlerFunc {
+	return func(h ws.Header, r io.Reader) error {
+		return (ControlHandler{
+			DisableSrcCiphering: true,
+			Src:                 r,
+			Dst:                 w,
+			State:               state,
+		}).Handle(h)
+	}
 }
 
 func readData(rw io.ReadWriter, s ws.State, want ws.OpCode) ([]byte, ws.OpCode, error) {
-	ch := ControlHandler(rw, s)
-
+	controlHandler := ControlFrameHandler(rw, s)
 	rd := Reader{
-		Source:         rw,
-		State:          s,
-		CheckUTF8:      true,
-		OnIntermediate: ch,
+		Source:          rw,
+		State:           s,
+		CheckUTF8:       true,
+		SkipHeaderCheck: false,
+		OnIntermediate:  controlHandler,
 	}
-
 	for {
 		hdr, err := rd.NextFrame()
 		if err != nil {
 			return nil, 0, err
 		}
 		if hdr.OpCode.IsControl() {
-			if err := ch(hdr, &rd); err != nil {
+			if err := controlHandler(hdr, &rd); err != nil {
 				return nil, 0, err
 			}
 			continue

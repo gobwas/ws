@@ -12,6 +12,12 @@ import (
 // preceding NextFrame() call.
 var ErrNoFrameAdvance = errors.New("no frame advance")
 
+// FrameHandlerFunc handles parsed frame header and its body represetned by
+// io.Reader.
+//
+// Note that reader represents already unmasked body.
+type FrameHandlerFunc func(ws.Header, io.Reader) error
+
 // Reader is a wrapper around source io.Reader which represents WebSocket
 // connection. It contains options for reading messages from source.
 //
@@ -33,8 +39,8 @@ type Reader struct {
 
 	// TODO(gobwas): add max frame size limit here.
 
-	OnContinuation FrameHandler
-	OnIntermediate FrameHandler
+	OnContinuation FrameHandlerFunc
+	OnIntermediate FrameHandlerFunc
 
 	opCode ws.OpCode        // Used to store message op code on fragmentation.
 	frame  io.Reader        // Used to as frame reader.

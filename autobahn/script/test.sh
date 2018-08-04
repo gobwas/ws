@@ -69,6 +69,9 @@ autobahn="${random}_autobahn"
 
 network="ws-$random"
 docker network create --driver bridge "$network"
+if [ $? -ne 0 ]; then
+	exit 1
+fi
 
 docker run \
 	--interactive \
@@ -108,6 +111,7 @@ ctrl_c () {
 cleanup() {
 	docker rm "$server" >/dev/null
 	docker rm "$autobahn" >/dev/null
+	docker network rm "$network"
 }
 
 docker wait "$autobahn" >/dev/null

@@ -113,7 +113,7 @@ func helpersLowLevelHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, m := range msg {
 			if m.OpCode.IsControl() {
-				err := wsutil.HandleClientControl(conn, m.OpCode, m.Payload)
+				err := wsutil.HandleClientControlMessage(conn, m)
 				if err != nil {
 					log.Printf("handle control error: %v", err)
 					return
@@ -139,7 +139,7 @@ func wsutilHandler(res http.ResponseWriter, req *http.Request) {
 
 	state := ws.StateServerSide
 
-	ch := wsutil.ControlHandler(conn, state)
+	ch := wsutil.ControlFrameHandler(conn, state)
 	r := &wsutil.Reader{
 		Source:         conn,
 		State:          state,
