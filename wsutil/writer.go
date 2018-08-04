@@ -55,7 +55,7 @@ func NewControlWriter(dest io.Writer, state ws.State, op ws.OpCode) *ControlWrit
 // ws.MinHeaderSize or ws.MinHeaderSize+4 (depending on state). At most
 // (ws.MaxControlFramePayloadSize + x) bytes of buf will be used.
 //
-// It panics if len(buf) <= ws.MinHeaderSize + .
+// It panics if len(buf) <= ws.MinHeaderSize + x.
 func NewControlWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *ControlWriter {
 	max := ws.MaxControlFramePayloadSize + headerSize(state, ws.MaxControlFramePayloadSize)
 	if len(buf) > max {
@@ -181,7 +181,7 @@ func NewWriterBufferSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *W
 // Note that it reserves x bytes of buf for header data, where x is in range
 // [ws.MinHeaderSize,ws.MaxHeaderSize] (depending on state and buf size).
 //
-// You could use ws.SizeOfHeader() to calculate number of bytes needed to store
+// You could use ws.HeaderSize() to calculate number of bytes needed to store
 // header data.
 //
 // It panics if len(buf) is too small to fit header and payload data.

@@ -3,6 +3,7 @@ BENCH_BASE?=master
 
 clean:
 	rm -f bin/reporter
+	rm -fr autobahn/report/*
 
 bin/reporter:
 	go build -o bin/reporter ./autobahn
@@ -10,7 +11,8 @@ bin/reporter:
 bin/gocovmerge:
 	go build -o bin/gocovmerge github.com/wadey/gocovmerge
 
-autobahn: bin/reporter
+.PHONY: autobahn
+autobahn: clean bin/reporter 
 	./autobahn/script/test.sh --build
 	bin/reporter $(PWD)/autobahn/report/index.json
 

@@ -7,12 +7,13 @@ import (
 	"github.com/gobwas/ws"
 )
 
-func TestCloseHandler(t *testing.T) {
+func TestHandlerHandleClose(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		in   ws.Frame
-		out  ws.Frame
-		err  error
+		name  string
+		state ws.State
+		in    ws.Frame
+		out   ws.Frame
+		err   error
 	}{
 		{
 			in:  ws.NewCloseFrame(nil),
@@ -23,14 +24,27 @@ func TestCloseHandler(t *testing.T) {
 		},
 		{
 			in: ws.NewCloseFrame(ws.NewCloseFrameBody(
-				ws.StatusGoingAway, "bye bye!",
+				ws.StatusGoingAway, "goodbye!",
 			)),
 			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
 				ws.StatusGoingAway, "",
 			)),
 			err: ClosedError{
 				Code:   ws.StatusGoingAway,
-				Reason: "bye bye!",
+				Reason: "goodbye!",
+			},
+		},
+		{
+			state: ws.StateServerSide,
+			in: ws.MaskFrame(ws.NewCloseFrame(ws.NewCloseFrameBody(
+				ws.StatusGoingAway, "goodbye!",
+			))),
+			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
+				ws.StatusGoingAway, "",
+			)),
+			err: ClosedError{
+				Code:   ws.StatusGoingAway,
+				Reason: "goodbye!",
 			},
 		},
 		{
@@ -42,29 +56,19 @@ func TestCloseHandler(t *testing.T) {
 			)),
 			err: ws.ErrProtocolInvalidUTF8,
 		},
-		{
-			in: ws.NewCloseFrame(make([]byte, ws.MaxControlFramePayloadSize+1)),
-			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
-				ws.StatusProtocolError,
-				ws.ErrProtocolControlPayloadOverflow.Error(),
-			)),
-			err: ws.ErrProtocolControlPayloadOverflow,
-		},
-		{
-			in: ws.NewFrame(ws.OpClose, false, nil),
-			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
-				ws.StatusProtocolError,
-				ws.ErrProtocolControlNotFinal.Error(),
-			)),
-			err: ws.ErrProtocolControlNotFinal,
-		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var out bytes.Buffer
-			h := CloseHandler(&out, 0)
+			var (
+				out = bytes.NewBuffer(nil)
+				in  = bytes.NewReader(test.in.Payload)
+			)
+			c := ControlHandler{
+				Src:   in,
+				Dst:   out,
+				State: test.state,
+			}
 
-			in := bytes.NewReader(test.in.Payload)
-			err := h(test.in.Header, in)
+			err := c.Handle(test.in.Header)
 			if err != test.err {
 				t.Errorf("unexpected error: %v; want %v", err, test.err)
 			}
