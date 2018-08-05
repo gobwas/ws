@@ -111,3 +111,10 @@ func WriteFrame(w io.Writer, f Frame) error {
 	_, err = w.Write(f.Payload)
 	return err
 }
+
+// MustWriteFrame is like WriteFrame but panics if frame can not be read.
+func MustWriteFrame(w io.Writer, f Frame) {
+	if err := WriteFrame(w, f); err != nil {
+		panic(err)
+	}
+}

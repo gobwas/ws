@@ -383,7 +383,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	)
 
 	// Prepare I/O buffers.
-	// TODO: make it configurable.
+	// TODO(gobwas): make it configurable.
 	br := pbufio.GetReader(conn,
 		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
 	)
