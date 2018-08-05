@@ -127,6 +127,35 @@ func main() {
 }
 ```
 
+We can apply the same pattern to read and write structured responses through a JSON encoder and decoder.:
+
+```go
+	...
+	var (
+		r = wsutil.NewReader(conn, ws.StateServerSide)
+		w = wsutil.NewWriter(conn, ws.StateServerSide, ws.OpText)
+		decoder = json.NewDecoder(r)
+		encoder = json.NewEncoder(w)
+	)
+	for {
+		if _, err = r.NextFrame(); err != nil {
+			return err
+		}
+		var req Request
+		if err := decoder.Decode(&req); err != nil {
+			return err
+		}
+		var resp Response
+		if err := encoder.Encode(&resp); err != nil {
+			return err
+		}
+		if err = w.Flush(); err != nil {
+			return err
+		}
+	}
+	...
+```
+
 The lower-level example without `wsutil`:
 
 ```go
