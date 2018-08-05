@@ -117,7 +117,7 @@ func genReserveTestCases(s ws.State, n, m, exp int) []reserveTestCase {
 	ret := make([]reserveTestCase, m-n)
 	for i := n; i < m; i++ {
 		var suffix string
-		if s.Is(ws.StateClientSide) {
+		if s.ClientSide() {
 			suffix = " masked"
 		}
 

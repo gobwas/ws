@@ -672,7 +672,9 @@ func TestDialerCancelation(t *testing.T) {
 
 			ctx := context.Background()
 			if t := test.ctxTimeout; t != 0 {
-				ctx, _ = context.WithTimeout(ctx, t)
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, t)
+				defer cancel()
 			}
 			if t := test.ctxCancelAfter; t != 0 {
 				var cancel context.CancelFunc

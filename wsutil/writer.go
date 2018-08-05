@@ -202,7 +202,7 @@ func NewWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *
 
 func reserve(state ws.State, n int) (offset int) {
 	var mask int
-	if state.Is(ws.StateClientSide) {
+	if state.ClientSide() {
 		mask = 4
 	}
 
@@ -221,7 +221,7 @@ func reserve(state ws.State, n int) (offset int) {
 func headerSize(s ws.State, n int) int {
 	return ws.HeaderSize(ws.Header{
 		Length: int64(n),
-		Masked: s.Is(ws.StateClientSide),
+		Masked: s.ClientSide(),
 	})
 }
 
@@ -388,7 +388,7 @@ func (w *Writer) FlushFragment() error {
 
 func (w *Writer) flushFragment(fin bool) error {
 	frame := ws.NewFrame(w.opCode(), fin, w.buf[:w.n])
-	if w.state.Is(ws.StateClientSide) {
+	if w.state.ClientSide() {
 		frame = ws.MaskFrameInPlace(frame)
 	}
 
@@ -433,7 +433,7 @@ func (w *bytesWriter) Write(p []byte) (int, error) {
 
 func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error {
 	var frame ws.Frame
-	if s.Is(ws.StateClientSide) {
+	if s.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
 		payload := pbytes.GetLen(len(p))
 		defer pbytes.Put(payload)

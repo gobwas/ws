@@ -212,7 +212,7 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 }
 
 func (r *Reader) fragmented() bool {
-	return r.State.Is(ws.StateFragmented)
+	return r.State.Fragmented()
 }
 
 func (r *Reader) resetFragment() {
