@@ -12,7 +12,6 @@ import (
 	"github.com/gobwas/ws"
 )
 
-// TODO(gobwas): test ReadFrom from Reader with intermediate frames.
 // TODO(gobwas): test NewWriterSize on edge cases for offset.
 
 const (

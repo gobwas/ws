@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	. "github.com/gobwas/ws"
+	"github.com/gobwas/ws"
 )
 
 func TestCipherReader(t *testing.T) {
@@ -28,10 +28,10 @@ func TestCipherReader(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
-			mask := NewMask()
+			mask := ws.NewMask()
 			masked := make([]byte, len(test.data))
 			copy(masked, test.data)
-			Cipher(masked, mask, 0)
+			ws.Cipher(masked, mask, 0)
 
 			src := &chopReader{bytes.NewReader(masked), test.chop}
 			rd := NewCipherReader(src, mask)
