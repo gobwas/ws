@@ -228,7 +228,7 @@ func HandleControlMessage(conn io.Writer, state ws.State, msg Message) error {
 		Length: int64(len(msg.Payload)),
 		OpCode: msg.OpCode,
 		Fin:    true,
-		Masked: state.Is(ws.StateServerSide),
+		Masked: state.ServerSide(),
 	})
 }
 

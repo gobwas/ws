@@ -76,14 +76,14 @@ func (c ControlHandler) HandlePing(h ws.Header) error {
 		return ws.WriteHeader(c.Dst, ws.Header{
 			Fin:    true,
 			OpCode: ws.OpPong,
-			Masked: c.State.Is(ws.StateClientSide),
+			Masked: c.State.ClientSide(),
 		})
 	}
 
 	// In other way reply with Pong frame with copied payload.
 	p := pbytes.GetLen(int(h.Length) + ws.HeaderSize(ws.Header{
 		Length: h.Length,
-		Masked: c.State.Is(ws.StateClientSide),
+		Masked: c.State.ClientSide(),
 	}))
 	defer pbytes.Put(p)
 
@@ -98,7 +98,7 @@ func (c ControlHandler) HandlePing(h ws.Header) error {
 	// ws.WriteHeader because it performs one syscall instead of two.
 	w := NewControlWriterBuffer(c.Dst, c.State, ws.OpPong, p)
 	r := c.Src
-	if c.State.Is(ws.StateServerSide) && !c.DisableSrcCiphering {
+	if c.State.ServerSide() && !c.DisableSrcCiphering {
 		r = NewCipherReader(r, h.Mask)
 	}
 
@@ -135,7 +135,7 @@ func (c ControlHandler) HandleClose(h ws.Header) error {
 		err := ws.WriteHeader(c.Dst, ws.Header{
 			Fin:    true,
 			OpCode: ws.OpClose,
-			Masked: c.State.Is(ws.StateClientSide),
+			Masked: c.State.ClientSide(),
 		})
 		if err != nil {
 			return err
@@ -155,7 +155,7 @@ func (c ControlHandler) HandleClose(h ws.Header) error {
 	// Prepare bytes both for reading reason and sending response.
 	p := pbytes.GetLen(int(h.Length) + ws.HeaderSize(ws.Header{
 		Length: h.Length,
-		Masked: c.State.Is(ws.StateClientSide),
+		Masked: c.State.ClientSide(),
 	}))
 	defer pbytes.Put(p)
 
@@ -163,7 +163,7 @@ func (c ControlHandler) HandleClose(h ws.Header) error {
 	subp := p[:h.Length]
 
 	r := c.Src
-	if c.State.Is(ws.StateServerSide) && !c.DisableSrcCiphering {
+	if c.State.ServerSide() && !c.DisableSrcCiphering {
 		r = NewCipherReader(r, h.Mask)
 	}
 	if _, err := io.ReadFull(r, subp); err != nil {
@@ -212,7 +212,7 @@ func (c ControlHandler) closeWithProtocolError(reason error) error {
 	f := ws.NewCloseFrame(ws.NewCloseFrameBody(
 		ws.StatusProtocolError, reason.Error(),
 	))
-	if c.State.Is(ws.StateClientSide) {
+	if c.State.ClientSide() {
 		ws.MaskFrameInPlace(f)
 	}
 	return ws.WriteFrame(c.Dst, f)

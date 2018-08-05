@@ -33,6 +33,18 @@ func (s State) Clear(v State) State {
 	return s & (^v)
 }
 
+// ServerSide reports whether states represents server side.
+func (s State) ServerSide() bool { return s.Is(StateServerSide) }
+
+// ClientSide reports whether state represents client side.
+func (s State) ClientSide() bool { return s.Is(StateClientSide) }
+
+// Extended reports whether state is extended.
+func (s State) Extended() bool { return s.Is(StateExtended) }
+
+// Fragmented reports whether state is fragmented.
+func (s State) Fragmented() bool { return s.Is(StateFragmented) }
+
 // ProtocolError describes error during checking/parsing websocket frames or
 // headers.
 type ProtocolError string
@@ -79,7 +91,7 @@ func CheckHeader(h Header, s State) error {
 	// non-zero values. If a nonzero value is received and none of the
 	// negotiated extensions defines the meaning of such a nonzero value, the
 	// receiving endpoint MUST _Fail the WebSocket Connection_.
-	case h.Rsv != 0 && !s.Is(StateExtended):
+	case h.Rsv != 0 && !s.Extended():
 		return ErrProtocolNonZeroRsv
 
 	// [RFC6455]: The server MUST close the connection upon receiving a frame that is not masked.
@@ -87,15 +99,15 @@ func CheckHeader(h Header, s State) error {
 	// as defined in Section 7.4.1. A server MUST NOT mask any frames that it sends to the client.
 	// A client MUST close a connection if it detects a masked frame. In this case, it MAY use the
 	// status code 1002 (protocol error) as defined in Section 7.4.1.
-	case s.Is(StateServerSide) && !h.Masked:
+	case s.ServerSide() && !h.Masked:
 		return ErrProtocolMaskRequired
-	case s.Is(StateClientSide) && h.Masked:
+	case s.ClientSide() && h.Masked:
 		return ErrProtocolMaskUnexpected
 
 	// [RFC6455]: See detailed explanation in 5.4 section.
-	case s.Is(StateFragmented) && !h.OpCode.IsControl() && h.OpCode != OpContinuation:
+	case s.Fragmented() && !h.OpCode.IsControl() && h.OpCode != OpContinuation:
 		return ErrProtocolContinuationExpected
-	case !s.Is(StateFragmented) && h.OpCode == OpContinuation:
+	case !s.Fragmented() && h.OpCode == OpContinuation:
 		return ErrProtocolContinuationUnexpected
 	}
 
