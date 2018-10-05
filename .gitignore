@@ -3,3 +3,4 @@ reports/
 cpu.out
 mem.out
 ws.test
+.idea/*
