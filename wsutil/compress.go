@@ -70,24 +70,19 @@ func (cr *compressReader) NextFrame() (hdr ws.Header, err error) {
 	return
 }
 
-func (cr *compressReader) Read(p []byte) (int, error) {
+func (cr *compressReader) Read(p []byte) (n int, err error) {
 	if cr.flateReader == nil {
 		return 0, io.ErrClosedPipe
 	}
 
 	if cr.compressed {
-		n, err := cr.flateReader.Read(p)
-		if err != nil {
-			cr.started = false
-			cr.compressed = false
-		}
-
-		return n, err
+		n, err = cr.flateReader.Read(p)
+	} else {
+		// If no RSV1 bit set think that there is not compressed message and read it
+		// as usual.
+		n, err = cr.reader.Read(p)
 	}
 
-	// If no RSV1 bit set think that there is not compressed message and read it
-	// as usual.
-	n, err := cr.reader.Read(p)
 	// When read ends at least io.EOF will be here to mark message as ended.
 	if err != nil {
 		cr.started = false
