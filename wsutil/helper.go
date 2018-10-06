@@ -158,7 +158,7 @@ func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 //
 // If you want to write message in fragmented frames, use Writer instead.
 func WriteMessage(w io.Writer, s ws.State, op ws.OpCode, p []byte) error {
-	return writeFrame(w, s, op, true, p)
+	return writeFrame(w, s, op, true, false, p)
 }
 
 // WriteServerMessage writes message to w, considering that caller

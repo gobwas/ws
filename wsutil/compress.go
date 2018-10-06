@@ -4,34 +4,38 @@ import (
 	"bytes"
 	"compress/flate"
 	"errors"
+	"github.com/gobwas/ws"
 	"io"
 )
 
 var (
 	ErrWriteClose            = errors.New("write to closed writer")
 	ErrUnexpectedEndOfStream = errors.New("websocket: internal error, unexpected bytes at end of flate stream")
+	ErrStreamNotEmpty = errors.New("not empty stream")
 
 	// Tail as described here: https://tools.ietf.org/html/rfc7692#section-7.2.2
-	deflateFinal = [4]byte{
-		// Bytes from RFC
-		0, 0, 0xff, 0xff,
-	}
+	deflateFinal = [4]byte{0, 0, 0xff, 0xff}
 	// Tail to prevent reader error
-	tail = []byte{0x01, 0, 0, 0xff, 0xff}
+	tail = [5]byte{0x01, 0, 0, 0xff, 0xff}
 )
 
-type CompressorReader interface {
+type CompressReader interface {
 	io.ReadCloser
 
-	Reset(io.Reader, []byte)
+	Reset(*Reader, []byte)
+	NextFrame() (hdr ws.Header, err error)
 }
 
 type compressReader struct {
+	reader      *Reader
 	flateReader io.ReadCloser
+	compressed  bool
+	started     bool
 }
 
-func NewCompressReader(r io.Reader) CompressorReader {
+func NewCompressReader(r *Reader) CompressReader {
 	return &compressReader{
+		reader: r,
 		flateReader: flate.NewReader(
 			io.MultiReader(
 				r,
@@ -42,7 +46,8 @@ func NewCompressReader(r io.Reader) CompressorReader {
 	}
 }
 
-func (cr *compressReader) Reset(r io.Reader, dict []byte) {
+func (cr *compressReader) Reset(r *Reader, dict []byte) {
+	cr.reader = r
 	cr.flateReader.(flate.Resetter).Reset(
 		io.MultiReader(
 			r,
@@ -53,14 +58,40 @@ func (cr *compressReader) Reset(r io.Reader, dict []byte) {
 	)
 }
 
+func (cr *compressReader) NextFrame() (hdr ws.Header, err error) {
+	hdr, err = cr.reader.NextFrame()
+	if err != nil {
+		return
+	}
+
+	cr.started = true
+	cr.compressed = hdr.Rsv1()
+
+	return
+}
+
 func (cr *compressReader) Read(p []byte) (int, error) {
 	if cr.flateReader == nil {
 		return 0, io.ErrClosedPipe
 	}
 
-	n, err := cr.flateReader.Read(p)
-	if err == io.EOF {
-		cr.Close()
+	if cr.compressed {
+		n, err := cr.flateReader.Read(p)
+		if err != nil {
+			cr.started = false
+			cr.compressed = false
+		}
+
+		return n, err
+	}
+
+	// If no RSV1 bit set think that there is not compressed message and read it
+	// as usual.
+	n, err := cr.reader.Read(p)
+	// When read ends at least io.EOF will be here to mark message as ended.
+	if err != nil {
+		cr.started = false
+		cr.compressed = false
 	}
 
 	return n, err
@@ -72,6 +103,7 @@ func (cr *compressReader) Close() error {
 		return io.ErrClosedPipe
 	}
 
+	cr.reader = nil
 	err := cr.flateReader.Close()
 	cr.flateReader = nil
 
@@ -131,16 +163,24 @@ func (tw *truncWriter) Write(block []byte) (int, error) {
 type CompressWriter interface {
 	io.WriteCloser
 
-	Reset(io.Writer)
+	Flush() error
+	FlushFragment() error
+	Reset(*Writer)
 }
 
 type compressWriter struct {
 	flateWriter *flate.Writer
 	truncWriter *truncWriter
-	dst         io.Writer
+	dst         *Writer
 }
 
-func NewCompressWriter(w io.Writer, level int) (io.Writer, error) {
+func NewCompressWriter(w *Writer, level int) (CompressWriter, error) {
+	if w.dirty || w.Buffered() != 0 {
+		return nil, ErrNotEmpty
+	}
+
+	w.compressed = true
+
 	tw := &truncWriter{origin: w}
 	flateWriter, err := flate.NewWriter(tw, level)
 	if err != nil {
@@ -164,9 +204,31 @@ func (cw *compressWriter) Write(p []byte) (n int, err error) {
 		return
 	}
 
-	err = cw.flateWriter.Flush()
-
 	return
+}
+
+func (cw *compressWriter) Flush() error {
+	err := cw.flateWriter.Flush()
+	if err != nil {
+		return err
+	}
+
+	// Do not share state between flushes.
+	cw.Reset(cw.dst)
+
+	return cw.dst.Flush()
+}
+
+func (cw *compressWriter) FlushFragment() error {
+	err := cw.flateWriter.Flush()
+	if err != nil {
+		return err
+	}
+
+	// Do not share state between flushes.
+	cw.Reset(cw.dst)
+
+	return cw.dst.FlushFragment()
 }
 
 func (cw *compressWriter) Close() error {
@@ -186,8 +248,8 @@ func (cw *compressWriter) Close() error {
 	return err1
 }
 
-func (cw *compressWriter) Reset(w io.Writer) {
+func (cw *compressWriter) Reset(w *Writer) {
 	cw.dst = w
-	cw.truncWriter.Reset(cw)
+	cw.truncWriter.Reset(w)
 	cw.flateWriter.Reset(cw.truncWriter)
 }

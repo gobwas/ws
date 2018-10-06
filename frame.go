@@ -200,11 +200,20 @@ type Header struct {
 // Rsv1 reports whether the header has first rsv bit set.
 func (h Header) Rsv1() bool { return h.Rsv&bit5 != 0 }
 
+// SetRsv1 set first rsv bit
+func (h Header) SetRsv1() { h.Rsv |= bit5 }
+
 // Rsv2 reports whether the header has second rsv bit set.
 func (h Header) Rsv2() bool { return h.Rsv&bit6 != 0 }
 
+// SetRsv2 set second rsv bit
+func (h Header) SetRsv2() { h.Rsv |= bit6 }
+
 // Rsv3 reports whether the header has third rsv bit set.
 func (h Header) Rsv3() bool { return h.Rsv&bit7 != 0 }
+
+// SetRsv3 set third rsv bit
+func (h Header) SetRsv3() { h.Rsv |= bit7 }
 
 // Frame represents websocket frame.
 // See https://tools.ietf.org/html/rfc6455#section-5.2

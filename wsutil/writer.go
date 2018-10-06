@@ -110,6 +110,7 @@ type Writer struct {
 	op    ws.OpCode
 	state ws.State
 
+	compressed bool
 	dirty      bool
 	fragmented bool
 
@@ -305,7 +306,7 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		return 0, ErrNotEmpty
 	}
 
-	w.err = writeFrame(w.dest, w.state, w.opCode(), false, p)
+	w.err = writeFrame(w.dest, w.state, w.opCode(), false, w.compressed, p)
 	if w.err == nil {
 		n = len(p)
 	}
@@ -392,6 +393,13 @@ func (w *Writer) flushFragment(fin bool) error {
 		frame = ws.MaskFrameInPlace(frame)
 	}
 
+	// The RSV1 bit should be set only on the first frame.
+	// If the dirty value there is true — that means write was initiated.
+	// If the fragmented value is false — that means that first or only message.
+	if w.compressed && w.opCode().IsData() && !w.fragmented {
+		frame.Header.SetRsv1()
+	}
+
 	// Write header to the header segment of the raw buffer.
 	head := len(w.raw) - len(w.buf)
 	offset := head - ws.HeaderSize(frame.Header)
@@ -431,7 +439,7 @@ func (w *bytesWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error {
+func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin, rsv1 bool, p []byte) error {
 	var frame ws.Frame
 	if s.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
@@ -444,6 +452,10 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 		frame = ws.MaskFrameInPlace(frame)
 	} else {
 		frame = ws.NewFrame(op, fin, p)
+	}
+
+	if rsv1 {
+		frame.Header.SetRsv1()
 	}
 
 	return ws.WriteFrame(w, frame)
