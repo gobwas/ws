@@ -11,7 +11,7 @@ import (
 var (
 	ErrWriteClose            = errors.New("write to closed writer")
 	ErrUnexpectedEndOfStream = errors.New("websocket: internal error, unexpected bytes at end of flate stream")
-	ErrStreamNotEmpty = errors.New("not empty stream")
+	ErrStreamNotEmpty        = errors.New("not empty stream")
 
 	// Tail as described here: https://tools.ietf.org/html/rfc7692#section-7.2.2
 	deflateFinal = [4]byte{0, 0, 0xff, 0xff}
@@ -194,17 +194,12 @@ func NewCompressWriter(w *Writer, level int) (CompressWriter, error) {
 	}, nil
 }
 
-func (cw *compressWriter) Write(p []byte) (n int, err error) {
+func (cw *compressWriter) Write(p []byte) (int, error) {
 	if cw.flateWriter == nil {
 		return 0, ErrWriteClose
 	}
 
-	n, err = cw.flateWriter.Write(p)
-	if err != nil {
-		return
-	}
-
-	return
+	return cw.flateWriter.Write(p)
 }
 
 func (cw *compressWriter) Flush() error {
