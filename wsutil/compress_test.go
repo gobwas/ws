@@ -12,25 +12,23 @@ import (
 
 func TestCompressWriter(t *testing.T) {
 	for i, test := range []struct {
-		label  string
-		level  int
+		label      string
+		level      int
 		fragmented bool
-		seq   [][]byte
-		result []byte
+		seq        [][]byte
+		result     []byte
 	}{
 		{
-			label: "simple",
-			level: 6,
-			seq:  [][]byte{[]byte("hello world!")},
-			fragmented: false,
-			result:  []byte{0x81, 0xe, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x04, 0x0},
+			label:  "simple",
+			level:  6,
+			seq:    [][]byte{[]byte("hello world!")},
+			result: []byte{0x81, 0xe, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x04, 0x0},
 		},
 		{
-			label: "fragmented",
-			level: 6,
-			seq:  [][]byte{[]byte("hello "), []byte("world!")},
-			fragmented: true,
-			result:  []byte{0x1, 0x8, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x0, 0x0, 0x80, 0x8, 0x2a, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0},
+			label:  "multiple_writes",
+			level:  6,
+			seq:    [][]byte{[]byte("hello "), []byte("world!")},
+			result: []byte{0x81, 0xe, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0},
 		},
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
@@ -40,21 +38,17 @@ func TestCompressWriter(t *testing.T) {
 				t.Errorf("unexpected error: %s", err)
 				return
 			}
-			for i,b := range test.seq {
+			for _, b := range test.seq {
 				_, err = cw.Write(b)
 				if err != nil {
 					t.Errorf("cannot write data: %s", err)
 					return
 				}
-				if test.fragmented && i != (len(test.seq) - 1) {
-					err = cw.FlushFragment()
-				} else {
-					err = cw.Flush()
-				}
-				if err != nil {
-					t.Errorf("cannot flush data: %s", err)
-					return
-				}
+			}
+			err = cw.Flush()
+			if err != nil {
+				t.Errorf("cannot flush data: %s", err)
+				return
 			}
 
 			if !reflect.DeepEqual(buf.Bytes(), test.result) {
@@ -65,7 +59,7 @@ func TestCompressWriter(t *testing.T) {
 	}
 }
 
-func TestCompressReader (t *testing.T) {
+func TestCompressReader(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		seq  []ws.Frame
@@ -90,8 +84,8 @@ func TestCompressReader (t *testing.T) {
 			seq: []ws.Frame{
 				{
 					Header: ws.Header{
-						Fin: true,
-						Rsv: 0x04,
+						Fin:    true,
+						Rsv:    0x04,
 						OpCode: ws.OpText,
 						Length: 14,
 					},
@@ -105,8 +99,8 @@ func TestCompressReader (t *testing.T) {
 			seq: []ws.Frame{
 				{
 					Header: ws.Header{
-						Fin: false,
-						Rsv: 0x04,
+						Fin:    false,
+						Rsv:    0x04,
 						OpCode: ws.OpText,
 						Length: 7,
 					},
@@ -114,8 +108,8 @@ func TestCompressReader (t *testing.T) {
 				},
 				{
 					Header: ws.Header{
-						Fin: true,
-						Rsv: 0x00,
+						Fin:    true,
+						Rsv:    0x00,
 						OpCode: ws.OpContinuation,
 						Length: 7,
 					},
@@ -131,8 +125,8 @@ func TestCompressReader (t *testing.T) {
 			seq: []ws.Frame{
 				{
 					Header: ws.Header{
-						Fin: false,
-						Rsv: 0x04,
+						Fin:    false,
+						Rsv:    0x04,
 						OpCode: ws.OpText,
 						Length: 7,
 					},
@@ -149,8 +143,8 @@ func TestCompressReader (t *testing.T) {
 			seq: []ws.Frame{
 				{
 					Header: ws.Header{
-						Fin: false,
-						Rsv: 0x04,
+						Fin:    false,
+						Rsv:    0x04,
 						OpCode: ws.OpText,
 						Length: 7,
 					},
@@ -160,8 +154,8 @@ func TestCompressReader (t *testing.T) {
 				ws.NewFrame(ws.OpPing, true, nil),
 				{
 					Header: ws.Header{
-						Fin: true,
-						Rsv: 0x00,
+						Fin:    true,
+						Rsv:    0x00,
 						OpCode: ws.OpContinuation,
 						Length: 7,
 					},

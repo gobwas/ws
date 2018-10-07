@@ -155,11 +155,17 @@ func (tw *truncWriter) Write(block []byte) (int, error) {
 	return filledBytes + nn, err
 }
 
+// Compress writer support writes to the underlying Writer in the
+// message-at-once mode.
+// Only client_no_context_takeover supported now. For implement sliding window
+// there is no API in flate package.
+//
+// See: https://tools.ietf.org/html/rfc7692#section-7.1.1
+// See: https://github.com/golang/go/issues/3155
 type CompressWriter interface {
 	io.WriteCloser
 
 	Flush() error
-	FlushFragment() error
 	Reset(*Writer)
 }
 
@@ -207,18 +213,6 @@ func (cw *compressWriter) Flush() error {
 	cw.Reset(cw.dst)
 
 	return cw.dst.Flush()
-}
-
-func (cw *compressWriter) FlushFragment() error {
-	err := cw.flateWriter.Flush()
-	if err != nil {
-		return err
-	}
-
-	// Do not share state between flushes.
-	cw.Reset(cw.dst)
-
-	return cw.dst.FlushFragment()
 }
 
 func (cw *compressWriter) Close() error {
