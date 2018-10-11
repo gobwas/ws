@@ -2,12 +2,11 @@ package wsutil
 
 import (
 	"errors"
+	"github.com/gobwas/pool/pbytes"
+	"github.com/gobwas/ws"
 	"io"
 	"io/ioutil"
 	"strconv"
-
-	"github.com/gobwas/pool/pbytes"
-	"github.com/gobwas/ws"
 )
 
 // ClosedError returned when peer has closed the connection with appropriate

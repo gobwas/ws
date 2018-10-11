@@ -2,6 +2,7 @@ package wsutil
 
 import (
 	"bytes"
+	"compress/flate"
 	"fmt"
 	"github.com/gobwas/ws"
 	"io"
@@ -19,36 +20,59 @@ func TestCompressWriter(t *testing.T) {
 		result     []byte
 	}{
 		{
+			label:  "empty",
+			level:  6,
+			seq:    [][]byte{nil},
+			result: ws.MustCompileFrame(MustCompressFrame(ws.NewTextFrame(nil), flate.BestSpeed)),
+		},
+		{
 			label:  "simple",
 			level:  6,
 			seq:    [][]byte{[]byte("hello world!")},
-			result: []byte{0x81, 0xe, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x04, 0x0},
+			result: ws.MustCompileFrame(MustCompressFrame(ws.NewTextFrame([]byte("hello world!")), -1)),
+		},
+		{
+			label:  "small",
+			level:  6,
+			seq:    [][]byte{[]byte("hi")},
+			result: ws.MustCompileFrame(MustCompressFrame(ws.NewTextFrame([]byte("hi")), -1)),
 		},
 		{
 			label:  "multiple_writes",
 			level:  6,
 			seq:    [][]byte{[]byte("hello "), []byte("world!")},
-			result: []byte{0x81, 0xe, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x28, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0},
+			result: []byte{0xc1, 0x8, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x0, 0x0, 0xc1, 0x8, 0x2a, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0},
+		},
+		{
+			label:      "fragmented_writes",
+			level:      6,
+			fragmented: true,
+			seq:        [][]byte{[]byte("hello "), []byte("world!")},
+			result:     []byte{0x41, 0xc, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff, 0x0, 0xc, 0x2a, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0, 0x0, 0x0, 0xff, 0xff},
 		},
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			cw, err := NewCompressWriter(NewWriter(buf, ws.StateServerSide, ws.OpText), test.level)
+			cw, err := WithCompressor(NewWriter(buf, ws.StateServerSide|ws.StateExtended, ws.OpText), test.level)
 			if err != nil {
 				t.Errorf("unexpected error: %s", err)
 				return
 			}
-			for _, b := range test.seq {
+			for i, b := range test.seq {
 				_, err = cw.Write(b)
 				if err != nil {
 					t.Errorf("cannot write data: %s", err)
 					return
 				}
-			}
-			err = cw.Flush()
-			if err != nil {
-				t.Errorf("cannot flush data: %s", err)
-				return
+				if test.fragmented && i <= len(test.seq)-1 {
+					err = cw.FlushFragment()
+				} else {
+					err = cw.Flush()
+				}
+				if err != nil {
+					t.Errorf("cannot flush data: %s", err)
+					return
+				}
 			}
 
 			if !reflect.DeepEqual(buf.Bytes(), test.result) {
@@ -121,6 +145,32 @@ func TestCompressReader(t *testing.T) {
 			exp: []byte("hello world!"),
 		},
 		{
+			name: "fragmented_compressed_multiple_flushed",
+			seq: []ws.Frame{
+				{
+					Header: ws.Header{
+						Fin:    false,
+						Rsv:    0x04,
+						OpCode: ws.OpText,
+						Length: 12,
+					},
+					Payload: []byte{0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff},
+				},
+				{
+					Header: ws.Header{
+						Fin:    true,
+						Rsv:    0x00,
+						OpCode: ws.OpContinuation,
+						Length: 8,
+					},
+					Payload: []byte{0x2a, 0xcf, 0x2f, 0xca, 0x49, 0x51, 0x4, 0x0},
+				},
+
+				ws.NewTextFrame([]byte("Hello, Brave New World!")),
+			},
+			exp: []byte("hello world!"),
+		},
+		{
 			name: "fragmented_compressed_broken",
 			seq: []ws.Frame{
 				{
@@ -182,8 +232,11 @@ func TestCompressReader(t *testing.T) {
 			}
 
 			var bts []byte
-			compressedReader := NewCompressReader(NewReader(conn, ws.StateClientSide|ws.StateExtended))
-			_, err := compressedReader.NextFrame()
+			compressedReader, err := WithDecompressor(NewReader(conn, ws.StateClientSide|ws.StateExtended))
+			if err != nil {
+				t.Errorf("unexpected error; cannot create decompressed reader")
+			}
+			_, err = compressedReader.NextFrame()
 			if err == nil {
 				bts, err = ioutil.ReadAll(compressedReader)
 			}
@@ -204,19 +257,34 @@ func TestCompressReader(t *testing.T) {
 
 func BenchmarkCompressWriter(b *testing.B) {
 	for _, bench := range []struct {
-		message  string
-		repeated int
+		compressed bool
+		message    string
+		repeated   int
 	}{
 		{
 			message: "hello world",
 		},
 		{
-			message:  "hello world\n",
+			message:  "hello world",
 			repeated: 1000,
 		},
 		{
-			message:  "hello world\n",
+			message:  "hello world",
 			repeated: 10000,
+		},
+		{
+			message: "hello world",
+			compressed: true,
+		},
+		{
+			message:  "hello world",
+			repeated: 1000,
+			compressed: true,
+		},
+		{
+			message:  "hello world",
+			repeated: 10000,
+			compressed: true,
 		},
 	} {
 		b.Run(fmt.Sprintf("message=%s;repeated=%d", bench.message, bench.repeated), func(b *testing.B) {
@@ -225,15 +293,31 @@ func BenchmarkCompressWriter(b *testing.B) {
 				buf.WriteString(bench.message)
 			}
 			writer := NewWriter(ioutil.Discard, ws.StateServerSide, ws.OpText)
+			var (
+				cw CompressWriter
+				err error
+			)
 
-			for i := 0; i < b.N; i++ {
-				cw, err := NewCompressWriter(writer, 6)
+			if bench.compressed {
+				cw, err = NewCompressWriter(writer, flate.DefaultCompression)
 				if err != nil {
 					b.Errorf("unexpected error: %s", err)
 					return
 				}
+			}
 
-				_, err = cw.Write(buf.Bytes())
+			for i := 0; i < b.N; i++ {
+				if cw != nil {
+					_, err = cw.Write(buf.Bytes())
+					if err == nil {
+						err = cw.Flush()
+					}
+				} else {
+					_, err = writer.Write(buf.Bytes())
+					if err == nil {
+						err = writer.Flush()
+					}
+				}
 				if err != nil {
 					b.Errorf("cannot write: %s", err)
 					return

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/flate"
 	"context"
 	"flag"
 	"fmt"
@@ -33,7 +34,7 @@ func main() {
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("listen %q error: %v", err)
+		log.Fatalf("listen %q error: %v", *addr, err)
 	}
 	log.Printf("listening %s (%q)", ln.Addr(), *addr)
 
@@ -130,7 +131,8 @@ func helpersLowLevelHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wsutilHandler(res http.ResponseWriter, req *http.Request) {
-	conn, _, _, err := ws.UpgradeHTTP(req, res)
+	upg := ws.HTTPUpgrader{CompressionEnabled: true}
+	conn, _, hs, err := upg.Upgrade(req, res)
 	if err != nil {
 		log.Printf("upgrade error: %s", err)
 		return
@@ -138,15 +140,29 @@ func wsutilHandler(res http.ResponseWriter, req *http.Request) {
 	defer conn.Close()
 
 	state := ws.StateServerSide
-
 	ch := wsutil.ControlFrameHandler(conn, state)
+
+	w := wsutil.NewWriter(conn, state, 0)
 	r := &wsutil.Reader{
 		Source:         conn,
 		State:          state,
 		CheckUTF8:      true,
 		OnIntermediate: ch,
 	}
-	w := wsutil.NewWriter(conn, state, 0)
+
+	if hs.DeflateAccepted() {
+		state |= ws.StateExtended
+		r, err = wsutil.WithDecompressor(r)
+		if err != nil {
+			log.Printf("create reader error: %s", err)
+			return
+		}
+		w, err = wsutil.WithCompressor(w, flate.BestSpeed)
+		if err != nil {
+			log.Printf("create writer error: %s", err)
+			return
+		}
+	}
 
 	for {
 		h, err := r.NextFrame()

@@ -91,6 +91,39 @@ var ErrNotHijacker = RejectConnectionError(
 // UpgradeHTTP function.
 var DefaultHTTPUpgrader HTTPUpgrader
 
+// Func that parse header and return proper parameters. Now supported only
+// the client_no_context_takeover and just return a extension to a client is not
+// enough.
+func NegotiateNoContextTakeoverCompression (
+	bytes []byte,
+	options []httphead.Option,
+) ([]httphead.Option, bool) {
+	os := httphead.OptionSelector{
+		Flags: httphead.SelectUnique | httphead.SelectCopy,
+		Check: nil,
+	}
+	options, ok := os.Select(bytes, options)
+	if !ok {
+		return nil, false
+	}
+
+	var selected []httphead.Option
+	for _, option := range options {
+		name := string(option.Name)
+		if name == "permessage-deflate" || name == "x-webkit-deflate-frame" {
+			selected = append(
+				selected,
+				httphead.NewOption(
+					name,
+					map[string]string{"client_no_context_takeover": ""},
+				),
+			)
+		}
+	}
+
+	return selected, true
+}
+
 // UpgradeHTTP is like HTTPUpgrader{}.Upgrade().
 func UpgradeHTTP(r *http.Request, w http.ResponseWriter) (net.Conn, *bufio.ReadWriter, Handshake, error) {
 	return DefaultHTTPUpgrader.Upgrade(r, w)
@@ -129,6 +162,14 @@ type HTTPUpgrader struct {
 	// list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	Extension func(httphead.Option) bool
+
+	// Indicate that compression can be enabled if client supports it.
+	// Now supported only client_no_context_takeover mode when server compress
+	// each message individually and no any sliding window used.
+	// As described in https://tools.ietf.org/html/rfc7692#section-7.1.1.2 server
+	// can include addition parameter to indicate that no context takeover
+	// should be used.
+	CompressionEnabled bool
 }
 
 // Upgrade upgrades http connection to the websocket connection.
@@ -199,6 +240,17 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 			}
 		}
 	}
+
+	if u.CompressionEnabled {
+		xs := r.Header[headerSecExtensions]
+		for i := 0; i < len(xs) && err == nil; i++ {
+			hs.Extensions, _ = NegotiateNoContextTakeoverCompression(
+				[]byte(xs[i]),
+				hs.Extensions,
+			)
+		}
+	}
+
 	if check := u.Extension; err == nil && check != nil {
 		xs := r.Header[headerSecExtensions]
 		for i := 0; i < len(xs) && err == nil; i++ {
@@ -254,6 +306,15 @@ type Upgrader struct {
 	// custom headers. Usually response takes less than 256 bytes.
 	ReadBufferSize, WriteBufferSize int
 
+	// Indicate that compression can be enabled if client supports it.
+	// Now supported only client_no_context_takeover mode when server compress
+	// each message individually and no any sliding window used.
+	// As described in https://tools.ietf.org/html/rfc7692#section-7.1.1.2 server
+	// can include addition parameter to indicate that no context takeover
+	// should be used.
+	// NOTE: If you use ExtensionCustom func that option will not be used.
+	CompressionEnabled bool
+
 	// Protocol is a select function that is used to select subprotocol
 	// from list requested by client. If this field is set, then the first matched
 	// protocol is sent to a client as negotiated.
@@ -287,6 +348,8 @@ type Upgrader struct {
 	// ExtensionCustorm allow user to parse Sec-WebSocket-Extensions header manually.
 	// Note that returned options should be valid until Upgrade returns.
 	// If ExtensionCustom is set, it used instead of Extension function.
+	// If ExtensionCustom is set, it overwrite CompressionEnabled flag and
+	// should accept permessage-deflate option if needed.
 	ExtensionCustom func([]byte, []httphead.Option) ([]httphead.Option, bool)
 
 	// Header is an optional HandshakeHeader instance that could be used to
@@ -512,11 +575,17 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			}
 
 		case headerSecExtensions:
-			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil {
+			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil || u.CompressionEnabled {
 				var ok bool
+				if u.CompressionEnabled {
+					hs.Extensions, _ = NegotiateNoContextTakeoverCompression(
+						v,
+						hs.Extensions,
+					)
+				}
 				if custom != nil {
 					hs.Extensions, ok = custom(v, hs.Extensions)
-				} else {
+				} else if check != nil {
 					hs.Extensions, ok = btsSelectExtensions(v, hs.Extensions, check)
 				}
 				if !ok {

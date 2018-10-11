@@ -3,4 +3,5 @@ reports/
 cpu.out
 mem.out
 ws.test
-.idea/*
+.idea/
+.DS_Store
