@@ -2,8 +2,20 @@
    "outdir": "/report",
    "servers": [
       {
-		 "agent": "wsutil",
+         "agent": "ws",
+         "url":   "ws://server:9001/ws"
+      },
+      {
+         "agent": "wsutil",
          "url":   "ws://server:9001/wsutil"
+      },
+      {
+         "agent": "helpers/low",
+         "url":   "ws://server:9001/helpers/low"
+      },
+      {
+         "agent": "helpers/high",
+         "url":   "ws://server:9001/helpers/high"
       }
    ],
    "cases": ["*"],
