@@ -112,8 +112,9 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	}
 
 	if r.rsv1 && r.Decompressor != nil && r.fragmented() {
-		// do not actually read the frame until the end
-		n, err = 0, nil
+		// Reset current fragment and read next until the last.
+		r.resetFragment()
+		return r.Read(p)
 	} else {
 		n, err = r.frame.Read(p)
 	}
@@ -132,9 +133,13 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		err = nil
 		r.resetFragment()
 
-	case r.CheckUTF8 && !r.utf8.Valid():
+	case err == io.EOF && r.CheckUTF8 && !r.utf8.Valid():
+		// Actually UTF-8 should be checked only when message finished (EOF
+		// received from underlying reader). Before that fragmented message can
+		// contain broken UTF-8 entities.
 		n = r.utf8.Accepted()
 		err = ErrInvalidUTF8
+		r.reset()
 
 	case err == io.EOF:
 		// allow to stream data via smaller buffer p with iterations — do not
@@ -213,6 +218,8 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 		r.opCode = hdr.OpCode
 	}
 	if r.rsv1 && hdr.OpCode.IsData() && r.Decompressor != nil {
+		// Streaming cannot be used here because reader require full message to
+		// properly decode it.
 		_, err := r.Decompressor.ReadFrom(frame)
 		if err != nil {
 			return hdr, err

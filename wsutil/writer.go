@@ -3,11 +3,10 @@ package wsutil
 import (
 	"bytes"
 	"fmt"
-	"io"
-
 	"github.com/gobwas/pool"
 	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
+	"io"
 )
 
 // DefaultWriteBuffer contains size of Writer's default buffer. It used by
@@ -382,7 +381,7 @@ func (w *Writer) Flush() error {
 		return w.err
 	}
 
-	w.err = w.flushFragment(true)
+	w.err = w.flushFragment(true, false)
 	w.n = 0
 	w.dirty = false
 	w.fragmented = false
@@ -397,20 +396,20 @@ func (w *Writer) FlushFragment() error {
 		return w.err
 	}
 
-	w.err = w.flushFragment(false)
+	w.err = w.flushFragment(false, false)
 	w.n = 0
 	w.fragmented = true
 
 	return w.err
 }
 
-func (w *Writer) flushFragment(fin bool) error {
+func (w *Writer) flushFragment(fin bool, ignoreCompressor bool) error {
 	dataCompressed := false
 	var (
 		tail []byte
 		wasFin = fin
 	)
-	if w.compressor != nil && w.opCode().IsData() {
+	if !ignoreCompressor && w.compressor != nil && w.opCode().IsData() {
 		dataCompressed = true
 		wr := bytes.NewBuffer(nil)
 		w.compressor.Reset(wr)
@@ -464,8 +463,16 @@ func (w *Writer) flushFragment(fin bool) error {
 	_, err := w.dest.Write(w.raw[offset : head+w.n])
 
 	if tail != nil && err == nil {
-		w.n = copy(w.buf[0:], tail[:])
-		return w.flushFragment(wasFin)
+		// consider current frame as fragmented if there is any tail.
+		w.fragmented = true
+		w.n = copy(w.buf[0:], tail)
+
+		// Flush here is required only if there is last frame (wasFin is true)
+		// but because after that method will reset w.n, new buffer cannot
+		// be started here — it will be declined after w.n reset.
+		// Also, the compressor should be ignored here because the tail already
+		// compressed.
+		return w.flushFragment(wasFin, true)
 	}
 
 	return err

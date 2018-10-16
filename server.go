@@ -115,7 +115,10 @@ func NegotiateNoContextTakeoverCompression (
 				selected,
 				httphead.NewOption(
 					name,
-					map[string]string{"client_no_context_takeover": ""},
+					map[string]string{
+						"client_no_context_takeover": "",
+						"server_no_context_takeover": "",
+					},
 				),
 			)
 		}
