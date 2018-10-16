@@ -250,6 +250,19 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	return
 }
 
+// Close underlying decompressor and stop using it.
+func (r *Reader) Close() error {
+	if r.Decompressor != nil {
+		err := r.Decompressor.Close()
+		r.Decompressor = nil
+		r.State &= ^ws.StateExtended
+
+		return err
+	}
+
+	return nil
+}
+
 func (r *Reader) fragmented() bool {
 	return r.State.Fragmented()
 }

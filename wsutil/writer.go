@@ -159,6 +159,7 @@ func WithCompressor(writer *Writer, level int) (*Writer, error) {
 // PutWriter puts w for future reuse by GetWriter().
 func PutWriter(w *Writer) {
 	w.Reset(nil, 0, 0)
+	w.Close()
 	writers.Put(w, w.Size())
 }
 
@@ -406,7 +407,7 @@ func (w *Writer) FlushFragment() error {
 func (w *Writer) flushFragment(fin bool, ignoreCompressor bool) error {
 	dataCompressed := false
 	var (
-		tail []byte
+		tail   []byte
 		wasFin = fin
 	)
 	if !ignoreCompressor && w.compressor != nil && w.opCode().IsData() {
@@ -476,6 +477,18 @@ func (w *Writer) flushFragment(fin bool, ignoreCompressor bool) error {
 	}
 
 	return err
+}
+
+// Close underlying compressor and stop using it.
+func (w *Writer) Close() error {
+	if w.compressor != nil {
+		err := w.compressor.Close()
+		w.compressor = nil
+		w.state &= ^ws.StateExtended
+		return err
+	}
+
+	return nil
 }
 
 func (w *Writer) opCode() ws.OpCode {
