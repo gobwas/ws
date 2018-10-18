@@ -28,6 +28,8 @@ func CompressFrame(f ws.Frame, level int) (ws.Frame, error) {
 	buf := bytes.NewBuffer(nil)
 	// there is probably should be poll of writers
 	compressor, err := NewCompressWriter(buf, level)
+	defer compressor.Close()
+
 	if err != nil {
 		return f, err
 	}
