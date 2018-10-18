@@ -94,7 +94,7 @@ var DefaultHTTPUpgrader HTTPUpgrader
 // Func that parse header and return proper parameters. Now supported only
 // the client_no_context_takeover and just return a extension to a client is not
 // enough.
-func NegotiateNoContextTakeoverCompression (
+func NegotiateNoContextTakeoverCompression(
 	bytes []byte,
 	options []httphead.Option,
 ) ([]httphead.Option, bool) {
@@ -581,7 +581,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil || u.CompressionEnabled {
 				var ok bool
 				if u.CompressionEnabled {
-					hs.Extensions, _ = NegotiateNoContextTakeoverCompression(
+					hs.Extensions, ok = NegotiateNoContextTakeoverCompression(
 						v,
 						hs.Extensions,
 					)
