@@ -210,7 +210,7 @@ type compressWriter struct {
 func NewCompressWriter(w io.Writer, level int) (CompressWriter, error) {
 	tw := &truncWriter{origin: w}
 
-	pool := &flateWriterPools[level - minCompressionLevel]
+	pool := &flateWriterPools[level-minCompressionLevel]
 	fw, _ := pool.Get().(*flate.Writer)
 	if fw == nil {
 		var err error
@@ -294,11 +294,11 @@ func (cw *compressWriter) Close() error {
 	}
 
 	err1 := cw.Flush()
-	flateWriterPools[cw.level - minCompressionLevel].Put(cw.flateWriter)
+	flateWriterPools[cw.level-minCompressionLevel].Put(cw.flateWriter)
 	cw.flateWriter = nil
 	cw.writeStarted = false
 
-	if cw.truncWriter.endBuffer != deflateFinal ||
+	if cw.truncWriter.endBuffer != deflateFinal &&
 		cw.truncWriter.endBuffer != [4]byte{0, 0, 0, 0} {
 		return ErrUnexpectedEndOfStream
 	}
