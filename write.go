@@ -3,8 +3,6 @@ package ws
 import (
 	"encoding/binary"
 	"io"
-	"reflect"
-	"unsafe"
 )
 
 // Header size length bounds in bytes.
@@ -57,14 +55,7 @@ func WriteHeader(w io.Writer, h Header) error {
 	// says that "Implementations must not retain p".
 	// See https://golang.org/pkg/io/#Writer
 	var b [MaxHeaderSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{
-		Data: bp,
-		Len:  MaxHeaderSize,
-		Cap:  MaxHeaderSize,
-	}
-	bts := *(*[]byte)(unsafe.Pointer(bh))
-	_ = bts[MaxHeaderSize-1] // bounds check hint to compiler.
+	bts := b[:]
 
 	if h.Fin {
 		bts[0] |= bit0

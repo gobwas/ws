@@ -42,13 +42,13 @@ func Cipher(payload []byte, mask [4]byte, offset int) {
 
 	// Get pointer to payload at ln index to
 	// skip manual processed bytes above.
-	p := uintptr(unsafe.Pointer(&payload[ln]))
+	p := unsafe.Pointer(&payload[ln])
 	// Also skip right part as the division by 8 remainder.
 	// Divide it by 8 to get number of uint64 parts remaining to process.
 	n = (n - rn) >> 3
 	// Process the rest of bytes as uint64.
-	for i := 0; i < n; i, p = i+1, p+8 {
-		v := (*uint64)(unsafe.Pointer(p))
+	for i := 0; i < n; i++ {
+		v := (*uint64)(unsafe.Pointer(uintptr(p) + uintptr(i)*8))
 		*v = *v ^ m2
 	}
 }

@@ -8,9 +8,7 @@ import (
 	"hash"
 	"io"
 	"math/rand"
-	"reflect"
 	"sync"
-	"unsafe"
 )
 
 const (
@@ -38,9 +36,7 @@ var sha1Pool sync.Pool
 type nonce [nonceSize]byte
 
 func (n *nonce) bytes() []byte {
-	h := uintptr(unsafe.Pointer(n))
-	b := &reflect.SliceHeader{Data: h, Len: nonceSize, Cap: nonceSize}
-	return *(*[]byte)(unsafe.Pointer(b))
+	return n[:]
 }
 
 func acquireSha1() hash.Hash {
@@ -94,12 +90,7 @@ func initAcceptFromNonce(dst, nonce []byte) {
 	sha.Write(webSocketMagic)
 
 	var sb [sha1.Size]byte
-	sh := uintptr(unsafe.Pointer(&sb))
-	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: sh,
-		Len:  0,
-		Cap:  sha1.Size,
-	}))
+	sum := sb[:0]
 	sum = sha.Sum(sum)
 
 	base64.StdEncoding.Encode(dst, sum)
@@ -107,12 +98,7 @@ func initAcceptFromNonce(dst, nonce []byte) {
 
 func writeAccept(w io.Writer, nonce []byte) (int, error) {
 	var b [acceptSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: bp,
-		Len:  acceptSize,
-		Cap:  acceptSize,
-	}))
+	bts := b[:]
 
 	initAcceptFromNonce(bts, nonce)
 

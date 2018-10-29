@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"reflect"
-	"unsafe"
 )
 
 // Errors used by frame reader.
@@ -28,9 +26,7 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 	// says that "Implementations must not retain p".
 	// See https://golang.org/pkg/io/#Reader
 	var b [MaxHeaderSize - 2]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{Data: bp, Len: 2, Cap: MaxHeaderSize - 2}
-	bts := *(*[]byte)(unsafe.Pointer(bh))
+	bts := b[0:2 : MaxHeaderSize-2]
 
 	// Prepare to hold first 2 bytes to choose size of next read.
 	_, err = io.ReadFull(r, bts)

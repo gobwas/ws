@@ -221,13 +221,10 @@ func strEqualFold(s, p string) bool {
 	}
 
 	ah := *(*reflect.StringHeader)(unsafe.Pointer(&s))
-	ap := ah.Data + uintptr(m)
 	bh := *(*reflect.StringHeader)(unsafe.Pointer(&p))
-	bp := bh.Data + uintptr(m)
-
-	for i := 0; i < n; i, ap, bp = i+1, ap+8, bp+8 {
-		av := *(*uint64)(unsafe.Pointer(ap))
-		bv := *(*uint64)(unsafe.Pointer(bp))
+	for i := 0; i < n; i++ {
+		av := *(*uint64)(unsafe.Pointer(ah.Data + uintptr(m+i*8)))
+		bv := *(*uint64)(unsafe.Pointer(bh.Data + uintptr(m+i*8)))
 		if av|toLower8 != bv|toLower8 {
 			return false
 		}
@@ -259,13 +256,10 @@ func btsEqualFold(s, p []byte) bool {
 	}
 
 	ah := *(*reflect.SliceHeader)(unsafe.Pointer(&s))
-	ap := ah.Data + uintptr(m)
 	bh := *(*reflect.SliceHeader)(unsafe.Pointer(&p))
-	bp := bh.Data + uintptr(m)
-
-	for i := 0; i < n; i, ap, bp = i+1, ap+8, bp+8 {
-		av := *(*uint64)(unsafe.Pointer(ap))
-		bv := *(*uint64)(unsafe.Pointer(bp))
+	for i := 0; i < n; i++ {
+		av := *(*uint64)(unsafe.Pointer(ah.Data + uintptr(m+i*8)))
+		bv := *(*uint64)(unsafe.Pointer(bh.Data + uintptr(m+i*8)))
 		if av|toLower8 != bv|toLower8 {
 			return false
 		}
