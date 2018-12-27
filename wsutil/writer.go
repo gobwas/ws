@@ -1,12 +1,12 @@
 package wsutil
 
 import (
-	"bytes"
 	"fmt"
+	"io"
+
 	"github.com/gobwas/pool"
 	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
-	"io"
 )
 
 // DefaultWriteBuffer contains size of Writer's default buffer. It used by
@@ -23,12 +23,6 @@ var (
 	// no more data could be written to the underlying io.Writer because
 	// MaxControlFramePayloadSize limit is reached.
 	ErrControlOverflow = fmt.Errorf("control frame payload overflow")
-
-	// ErrFragmentationNotAllowed is returned when someone try to FlushFragment
-	// on compressed writer. Thats not supported because all the message needed
-	// to reconstruct it on client. Multiple flushed the flate.Writer is not
-	// the same thing as final message that flushed once.
-	ErrFragmentationNotAllowed = fmt.Errorf("writer with compression enabled not allow fragementation")
 )
 
 // Constants which are represent frame length ranges.
@@ -107,8 +101,7 @@ func (c *ControlWriter) Flush() error {
 // After all data has been written, the client should call the Flush() method
 // to guarantee all data has been forwarded to the underlying io.Writer.
 type Writer struct {
-	dest       io.Writer
-	compressor CompressWriter
+	dest io.Writer
 
 	n   int    // Buffered bytes counter.
 	raw []byte // Raw representation of buffer, including reserved header bytes.
@@ -146,20 +139,9 @@ func GetWriter(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	return NewWriterBufferSize(dest, state, op, m)
 }
 
-// WithCompressor is a helper function that return writer with initialized
-// compressor that support message writes with deflate protocol.
-func WithCompressor(writer *Writer, level int) (*Writer, error) {
-	var err error
-	writer.compressor, err = NewCompressWriter(nil, level)
-	writer.state |= ws.StateExtended
-
-	return writer, err
-}
-
 // PutWriter puts w for future reuse by GetWriter().
 func PutWriter(w *Writer) {
 	w.Reset(nil, 0, 0)
-	w.Close()
 	writers.Put(w, w.Size())
 }
 
@@ -281,7 +263,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 
 	var nn int
 	for len(p) > w.Available() && w.err == nil {
-		if w.Buffered() == 0 && w.compressor == nil {
+		if w.Buffered() == 0 {
 			// Large write, empty buffer. Write directly from p to avoid copy.
 			// Trade off here is that we make additional Write() to underlying
 			// io.Writer when writing frame header.
@@ -382,7 +364,7 @@ func (w *Writer) Flush() error {
 		return w.err
 	}
 
-	w.err = w.flushFragment(true, false)
+	w.err = w.flushFragment(true)
 	w.n = 0
 	w.dirty = false
 	w.fragmented = false
@@ -397,57 +379,17 @@ func (w *Writer) FlushFragment() error {
 		return w.err
 	}
 
-	w.err = w.flushFragment(false, false)
+	w.err = w.flushFragment(false)
 	w.n = 0
 	w.fragmented = true
 
 	return w.err
 }
 
-func (w *Writer) flushFragment(fin bool, ignoreCompressor bool) error {
-	dataCompressed := false
-	var (
-		tail   []byte
-		wasFin = fin
-	)
-	if !ignoreCompressor && w.compressor != nil && w.opCode().IsData() {
-		dataCompressed = true
-		wr := bytes.NewBuffer(nil)
-		w.compressor.Reset(wr)
-		if _, err := w.compressor.Write(w.buf[:w.n]); err != nil {
-			return err
-		}
-
-		var err error
-		if !fin {
-			err = w.compressor.FlushFragment()
-		} else {
-			err = w.compressor.Flush()
-		}
-		if err != nil {
-			return err
-		}
-
-		// If compressed buffer is larger than uncompressed (surprise!) we
-		// should flush its end in another frame.
-		if cap(w.buf) < wr.Len() {
-			tail = wr.Bytes()[cap(w.buf):]
-			fin = false
-		}
-		// Reset buffer position — all the buffer already compressed and stored
-		// in temporary buffer.
-		w.n = copy(w.buf[0:], wr.Bytes())
-	}
-
+func (w *Writer) flushFragment(fin bool) error {
 	frame := ws.NewFrame(w.opCode(), fin, w.buf[:w.n])
 	if w.state.ClientSide() {
 		frame = ws.MaskFrameInPlace(frame)
-	}
-
-	// The RSV1 bit should be set only on the first frame.
-	// If the fragmented value is false — that means that first or only message.
-	if dataCompressed && !w.fragmented {
-		frame.Header.Rsv |= 0x04
 	}
 
 	// Write header to the header segment of the raw buffer.
@@ -463,32 +405,7 @@ func (w *Writer) flushFragment(fin bool, ignoreCompressor bool) error {
 
 	_, err := w.dest.Write(w.raw[offset : head+w.n])
 
-	if tail != nil && err == nil {
-		// consider current frame as fragmented if there is any tail.
-		w.fragmented = true
-		w.n = copy(w.buf[0:], tail)
-
-		// Flush here is required only if there is last frame (wasFin is true)
-		// but because after that method will reset w.n, new buffer cannot
-		// be started here — it will be declined after w.n reset.
-		// Also, the compressor should be ignored here because the tail already
-		// compressed.
-		return w.flushFragment(wasFin, true)
-	}
-
 	return err
-}
-
-// Close underlying compressor and stop using it.
-func (w *Writer) Close() error {
-	if w.compressor != nil {
-		err := w.compressor.Close()
-		w.compressor = nil
-		w.state &= ^ws.StateExtended
-		return err
-	}
-
-	return nil
 }
 
 func (w *Writer) opCode() ws.OpCode {

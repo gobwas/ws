@@ -16,56 +16,6 @@ type Message struct {
 	Payload []byte
 }
 
-// CompressFrame returns frame with compressed payload and updated header.
-// RSV1 bit and new length will be also set.
-// NOTE: original frame will be changed.
-func CompressFrame(f ws.Frame, level int) (ws.Frame, error) {
-	// Only data frames should be compressed.
-	if !f.Header.OpCode.IsData() {
-		return f, nil
-	}
-
-	buf := bytes.NewBuffer(nil)
-	// there is probably should be poll of writers
-	compressor, err := NewCompressWriter(buf, level)
-	defer compressor.Close()
-
-	if err != nil {
-		return f, err
-	}
-
-	_, err = compressor.Write(f.Payload)
-	if err != nil {
-		return f, err
-	}
-
-	if f.Header.Fin {
-		err = compressor.Flush()
-	} else {
-		err = compressor.FlushFragment()
-	}
-	if err != nil {
-		return f, err
-	}
-
-	// Mark compressed and change length
-	f.Header.Rsv |= 0x04
-	f.Header.Length = int64(buf.Len())
-	f.Payload = buf.Bytes()
-
-	return f, nil
-}
-
-// Compress frame and panic if there is something wrong.
-func MustCompressFrame(f ws.Frame, level int) ws.Frame {
-	fr, err := CompressFrame(f, level)
-	if err != nil {
-		panic(err)
-	}
-
-	return fr
-}
-
 // ReadMessage is a helper function that reads next message from r. It appends
 // received message(s) to the third argument and returns the result of it and
 // an error if some failure happened. That is, it probably could receive more

@@ -32,17 +32,6 @@ type Handshake struct {
 	Extensions []httphead.Option
 }
 
-func (hs Handshake) DeflateAccepted() bool {
-	for _, option := range hs.Extensions {
-		name := string(option.Name)
-		if name == "permessage-deflate" || name == "x-webkit-deflate-frame" {
-			return true
-		}
-	}
-
-	return false
-}
-
 // Errors used by the websocket client.
 var (
 	ErrHandshakeBadStatus      = fmt.Errorf("unexpected http status")

@@ -27,9 +27,8 @@ type FrameHandlerFunc func(ws.Header, io.Reader) error
 //
 // Note that Reader's methods are not goroutine safe.
 type Reader struct {
-	Source       io.Reader
-	Decompressor CompressReader
-	State        ws.State
+	Source io.Reader
+	State  ws.State
 
 	// SkipHeaderCheck disables checking header bits to be RFC6455 compliant.
 	SkipHeaderCheck bool
@@ -43,7 +42,6 @@ type Reader struct {
 	OnContinuation FrameHandlerFunc
 	OnIntermediate FrameHandlerFunc
 
-	rsv1   bool             // Used to store compression marker.
 	opCode ws.OpCode        // Used to store message op code on fragmentation.
 	frame  io.Reader        // Used to as frame reader.
 	raw    io.LimitedReader // Used to discard frames without cipher.
@@ -57,20 +55,6 @@ func NewReader(r io.Reader, s ws.State) *Reader {
 		Source: r,
 		State:  s,
 	}
-}
-
-// With compression is a helper function that sets default decompression handler
-// to use when needed.
-func WithDecompressor(reader *Reader) (*Reader, error) {
-	var err error
-	reader.Decompressor, err = NewCompressReader(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	reader.State |= ws.StateExtended
-
-	return reader, nil
 }
 
 // NewClientSideReader is a helper function that calls NewReader with r and
@@ -111,13 +95,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		}
 	}
 
-	if r.rsv1 && r.Decompressor != nil && r.fragmented() {
-		// Reset current fragment and read next until the last.
-		r.resetFragment()
-		return r.Read(p)
-	} else {
-		n, err = r.frame.Read(p)
-	}
+	n, err = r.frame.Read(p)
 	if err != nil && err != io.EOF {
 		return
 	}
@@ -133,18 +111,13 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		err = nil
 		r.resetFragment()
 
-	case err == io.EOF && r.CheckUTF8 && !r.utf8.Valid():
-		// Actually UTF-8 should be checked only when message finished (EOF
-		// received from underlying reader). Before that fragmented message can
-		// contain broken UTF-8 entities.
+	case r.CheckUTF8 && !r.utf8.Valid():
 		n = r.utf8.Accepted()
 		err = ErrInvalidUTF8
-		r.reset()
 
-	case err == io.EOF:
-		// allow to stream data via smaller buffer p with iterations — do not
-		// reset state if there is no io.EOF.
+	default:
 		r.reset()
+		err = io.EOF
 	}
 
 	return
@@ -196,10 +169,8 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	// Save raw reader to use it on discarding frame without ciphering and
 	// other streaming checks.
 	r.raw = io.LimitedReader{r.Source, hdr.Length}
-	r.rsv1 = hdr.Rsv1() || r.rsv1
 
 	frame := io.Reader(&r.raw)
-
 	if hdr.Masked {
 		frame = NewCipherReader(frame, hdr.Mask)
 	}
@@ -217,15 +188,6 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	} else {
 		r.opCode = hdr.OpCode
 	}
-	if r.rsv1 && hdr.OpCode.IsData() && r.Decompressor != nil {
-		// Streaming cannot be used here because reader require full message to
-		// properly decode it.
-		_, err := r.Decompressor.ReadFrom(frame)
-		if err != nil {
-			return hdr, err
-		}
-		frame = r.Decompressor
-	}
 	if r.CheckUTF8 && (hdr.OpCode == ws.OpText || (r.fragmented() && r.opCode == ws.OpText)) {
 		r.utf8.Source = frame
 		frame = &r.utf8
@@ -242,25 +204,11 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 
 	if hdr.Fin {
 		r.State = r.State.Clear(ws.StateFragmented)
-		r.rsv1 = false
 	} else {
 		r.State = r.State.Set(ws.StateFragmented)
 	}
 
 	return
-}
-
-// Close underlying decompressor and stop using it.
-func (r *Reader) Close() error {
-	if r.Decompressor != nil {
-		err := r.Decompressor.Close()
-		r.Decompressor = nil
-		r.State &= ^ws.StateExtended
-
-		return err
-	}
-
-	return nil
 }
 
 func (r *Reader) fragmented() bool {
@@ -302,24 +250,6 @@ func NextReader(r io.Reader, s ws.State) (ws.Header, io.Reader, error) {
 		State:  s,
 	}
 	header, err := rd.NextFrame()
-	if err != nil {
-		return header, nil, err
-	}
-	return header, rd, nil
-}
-
-// Same as NextReader but with compression support
-func NextCompressedReader(r io.Reader, s ws.State) (ws.Header, io.Reader, error) {
-	rd := &Reader{
-		Source: r,
-		State:  s,
-	}
-	rdc, err := WithDecompressor(rd)
-	if err != nil {
-		return ws.Header{}, nil, err
-	}
-
-	header, err := rdc.NextFrame()
 	if err != nil {
 		return header, nil, err
 	}
