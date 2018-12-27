@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/compress"
 	"github.com/gobwas/ws/wsutil"
 )
 
@@ -27,13 +29,14 @@ func main() {
 	flag.Parse()
 
 	http.HandleFunc("/ws", wsHandler)
+	http.HandleFunc("/ws/compressed", wsCompressed)
 	http.HandleFunc("/wsutil", wsutilHandler)
 	http.HandleFunc("/helpers/low", helpersLowLevelHandler)
 	http.HandleFunc("/helpers/high", helpersHighLevelHandler)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("listen %q error: %v", err)
+		log.Fatalf("listen %q error: %v", *addr, err)
 	}
 	log.Printf("listening %s (%q)", ln.Addr(), *addr)
 
@@ -295,5 +298,165 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		header.Masked = false
 		ws.WriteHeader(conn, header)
 		conn.Write(payload)
+	}
+}
+
+func wsCompressed(w http.ResponseWriter, r *http.Request) {
+	upgrader := ws.HTTPUpgrader{CompressionEnabled: true}
+	conn, _, hs, err := upgrader.Upgrade(r, w)
+	if err != nil {
+		log.Printf("upgrade error: %s", err)
+		return
+	}
+	defer conn.Close()
+
+	state := ws.StateServerSide
+	if hs.DeflateAccepted() {
+		state = state.Set(ws.StateExtended)
+	}
+
+	textPending := false
+	utf8Reader := wsutil.NewUTF8Reader(nil)
+	cipherReader := wsutil.NewCipherReader(nil, [4]byte{0, 0, 0, 0})
+	var (
+		compressReader compress.Reader
+	)
+	if hs.DeflateAccepted() {
+		compressReader = compress.NewReader(nil, ws.DefaultServerReadBufferSize)
+	}
+
+	payloadBuf := make([]byte, 0, 4096)
+	var deflateUsed bool
+	for {
+		header, err := ws.ReadHeader(conn)
+		if err != nil {
+			log.Printf("read header error: %s", err)
+			break
+		}
+		if err = ws.CheckHeader(header, state); err != nil {
+			log.Printf("header check error: %s", err)
+			conn.Write(closeProtocolError)
+			return
+		}
+
+		cipherReader.Reset(
+			io.LimitReader(conn, header.Length),
+			header.Mask,
+		)
+
+		var utf8Fin bool
+		var r io.Reader = cipherReader
+
+		switch header.OpCode {
+		case ws.OpPing:
+			header.OpCode = ws.OpPong
+			header.Masked = false
+			ws.WriteHeader(conn, header)
+			io.CopyN(conn, cipherReader, header.Length)
+			continue
+
+		case ws.OpPong:
+			io.CopyN(ioutil.Discard, conn, header.Length)
+			continue
+
+		case ws.OpClose:
+			utf8Fin = true
+
+		case ws.OpContinuation:
+			if textPending && !deflateUsed {
+				utf8Reader.Source = cipherReader
+				r = utf8Reader
+			}
+			if header.Fin {
+				state = state.Clear(ws.StateFragmented)
+				textPending = false
+				utf8Fin = true
+			}
+
+		case ws.OpText:
+			// cen be set only here because all other frames will be
+			// ws.OpContinuation or control.
+			deflateUsed = header.Rsv1()
+
+			if !deflateUsed {
+				utf8Reader.Reset(cipherReader)
+				r = utf8Reader
+			}
+
+			if !header.Fin {
+				state = state.Set(ws.StateFragmented)
+				textPending = true
+			} else {
+				utf8Fin = true
+			}
+
+		case ws.OpBinary:
+			if !header.Fin {
+				state = state.Set(ws.StateFragmented)
+			}
+		}
+
+		tmpPayload := make([]byte, header.Length)
+		_, err = io.ReadFull(r, tmpPayload)
+
+		if deflateUsed {
+			payloadBuf = append(payloadBuf, tmpPayload...)
+
+			if !textPending {
+				payloadBufReader := bytes.NewReader(payloadBuf)
+				compressReader.Reset(payloadBufReader, nil)
+				utf8Reader.Source = compressReader
+				r = utf8Reader
+
+				_, err = io.Copy(ioutil.Discard, r)
+				utf8Fin = true
+				payloadBufReader.Reset(nil)
+				payloadBuf = payloadBuf[0:0]
+			}
+		}
+
+		if err == nil && utf8Fin && !utf8Reader.Valid() {
+			err = wsutil.ErrInvalidUTF8
+		}
+
+		if err != nil {
+			log.Printf("read payload error: %s", err)
+			if err == wsutil.ErrInvalidUTF8 {
+				conn.Write(closeInvalidPayload)
+			} else {
+				conn.Write(ws.CompiledClose)
+			}
+			return
+		}
+
+		if header.OpCode == ws.OpClose {
+			code, reason := ws.ParseCloseFrameData(tmpPayload)
+			log.Printf("close frame received: %v %v", code, reason)
+
+			if !code.Empty() {
+				switch {
+				case code.IsProtocolSpec() && !code.IsProtocolDefined():
+					err = fmt.Errorf("close code from spec range is not defined")
+				default:
+					err = ws.CheckCloseFrameData(code, reason)
+				}
+				if err != nil {
+					log.Printf("invalid close data: %s", err)
+					conn.Write(closeProtocolError)
+				} else {
+					ws.WriteFrame(conn, ws.NewCloseFrame(ws.NewCloseFrameBody(
+						code, "",
+					)))
+				}
+				return
+			}
+
+			conn.Write(ws.CompiledClose)
+			return
+		}
+
+		header.Masked = false
+		ws.WriteHeader(conn, header)
+		conn.Write(tmpPayload)
 	}
 }
