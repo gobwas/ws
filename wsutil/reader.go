@@ -231,7 +231,7 @@ func (r *Reader) reset() {
 
 // NextReader prepares next message read from r. It returns header that
 // describes the message and io.Reader to read message's payload. It returns
-// non-nil error when it is not possible to read message's iniital frame.
+// non-nil error when it is not possible to read message's initial frame.
 //
 // Note that next NextReader() on the same r should be done after reading all
 // bytes from previously returned io.Reader. For more performant way to discard
