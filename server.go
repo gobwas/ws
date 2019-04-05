@@ -484,13 +484,13 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				err = ErrHandshakeBadConnection
 			}
 
-		case headerSecVersion:
+		case headerSecVersionCanonical:
 			headerSeen |= headerSeenSecVersion
 			if !bytes.Equal(v, specHeaderValueSecVersion) {
 				err = ErrHandshakeUpgradeRequired
 			}
 
-		case headerSecKey:
+		case headerSecKeyCanonical:
 			headerSeen |= headerSeenSecKey
 			if len(v) != nonceSize {
 				err = ErrHandshakeBadSecKey
@@ -498,7 +498,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				copy(nonce[:], v)
 			}
 
-		case headerSecProtocol:
+		case headerSecProtocolCanonical:
 			if custom, check := u.ProtocolCustom, u.Protocol; hs.Protocol == "" && (custom != nil || check != nil) {
 				var ok bool
 				if custom != nil {
@@ -511,7 +511,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				}
 			}
 
-		case headerSecExtensions:
+		case headerSecExtensionsCanonical:
 			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil {
 				var ok bool
 				if custom != nil {

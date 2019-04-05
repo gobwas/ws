@@ -389,14 +389,14 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 				return
 			}
 
-		case headerSecAccept:
+		case headerSecAcceptCanonical:
 			headerSeen |= headerSeenSecAccept
 			if !checkAcceptFromNonce(v, nonce) {
 				err = ErrHandshakeBadSecAccept
 				return
 			}
 
-		case headerSecProtocol:
+		case headerSecProtocolCanonical:
 			// RFC6455 1.3:
 			//   "The server selects one or none of the acceptable protocols
 			//   and echoes that value in its handshake to indicate that it has
@@ -414,7 +414,7 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 				return
 			}
 
-		case headerSecExtensions:
+		case headerSecExtensionsCanonical:
 			hs.Extensions, err = matchSelectedExtensions(v, d.Extensions, hs.Extensions)
 			if err != nil {
 				return
