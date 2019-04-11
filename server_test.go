@@ -332,10 +332,10 @@ func TestHTTPUpgrader(t *testing.T) {
 				if test.badSecKey {
 					nonce = nonce[:nonceSize-1]
 				}
-				test.req.Header.Set(headerSecKey, string(nonce))
+				test.req.Header[headerSecKey] = []string{string(nonce)}
 			}
 			if test.err == nil {
-				test.res.Header.Set(headerSecAccept, string(makeAccept(test.nonce)))
+				test.res.Header[headerSecAccept] = []string{string(makeAccept(test.nonce))}
 			}
 
 			// Need to emulate http server read request for truth test.
@@ -398,10 +398,10 @@ func TestUpgrader(t *testing.T) {
 				if test.badSecKey {
 					nonce = nonce[:nonceSize-1]
 				}
-				test.req.Header.Set(headerSecKey, string(nonce))
+				test.req.Header[headerSecKey] = []string{string(nonce)}
 			}
 			if test.err == nil {
-				test.res.Header.Set(headerSecAccept, string(makeAccept(test.nonce)))
+				test.res.Header[headerSecAccept] = []string{string(makeAccept(test.nonce))}
 			}
 
 			u := Upgrader{
