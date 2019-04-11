@@ -163,9 +163,9 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = ErrHandshakeBadUpgrade
 	} else if c := httpGetHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
-	} else if nonce = httpGetHeader(r.Header, headerSecKey); len(nonce) != nonceSize {
+	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); len(nonce) != nonceSize {
 		err = ErrHandshakeBadSecKey
-	} else if v := httpGetHeader(r.Header, headerSecVersion); v != "13" {
+	} else if v := httpGetHeader(r.Header, headerSecVersionCanonical); v != "13" {
 		// According to RFC6455:
 		//
 		// If this version does not match a version understood by the server,
@@ -190,7 +190,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		}
 	}
 	if check := u.Protocol; err == nil && check != nil {
-		ps := r.Header[headerSecProtocol]
+		ps := r.Header[headerSecProtocolCanonical]
 		for i := 0; i < len(ps) && err == nil && hs.Protocol == ""; i++ {
 			var ok bool
 			hs.Protocol, ok = strSelectProtocol(ps[i], check)
@@ -200,7 +200,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		}
 	}
 	if check := u.Extension; err == nil && check != nil {
-		xs := r.Header[headerSecExtensions]
+		xs := r.Header[headerSecExtensionsCanonical]
 		for i := 0; i < len(xs) && err == nil; i++ {
 			var ok bool
 			hs.Extensions, ok = strSelectExtensions(xs[i], hs.Extensions, check)
