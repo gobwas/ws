@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 
@@ -48,11 +49,11 @@ var (
 	headerSecKey        = "Sec-WebSocket-Key"
 	headerSecAccept     = "Sec-WebSocket-Accept"
 
-	headerSecVersionCanonical    = "Sec-Websocket-Version"
-	headerSecProtocolCanonical   = "Sec-Websocket-Protocol"
-	headerSecExtensionsCanonical = "Sec-Websocket-Extensions"
-	headerSecKeyCanonical        = "Sec-Websocket-Key"
-	headerSecAcceptCanonical     = "Sec-Websocket-Accept"
+	headerSecVersionCanonical    = textproto.CanonicalMIMEHeaderKey(headerSecVersion)
+	headerSecProtocolCanonical   = textproto.CanonicalMIMEHeaderKey(headerSecProtocol)
+	headerSecExtensionsCanonical = textproto.CanonicalMIMEHeaderKey(headerSecExtensions)
+	headerSecKeyCanonical        = textproto.CanonicalMIMEHeaderKey(headerSecKey)
+	headerSecAcceptCanonical     = textproto.CanonicalMIMEHeaderKey(headerSecAccept)
 )
 
 var (
