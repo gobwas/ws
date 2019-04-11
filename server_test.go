@@ -36,6 +36,7 @@ type upgradeCase struct {
 	nonce        []byte
 	removeSecKey bool
 	badSecKey    bool
+	secKeyHeader string
 
 	req *http.Request
 	res *http.Response
@@ -58,8 +59,23 @@ var upgradeCases = []upgradeCase{
 		}),
 	},
 	{
-		label: "lowercase",
-		nonce: mustMakeNonce(),
+		label:        "base_canonical",
+		nonce:        mustMakeNonce(),
+		secKeyHeader: headerSecKeyCanonical,
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:             []string{"websocket"},
+			headerConnection:          []string{"Upgrade"},
+			headerSecVersionCanonical: []string{"13"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+		}),
+	},
+	{
+		label:        "lowercase_headers",
+		nonce:        mustMakeNonce(),
+		secKeyHeader: strings.ToLower(headerSecKey),
 		req: mustMakeRequest("GET", "ws://example.org", http.Header{
 			strings.ToLower(headerUpgrade):    []string{"websocket"},
 			strings.ToLower(headerConnection): []string{"Upgrade"},
@@ -93,6 +109,24 @@ var upgradeCases = []upgradeCase{
 			headerConnection:  []string{"Upgrade"},
 			headerSecVersion:  []string{"13"},
 			headerSecProtocol: []string{"a", "b", "c", "d"},
+		}),
+		res: mustMakeResponse(101, http.Header{
+			headerUpgrade:     []string{"websocket"},
+			headerConnection:  []string{"Upgrade"},
+			headerSecProtocol: []string{"b"},
+		}),
+		hs: Handshake{Protocol: "b"},
+	},
+	{
+		label:        "subproto_lowercase_headers",
+		protocol:     SelectFromSlice([]string{"b", "d"}),
+		nonce:        mustMakeNonce(),
+		secKeyHeader: strings.ToLower(headerSecKey),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			strings.ToLower(headerUpgrade):     []string{"websocket"},
+			strings.ToLower(headerConnection):  []string{"Upgrade"},
+			strings.ToLower(headerSecVersion):  []string{"13"},
+			strings.ToLower(headerSecProtocol): []string{"a", "b", "c", "d"},
 		}),
 		res: mustMakeResponse(101, http.Header{
 			headerUpgrade:     []string{"websocket"},
@@ -332,7 +366,10 @@ func TestHTTPUpgrader(t *testing.T) {
 				if test.badSecKey {
 					nonce = nonce[:nonceSize-1]
 				}
-				test.req.Header[headerSecKey] = []string{string(nonce)}
+				if test.secKeyHeader == "" {
+					test.secKeyHeader = headerSecKey
+				}
+				test.req.Header[test.secKeyHeader] = []string{string(nonce)}
 			}
 			if test.err == nil {
 				test.res.Header[headerSecAccept] = []string{string(makeAccept(test.nonce))}
