@@ -371,14 +371,14 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 		}
 
 		switch btsToString(k) {
-		case headerUpgrade:
+		case headerUpgradeCanonical:
 			headerSeen |= headerSeenUpgrade
 			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
 				err = ErrHandshakeBadUpgrade
 				return
 			}
 
-		case headerConnection:
+		case headerConnectionCanonical:
 			headerSeen |= headerSeenConnection
 			// Note that as RFC6455 says:
 			//   > A |Connection| header field with value "Upgrade".

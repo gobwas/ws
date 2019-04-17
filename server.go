@@ -159,9 +159,9 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = ErrHandshakeBadProtocol
 	} else if r.Host == "" {
 		err = ErrHandshakeBadHost
-	} else if u := httpGetHeader(r.Header, headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
+	} else if u := httpGetHeader(r.Header, headerUpgradeCanonical); u != "websocket" && !strEqualFold(u, "websocket") {
 		err = ErrHandshakeBadUpgrade
-	} else if c := httpGetHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
+	} else if c := httpGetHeader(r.Header, headerConnectionCanonical); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
 	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); len(nonce) != nonceSize {
 		err = ErrHandshakeBadSecKey
@@ -466,19 +466,19 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		}
 
 		switch btsToString(k) {
-		case headerHost:
+		case headerHostCanonical:
 			headerSeen |= headerSeenHost
 			if onHost := u.OnHost; onHost != nil {
 				err = onHost(v)
 			}
 
-		case headerUpgrade:
+		case headerUpgradeCanonical:
 			headerSeen |= headerSeenUpgrade
 			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
 				err = ErrHandshakeBadUpgrade
 			}
 
-		case headerConnection:
+		case headerConnectionCanonical:
 			headerSeen |= headerSeenConnection
 			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
 				err = ErrHandshakeBadConnection
