@@ -159,13 +159,13 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = ErrHandshakeBadProtocol
 	} else if r.Host == "" {
 		err = ErrHandshakeBadHost
-	} else if u := httpGetHeader(r.Header, headerUpgrade); u != "websocket" && !strEqualFold(u, "websocket") {
+	} else if u := httpGetHeader(r.Header, headerUpgradeCanonical); u != "websocket" && !strEqualFold(u, "websocket") {
 		err = ErrHandshakeBadUpgrade
-	} else if c := httpGetHeader(r.Header, headerConnection); c != "Upgrade" && !strHasToken(c, "upgrade") {
+	} else if c := httpGetHeader(r.Header, headerConnectionCanonical); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
-	} else if nonce = httpGetHeader(r.Header, headerSecKey); len(nonce) != nonceSize {
+	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); len(nonce) != nonceSize {
 		err = ErrHandshakeBadSecKey
-	} else if v := httpGetHeader(r.Header, headerSecVersion); v != "13" {
+	} else if v := httpGetHeader(r.Header, headerSecVersionCanonical); v != "13" {
 		// According to RFC6455:
 		//
 		// If this version does not match a version understood by the server,
@@ -190,7 +190,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		}
 	}
 	if check := u.Protocol; err == nil && check != nil {
-		ps := r.Header[headerSecProtocol]
+		ps := r.Header[headerSecProtocolCanonical]
 		for i := 0; i < len(ps) && err == nil && hs.Protocol == ""; i++ {
 			var ok bool
 			hs.Protocol, ok = strSelectProtocol(ps[i], check)
@@ -200,7 +200,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		}
 	}
 	if check := u.Extension; err == nil && check != nil {
-		xs := r.Header[headerSecExtensions]
+		xs := r.Header[headerSecExtensionsCanonical]
 		for i := 0; i < len(xs) && err == nil; i++ {
 			var ok bool
 			hs.Extensions, ok = strSelectExtensions(xs[i], hs.Extensions, check)
@@ -466,31 +466,31 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		}
 
 		switch btsToString(k) {
-		case headerHost:
+		case headerHostCanonical:
 			headerSeen |= headerSeenHost
 			if onHost := u.OnHost; onHost != nil {
 				err = onHost(v)
 			}
 
-		case headerUpgrade:
+		case headerUpgradeCanonical:
 			headerSeen |= headerSeenUpgrade
 			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
 				err = ErrHandshakeBadUpgrade
 			}
 
-		case headerConnection:
+		case headerConnectionCanonical:
 			headerSeen |= headerSeenConnection
 			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
 				err = ErrHandshakeBadConnection
 			}
 
-		case headerSecVersion:
+		case headerSecVersionCanonical:
 			headerSeen |= headerSeenSecVersion
 			if !bytes.Equal(v, specHeaderValueSecVersion) {
 				err = ErrHandshakeUpgradeRequired
 			}
 
-		case headerSecKey:
+		case headerSecKeyCanonical:
 			headerSeen |= headerSeenSecKey
 			if len(v) != nonceSize {
 				err = ErrHandshakeBadSecKey
@@ -498,7 +498,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				copy(nonce[:], v)
 			}
 
-		case headerSecProtocol:
+		case headerSecProtocolCanonical:
 			if custom, check := u.ProtocolCustom, u.Protocol; hs.Protocol == "" && (custom != nil || check != nil) {
 				var ok bool
 				if custom != nil {
@@ -511,7 +511,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				}
 			}
 
-		case headerSecExtensions:
+		case headerSecExtensionsCanonical:
 			if custom, check := u.ExtensionCustom, u.Extension; custom != nil || check != nil {
 				var ok bool
 				if custom != nil {

@@ -33,7 +33,7 @@ func main() {
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("listen %q error: %v", err)
+		log.Fatalf("listen %q error: %v", *addr, err)
 	}
 	log.Printf("listening %s (%q)", ln.Addr(), *addr)
 
