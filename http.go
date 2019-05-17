@@ -71,6 +71,15 @@ var (
 	httpVersionPrefix = []byte("HTTP/")
 )
 
+var (
+	wsExtensionPerMessageDeflate   = "permessage-deflate"
+	wsExtensionXWebkitDeflateFrame = "x-webkit-deflate-frame"
+
+	wsExtensionOptClientNoContextTakeover = "client_no_context_takeover"
+	wsExtensionOptServerNoContextTakeover = "server_no_context_takeover"
+	wsExtensionOptNoContextTakeover       = "no_context_takeover"
+)
+
 type httpRequestLine struct {
 	method, uri  []byte
 	major, minor int

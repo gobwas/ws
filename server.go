@@ -109,27 +109,27 @@ func NegotiateNoContextTakeoverCompression(
 
 	var selected []httphead.Option
 	for _, option := range options {
-		name := string(option.Name)
+		name := btsToString(option.Name)
 
 		switch name {
-		case "permessage-deflate":
+		case wsExtensionPerMessageDeflate:
 			selected = append(
 				selected,
 				httphead.NewOption(
 					name,
 					map[string]string{
-						"client_no_context_takeover": "",
-						"server_no_context_takeover": "",
+						wsExtensionOptClientNoContextTakeover: "",
+						wsExtensionOptServerNoContextTakeover: "",
 					},
 				),
 			)
-		case "x-webkit-deflate-frame":
+		case wsExtensionXWebkitDeflateFrame:
 			selected = append(
 				selected,
 				httphead.NewOption(
 					name,
 					map[string]string{
-						"no_context_takeover": "",
+						wsExtensionOptNoContextTakeover: "",
 					},
 				),
 			)

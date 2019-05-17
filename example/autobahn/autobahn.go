@@ -323,6 +323,7 @@ func wsCompressed(w http.ResponseWriter, r *http.Request) {
 	)
 	if hs.DeflateAccepted() {
 		compressReader = compress.NewReader(nil, ws.DefaultServerReadBufferSize)
+		defer compressReader.Close()
 	}
 
 	payloadBuf := make([]byte, 0, 4096)

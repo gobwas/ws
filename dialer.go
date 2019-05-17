@@ -34,8 +34,9 @@ type Handshake struct {
 
 func (hs Handshake) DeflateAccepted() bool {
 	for _, option := range hs.Extensions {
-		name := string(option.Name)
-		if name == "permessage-deflate" || name == "x-webkit-deflate-frame" {
+		name := btsToString(option.Name)
+		if name == wsExtensionPerMessageDeflate ||
+			name == wsExtensionXWebkitDeflateFrame {
 			return true
 		}
 	}
