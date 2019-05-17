@@ -31,13 +31,13 @@ func TestCompressWriter(t *testing.T) {
 			label:  "simple",
 			level:  6,
 			seq:    [][]byte{[]byte("hello world!")},
-			result: ws.MustCompileFrame(wsutil.MustCompressFrame(ws.NewTextFrame([]byte("hello world!")), -1))[2:], // strip header
+			result: ws.MustCompileFrame(MustCompressFrame(ws.NewTextFrame([]byte("hello world!")), -1))[2:], // strip header
 		},
 		{
 			label:  "small",
 			level:  6,
 			seq:    [][]byte{[]byte("hi")},
-			result: ws.MustCompileFrame(wsutil.MustCompressFrame(ws.NewTextFrame([]byte("hi")), -1))[2:],  // strip header
+			result: ws.MustCompileFrame(MustCompressFrame(ws.NewTextFrame([]byte("hi")), -1))[2:],  // strip header
 		},
 		{
 			label:  "multiple_writes",
