@@ -3,7 +3,6 @@ package compress
 import (
 	"bytes"
 	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/compress"
 )
 
 // CompressFrame returns frame with compressed payload and updated header.
@@ -16,7 +15,7 @@ func CompressFrame(f ws.Frame, level int) (ws.Frame, error) {
 	}
 
 	buf := bytes.NewBuffer(nil)
-	compressor := compress.NewWriter(buf, level)
+	compressor := NewWriter(buf, level)
 	defer compressor.Close()
 
 	_, err := compressor.Write(f.Payload)
