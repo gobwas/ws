@@ -56,14 +56,16 @@ func WriteHeader(w io.Writer, h Header) error {
 	// Using stack based slice is safe here, cause golang docs for io.Writer
 	// says that "Implementations must not retain p".
 	// See https://golang.org/pkg/io/#Writer
-	var b [MaxHeaderSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{
-		Data: bp,
-		Len:  MaxHeaderSize,
-		Cap:  MaxHeaderSize,
+	var (
+		b   [MaxHeaderSize]byte // Stack based array.
+		bts []byte              // Slice of bytes backed by stack based array.
+	)
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&bts))
+	*bh = reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(&b)),
+		Len:  len(b),
+		Cap:  len(b),
 	}
-	bts := *(*[]byte)(unsafe.Pointer(bh))
 	_ = bts[MaxHeaderSize-1] // bounds check hint to compiler.
 
 	if h.Fin {

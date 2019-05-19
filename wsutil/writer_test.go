@@ -130,9 +130,13 @@ func genReserveTestCases(s ws.State, n, m, exp int) []reserveTestCase {
 	return ret
 }
 
-func fakeMake(n int) []byte {
-	sh := &reflect.SliceHeader{Len: n, Cap: n}
-	return *(*[]byte)(unsafe.Pointer(sh))
+func fakeMake(n int) (r []byte) {
+	rh := (*reflect.SliceHeader)(unsafe.Pointer(&r))
+	*rh = reflect.SliceHeader{
+		Len: n,
+		Cap: n,
+	}
+	return r
 }
 
 var reserveTestCases = []reserveTestCase{
