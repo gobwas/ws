@@ -37,10 +37,16 @@ var sha1Pool sync.Pool
 // slice with unsafe.
 type nonce [nonceSize]byte
 
-func (n *nonce) bytes() []byte {
-	h := uintptr(unsafe.Pointer(n))
-	b := &reflect.SliceHeader{Data: h, Len: nonceSize, Cap: nonceSize}
-	return *(*[]byte)(unsafe.Pointer(b))
+// bytes returns slice of bytes backed by nonce array.
+// Note that returned slice is only valid until nonce array is alive.
+func (n *nonce) bytes() (bts []byte) {
+	h := (*reflect.SliceHeader)(unsafe.Pointer(&bts))
+	*h = reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(n)),
+		Len:  len(n),
+		Cap:  len(n),
+	}
+	return bts
 }
 
 func acquireSha1() hash.Hash {
@@ -93,26 +99,32 @@ func initAcceptFromNonce(dst, nonce []byte) {
 	sha.Write(nonce)
 	sha.Write(webSocketMagic)
 
-	var sb [sha1.Size]byte
-	sh := uintptr(unsafe.Pointer(&sb))
-	sum := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: sh,
+	var (
+		sb  [sha1.Size]byte
+		sum []byte
+	)
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&sum))
+	*sh = reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(&sb)),
 		Len:  0,
-		Cap:  sha1.Size,
-	}))
+		Cap:  len(sb),
+	}
 	sum = sha.Sum(sum)
 
 	base64.StdEncoding.Encode(dst, sum)
 }
 
 func writeAccept(w io.Writer, nonce []byte) (int, error) {
-	var b [acceptSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: bp,
-		Len:  acceptSize,
-		Cap:  acceptSize,
-	}))
+	var (
+		b   [acceptSize]byte
+		bts []byte
+	)
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&bts))
+	*bh = reflect.SliceHeader{
+		Data: uintptr(unsafe.Pointer(&b)),
+		Len:  len(b),
+		Cap:  len(b),
+	}
 
 	initAcceptFromNonce(bts, nonce)
 
