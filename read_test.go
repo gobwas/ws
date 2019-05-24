@@ -6,7 +6,64 @@ import (
 	"io"
 	"reflect"
 	"testing"
+	"unsafe"
 )
+
+type StackEatingReader struct {
+	MaxDepth int
+	Source   io.Reader
+}
+
+func (s StackEatingReader) Read(p []byte) (n int, err error) {
+	var x [16]byte
+	ptr := uintptr(unsafe.Pointer(&x))
+
+	var f func(int)
+	f = func(lim int) {
+		if lim == 0 {
+			err = fmt.Errorf("stack eating reader: not enough recursion depth")
+			return
+		}
+		if act := uintptr(unsafe.Pointer(&x)); act != ptr {
+			// Stack has been moved!
+			n, err = s.Source.Read(p)
+			return
+		}
+		f(lim - 1)
+	}
+
+	f(s.MaxDepth)
+
+	return n, err
+}
+
+func TestReadHeaderStackMove(t *testing.T) {
+	// Prepare bytes of header we expect to read.
+	head := bits("1 000 0001 1 0001111 00000001 00000010 00000011 00000100")
+	//            _ ___ ____ _ _______ ___________________________________
+	//            |  |   |   |    |                     |
+	//           Fin |   |  Mask Length                Mask
+	//              Rsv  |
+	//                 OpCode
+	exp := Header{
+		Fin:    true,
+		OpCode: OpText,
+		Masked: true,
+		Mask:   [4]byte{1, 2, 3, 4},
+		Length: 15,
+	}
+	r := StackEatingReader{
+		MaxDepth: 1000,
+		Source:   bytes.NewReader(head),
+	}
+	act, err := ReadHeader(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if act != exp {
+		t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
+	}
+}
 
 func TestReadHeader(t *testing.T) {
 	for i, test := range append([]RWTestCase{
