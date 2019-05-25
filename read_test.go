@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -58,6 +60,69 @@ func makeTempFile(name string, p []byte) (f *os.File, err error) {
 		return
 	}
 	return
+}
+
+func TestReadHeaderStackMoveNetwork(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		client = make(chan net.Conn)
+		server = make(chan net.Conn)
+	)
+	go func() {
+		conn, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		client <- conn
+	}()
+	go func() {
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		server <- conn
+	}()
+
+	c := <-client
+	s := <-server
+
+	received := make(chan Header)
+	go func() {
+		r := StackEatingReader{
+			MaxDepth: 1000,
+			Source:   s,
+		}
+		h, err := ReadHeader(r)
+		if err != nil {
+			t.Fatalf("ReadHeader() error: %v", err)
+			return
+		}
+		received <- h
+	}()
+
+	exp := Header{
+		Fin:    true,
+		OpCode: OpText,
+		Masked: true,
+		Mask:   [4]byte{1, 2, 3, 4},
+		Length: 15,
+	}
+	time.AfterFunc(time.Second, func() {
+		if err := WriteHeader(c, exp); err != nil {
+			t.Fatalf("WriteHeader() error: %v", err)
+		}
+	})
+
+	act := <-received
+	if act != exp {
+		t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
+	}
 }
 
 func TestReadHeaderStackMove(t *testing.T) {
