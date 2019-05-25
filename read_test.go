@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -37,31 +40,81 @@ func (s StackEatingReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
-func TestReadHeaderStackMove(t *testing.T) {
-	// Prepare bytes of header we expect to read.
-	head := bits("1 000 0001 1 0001111 00000001 00000010 00000011 00000100")
-	//            _ ___ ____ _ _______ ___________________________________
-	//            |  |   |   |    |                     |
-	//           Fin |   |  Mask Length                Mask
-	//              Rsv  |
-	//                 OpCode
-	exp := Header{
-		Fin:    true,
-		OpCode: OpText,
-		Masked: true,
-		Mask:   [4]byte{1, 2, 3, 4},
-		Length: 15,
-	}
-	r := StackEatingReader{
-		MaxDepth: 1000,
-		Source:   bytes.NewReader(head),
-	}
-	act, err := ReadHeader(r)
+func makeTempFile(name string, p []byte) (f *os.File, err error) {
+	f, err = ioutil.TempFile("", strings.ToLower(name))
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		return nil, err
 	}
-	if act != exp {
-		t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
+	defer func() {
+		if err != nil {
+			os.Remove(f.Name())
+			f = nil
+		}
+	}()
+	if _, err = f.Write(p); err != nil {
+		return
+	}
+	if _, err = f.Seek(0, 0); err != nil {
+		return
+	}
+	return
+}
+
+func TestReadHeaderStackMove(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		file bool
+	}{
+		{
+			name: "in memory",
+			file: false,
+		},
+		{
+			name: "temp file",
+			file: true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Prepare bytes of header we expect to read.
+			head := bits("1 000 0001 1 0001111 00000001 00000010 00000011 00000100")
+			//            _ ___ ____ _ _______ ___________________________________
+			//            |  |   |   |    |                     |
+			//           Fin |   |  Mask Length                Mask
+			//              Rsv  |
+			//                 OpCode
+			exp := Header{
+				Fin:    true,
+				OpCode: OpText,
+				Masked: true,
+				Mask:   [4]byte{1, 2, 3, 4},
+				Length: 15,
+			}
+
+			var source io.Reader
+			if test.file {
+				name := strings.Replace(t.Name(), "/", "", -1)
+				f, err := makeTempFile(name, head)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer os.Remove(f.Name())
+				source = f
+			} else {
+				source = bytes.NewReader(head)
+			}
+
+			r := StackEatingReader{
+				MaxDepth: 1000,
+				Source:   source,
+			}
+			act, err := ReadHeader(r)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if act != exp {
+				t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
+			}
+		})
 	}
 }
 
