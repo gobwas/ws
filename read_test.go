@@ -78,7 +78,7 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 		},
 		{
 			n:        500,
-			repeat:   100,
+			repeat:   10,
 			delayMax: time.Millisecond,
 		},
 	} {
