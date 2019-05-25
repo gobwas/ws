@@ -78,7 +78,7 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 		},
 		{
 			n:        500,
-			repeat:   10,
+			repeat:   1000,
 			delayMax: time.Millisecond,
 		},
 	} {
@@ -95,17 +95,16 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var wg sync.WaitGroup
-			clientHandler := func(conn net.Conn) {
-				defer func() {
-					conn.Close()
-					wg.Done()
-				}()
+			var clientHandler func(net.Conn)
+			clientHandler = func(conn net.Conn) {
 				r := StackEatingReader{
 					MaxDepth: 1000,
 					Source:   conn,
 				}
 				act, err := ReadHeader(r)
+				if err == io.EOF {
+					return
+				}
 				if err != nil {
 					t.Fatalf("ReadHeader() error: %v", err)
 					return
@@ -113,6 +112,8 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 				if act != exp {
 					t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
 				}
+				// Start separate goroutine to reset grown stack.
+				go clientHandler(conn)
 			}
 			go func() {
 				for {
@@ -123,23 +124,28 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 					go clientHandler(conn)
 				}
 			}()
-			for i := 0; i < test.repeat; i++ {
-				for j := 0; j < test.n; j++ {
-					conn, err := net.Dial("tcp", ln.Addr().String())
-					if err != nil {
-						t.Fatal(err)
-					}
-					wg.Add(1)
-					delay := rand.Intn(int(test.delayMax - test.delayMin))
-					time.AfterFunc(time.Duration(delay), func() {
-						defer conn.Close()
+			var wg sync.WaitGroup
+			for i := 0; i < test.n; i++ {
+				conn, err := net.Dial("tcp", ln.Addr().String())
+				if err != nil {
+					t.Fatal(err)
+				}
+				wg.Add(1)
+				go func() {
+					defer func() {
+						conn.Close()
+						wg.Done()
+					}()
+					for i := 0; i < test.repeat; i++ {
+						delay := rand.Intn(int(test.delayMax - test.delayMin))
+						<-time.After(time.Duration(delay))
 						if err := WriteHeader(conn, exp); err != nil {
 							t.Fatalf("WriteHeader() error: %v", err)
 						}
-					})
-				}
-				wg.Wait()
+					}
+				}()
 			}
+			wg.Wait()
 		})
 	}
 }
