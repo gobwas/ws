@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -60,6 +62,86 @@ func makeTempFile(name string, p []byte) (f *os.File, err error) {
 		return
 	}
 	return
+}
+
+func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		n        int
+		repeat   int
+		delayMin time.Duration
+		delayMax time.Duration
+	}{
+		{
+			n:        10,
+			delayMax: time.Second,
+		},
+		{
+			n:        500,
+			repeat:   100,
+			delayMax: time.Millisecond,
+		},
+	} {
+		exp := Header{
+			Fin:    true,
+			OpCode: OpText,
+			Masked: true,
+			Mask:   [4]byte{1, 2, 3, 4},
+			Length: 15,
+		}
+
+		t.Run(test.name, func(t *testing.T) {
+			ln, err := net.Listen("tcp", "127.0.0.1:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wg sync.WaitGroup
+			clientHandler := func(conn net.Conn) {
+				defer func() {
+					conn.Close()
+					wg.Done()
+				}()
+				r := StackEatingReader{
+					MaxDepth: 1000,
+					Source:   conn,
+				}
+				act, err := ReadHeader(r)
+				if err != nil {
+					t.Fatalf("ReadHeader() error: %v", err)
+					return
+				}
+				if act != exp {
+					t.Fatalf("ReadHeader() unexpected header: %+v; want %+v", act, exp)
+				}
+			}
+			go func() {
+				for {
+					conn, err := ln.Accept()
+					if err != nil {
+						return
+					}
+					go clientHandler(conn)
+				}
+			}()
+			for i := 0; i < test.repeat; i++ {
+				for j := 0; j < test.n; j++ {
+					conn, err := net.Dial("tcp", ln.Addr().String())
+					if err != nil {
+						t.Fatal(err)
+					}
+					wg.Add(1)
+					delay := rand.Intn(int(test.delayMax - test.delayMin))
+					time.AfterFunc(time.Duration(delay), func() {
+						defer conn.Close()
+						if err := WriteHeader(conn, exp); err != nil {
+							t.Fatalf("WriteHeader() error: %v", err)
+						}
+					})
+				}
+				wg.Wait()
+			}
+		})
+	}
 }
 
 func TestReadHeaderStackMoveNetwork(t *testing.T) {
