@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -73,12 +74,8 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 		delayMax time.Duration
 	}{
 		{
-			n:        10,
-			delayMax: time.Second,
-		},
-		{
-			n:        500,
-			repeat:   1000,
+			n:        2,
+			repeat:   10,
 			delayMax: time.Millisecond,
 		},
 	} {
@@ -139,6 +136,7 @@ func TestReadHeaderStackMoveNetworkConcurrent(t *testing.T) {
 					for i := 0; i < test.repeat; i++ {
 						delay := rand.Intn(int(test.delayMax - test.delayMin))
 						<-time.After(time.Duration(delay))
+						runtime.GC()
 						if err := WriteHeader(conn, exp); err != nil {
 							t.Fatalf("WriteHeader() error: %v", err)
 						}
