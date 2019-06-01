@@ -261,7 +261,12 @@ func httpWriteUpgradeRequest(
 	httpWriteHeaderBts(bw, headerUpgrade, specHeaderValueUpgrade)
 	httpWriteHeaderBts(bw, headerConnection, specHeaderValueConnection)
 	httpWriteHeaderBts(bw, headerSecVersion, specHeaderValueSecVersion)
-	httpWriteHeaderBts(bw, headerSecKey, nonce[:])
+
+	// NOTE: write nonce bytes as a string to prevent heap allocation –
+	// WriteString() copy given string into its inner buffer, unlike Write()
+	// which may write p directly to the underlying io.Writer – which in turn
+	// will lead to p escape.
+	httpWriteHeader(bw, headerSecKey, btsToString(nonce))
 
 	if len(protocols) > 0 {
 		httpWriteHeaderKey(bw, headerSecProtocol)

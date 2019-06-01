@@ -8,26 +8,55 @@ import (
 )
 
 func TestCipher(t *testing.T) {
-	for i, test := range []struct {
-		in   []byte
-		mask [4]byte
-	}{
+	type test struct {
+		name   string
+		in     []byte
+		mask   [4]byte
+		offset int
+	}
+	cases := []test{
 		{
+			name: "simple",
 			in:   []byte("Hello, XOR!"),
 			mask: [4]byte{1, 2, 3, 4},
 		},
 		{
+			name: "simple",
 			in:   []byte("Hello, XOR!"),
 			mask: [4]byte{255, 255, 255, 255},
 		},
-	} {
-		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+	}
+	for offset := 0; offset < 4; offset++ {
+		for tail := 0; tail < 8; tail++ {
+			for b64 := 0; b64 < 3; b64++ {
+				var (
+					ln = remain[offset]
+					rn = tail
+					n  = b64*8 + ln + rn
+				)
+
+				p := make([]byte, n)
+				rand.Read(p)
+
+				var m [4]byte
+				rand.Read(m[:])
+
+				cases = append(cases, test{
+					in:     p,
+					mask:   m,
+					offset: offset,
+				})
+			}
+		}
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
 			// naive implementation of xor-cipher
-			exp := cipherNaive(test.in, test.mask, 0)
+			exp := cipherNaive(test.in, test.mask, test.offset)
 
 			res := make([]byte, len(test.in))
 			copy(res, test.in)
-			Cipher(res, test.mask, 0)
+			Cipher(res, test.mask, test.offset)
 
 			if !reflect.DeepEqual(res, exp) {
 				t.Errorf("Cipher(%v, %v):\nact:\t%v\nexp:\t%v\n", test.in, test.mask, res, exp)
