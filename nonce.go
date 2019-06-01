@@ -77,7 +77,7 @@ func checkAcceptFromNonce(accept, nonce []byte) bool {
 	if len(accept) != acceptSize {
 		return false
 	}
-	// NOTE: expect does not escapes.
+	// NOTE: expect does not escape.
 	expect := make([]byte, acceptSize)
 	initAcceptFromNonce(expect, nonce)
 	return bytes.Equal(expect, accept)

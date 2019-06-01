@@ -730,7 +730,7 @@ func BenchmarkDialer(b *testing.B) {
 				nonceBytes[i*nonceKeySize:i*nonceKeySize+nonceKeySize],
 			)
 			accept := makeAccept(nonce)
-			resp.Header.Set(headerSecAccept, string(accept))
+			resp.Header[headerSecAccept] = []string{string(accept)}
 			rs[i] = dumpResponse(resp)
 		}
 
