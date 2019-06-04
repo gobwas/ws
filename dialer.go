@@ -306,9 +306,7 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 		}
 	}()
 
-	// Stick nonce bytes to the stack.
-	var n nonce
-	nonce := n.bytes()
+	nonce := make([]byte, nonceSize)
 	initNonce(nonce)
 
 	httpWriteUpgradeRequest(bw, u, nonce, d.Protocols, d.Extensions, d.Header)

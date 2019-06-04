@@ -447,7 +447,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		// headerSeen reports which header was seen by setting corresponding
 		// bit on.
 		headerSeen byte
-		nonce      nonce
+
+		nonce = make([]byte, nonceSize)
 	)
 	for err == nil {
 		line, e := readLine(br)
@@ -585,7 +586,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
-	httpWriteResponseUpgrade(bw, nonce.bytes(), hs, header.WriteTo)
+	httpWriteResponseUpgrade(bw, nonce, hs, header.WriteTo)
 	err = bw.Flush()
 
 	return
