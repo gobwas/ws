@@ -19,7 +19,7 @@ import (
 // Note that it must not be used in production applications that requires
 // Dial() to be efficient.
 type DebugDialer struct {
-	// Dialer contains WebSocket connection establishement options.
+	// Dialer contains WebSocket connection establishment options.
 	Dialer ws.Dialer
 
 	// OnRequest and OnResponse are the callbacks that will be called with the
@@ -70,7 +70,7 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		onRequest(reqBuf.Bytes())
 	}
 	if onResponse := d.OnResponse; onResponse != nil {
-		// We must split response iniside buffered bytes from other received
+		// We must split response inside buffered bytes from other received
 		// bytes from server.
 		p := resBuf.Bytes()
 		n := bytes.Index(p, headEnd)

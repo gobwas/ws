@@ -47,7 +47,7 @@ func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
 		// No more frames will be read. Use fixed sized buffer to read payload.
 		p = make([]byte, h.Length)
 		// It is not possible to receive io.EOF here because Reader does not
-		// return EOF if frame payload was successfuly fetched.
+		// return EOF if frame payload was successfully fetched.
 		// Thus we consistent here with io.Reader behavior.
 		_, err = io.ReadFull(&rd, p)
 	} else {

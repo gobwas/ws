@@ -289,7 +289,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	// this could bring unwanted fragmentation. That is, user could create
 	// buffer with size that fits exactly all further Write() call, and then
 	// call Flush(), excepting that single and not fragmented frame will be
-	// sent. With preemtive flush this case will produce two frames – last one
+	// sent. With preemptive flush this case will produce two frames – last one
 	// will be empty and just to set fin = true.
 
 	return n, w.err
@@ -347,7 +347,7 @@ func (w *Writer) ReadFrom(src io.Reader) (n int64, err error) {
 		n += int64(nn)
 	}
 	if err == io.EOF {
-		// NOTE: Do not flush preemtively.
+		// NOTE: Do not flush preemptively.
 		// See the Write() sources for more info.
 		err = nil
 		w.dirty = true

@@ -574,7 +574,7 @@ func TestDialerHandshake(t *testing.T) {
 	}
 }
 
-// Used to emulate net.Error behaviour, which is usually returned when
+// Used to emulate net.Error behavior, which is usually returned when
 // connection deadline exceeds.
 type errTimeout struct {
 	error
