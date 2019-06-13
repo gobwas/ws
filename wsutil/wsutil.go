@@ -9,7 +9,7 @@ Overview:
 	  // handle err
   }
 
-  // Preapre to read payload.
+  // Prepare to read payload.
   r := io.LimitReader(conn, header.Length)
   r = wsutil.NewCipherReader(r, header.Mask)
   r = wsutil.NewUTF8Reader(r)

@@ -49,7 +49,7 @@ type ControlHandler struct {
 // header could not be handled.
 var ErrNotControlFrame = errors.New("not a control frame")
 
-// Handle handles control framse regarding to the c.State and writes responses
+// Handle handles control frames regarding to the c.State and writes responses
 // to the c.Dst when needed.
 //
 // It returns ErrNotControlFrame when given header is not of ws.OpClose,

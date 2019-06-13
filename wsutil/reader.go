@@ -124,7 +124,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 }
 
 // Discard discards current message unread bytes.
-// It discards all frames of fragmeneted message.
+// It discards all frames of fragmented message.
 func (r *Reader) Discard() (err error) {
 	for {
 		_, err = io.Copy(ioutil.Discard, &r.raw)

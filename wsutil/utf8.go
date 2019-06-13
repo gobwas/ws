@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// ErrInvalidUTF8 is returned by UTF8 reader on invalid utf8 sequnce.
+// ErrInvalidUTF8 is returned by UTF8 reader on invalid utf8 sequence.
 var ErrInvalidUTF8 = fmt.Errorf("invalid utf8")
 
 // UTF8Reader implements io.Reader that calculates utf8 validity state after

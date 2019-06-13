@@ -310,16 +310,16 @@ func main() {
 			if string(host) == "github.com" {
 				return nil
 			}
-			return &ws.RejectConnectionError(
+			return ws.RejectConnectionError(
 				ws.RejectionStatus(403),
 				ws.RejectionHeader(ws.HandshakeHeaderString(
-					"X-Want-Host: github.com",
+					"X-Want-Host: github.com\r\n",
 				)),
 			)
 		},
 		OnHeader: func(key, value []byte) error {
 			if string(key) != "Cookie" {
-				return
+				return nil
 			}
 			ok := httphead.ScanCookie(value, func(key, value []byte) bool {
 				// Check session here or do some other stuff with cookies.
@@ -329,12 +329,12 @@ func main() {
 			if ok {
 				return nil
 			}
-			return &ws.RejectConnectionError(
+			return ws.RejectConnectionError(
 				ws.RejectionReason("bad cookie"),
 				ws.RejectionStatus(400),
 			)
 		},
-		OnBeforeUpgrade: func() (HandshakeHeader, error) {
+		OnBeforeUpgrade: func() (ws.HandshakeHeader, error) {
 			return header, nil
 		},
 	}
