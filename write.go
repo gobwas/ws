@@ -3,8 +3,6 @@ package ws
 import (
 	"encoding/binary"
 	"io"
-	"reflect"
-	"unsafe"
 )
 
 // Header size length bounds in bytes.
@@ -50,21 +48,7 @@ func HeaderSize(h Header) (n int) {
 // WriteHeader writes header binary representation into w.
 func WriteHeader(w io.Writer, h Header) error {
 	// Make slice of bytes with capacity 14 that could hold any header.
-	//
-	// We use unsafe to stick bts to stack and avoid allocations.
-	//
-	// Using stack based slice is safe here, cause golang docs for io.Writer
-	// says that "Implementations must not retain p".
-	// See https://golang.org/pkg/io/#Writer
-	var b [MaxHeaderSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bh := &reflect.SliceHeader{
-		Data: bp,
-		Len:  MaxHeaderSize,
-		Cap:  MaxHeaderSize,
-	}
-	bts := *(*[]byte)(unsafe.Pointer(bh))
-	_ = bts[MaxHeaderSize-1] // bounds check hint to compiler.
+	bts := make([]byte, MaxHeaderSize)
 
 	if h.Fin {
 		bts[0] |= bit0

@@ -38,7 +38,7 @@ func (c *CipherReader) Read(p []byte) (n int, err error) {
 }
 
 // CipherWriter implements io.Writer that applies xor-cipher to the bytes
-// written to the destination writer. It does not modifiy the original bytes.
+// written to the destination writer. It does not modify the original bytes.
 type CipherWriter struct {
 	w    io.Writer
 	mask [4]byte
@@ -57,7 +57,7 @@ func (c *CipherWriter) Reset(w io.Writer, mask [4]byte) {
 	c.pos = 0
 }
 
-// Write implements io.Writer interface. It applies mask vien during
+// Write implements io.Writer interface. It applies masking during
 // initialization to every sent byte. It does not modify original slice.
 func (c *CipherWriter) Write(p []byte) (n int, err error) {
 	cp := pbytes.GetLen(len(p))

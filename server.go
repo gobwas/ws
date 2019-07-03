@@ -189,7 +189,7 @@ type HTTPUpgrader struct {
 
 // Upgrade upgrades http connection to the websocket connection.
 //
-// It hijacks net.Conn from w and returns recevied net.Conn and
+// It hijacks net.Conn from w and returns received net.Conn and
 // bufio.ReadWriter. On successful handshake it returns Handshake struct
 // describing handshake info.
 func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
@@ -525,7 +525,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		// headerSeen reports which header was seen by setting corresponding
 		// bit on.
 		headerSeen byte
-		nonce      nonce
+
+		nonce = make([]byte, nonceSize)
 	)
 	for err == nil {
 		line, e := readLine(br)
@@ -669,7 +670,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		return
 	}
 
-	httpWriteResponseUpgrade(bw, nonce.bytes(), hs, header.WriteTo)
+	httpWriteResponseUpgrade(bw, nonce, hs, header.WriteTo)
 	err = bw.Flush()
 
 	return

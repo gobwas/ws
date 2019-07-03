@@ -1,6 +1,8 @@
 package ws
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // Cipher applies XOR cipher to the payload using mask.
 // Offset is used to cipher chunked data (e.g. in io.Reader implementations).
@@ -40,15 +42,11 @@ func Cipher(payload []byte, mask [4]byte, offset int) {
 	m := *(*uint32)(unsafe.Pointer(&mask))
 	m2 := uint64(m)<<32 | uint64(m)
 
-	// Get pointer to payload at ln index to
-	// skip manual processed bytes above.
-	p := uintptr(unsafe.Pointer(&payload[ln]))
-	// Also skip right part as the division by 8 remainder.
-	// Divide it by 8 to get number of uint64 parts remaining to process.
-	n = (n - rn) >> 3
-	// Process the rest of bytes as uint64.
-	for i := 0; i < n; i, p = i+1, p+8 {
-		v := (*uint64)(unsafe.Pointer(p))
+	// Skip already processed right part.
+	// Get number of uint64 parts remaining to process.
+	n = (n - ln - rn) >> 3
+	for i := 0; i < n; i++ {
+		v := (*uint64)(unsafe.Pointer(&payload[ln+(i<<3)]))
 		*v = *v ^ m2
 	}
 }
