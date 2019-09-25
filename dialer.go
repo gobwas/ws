@@ -250,7 +250,7 @@ func (d Dialer) tlsClient(conn net.Conn, hostname string) net.Conn {
 		config = tlsDefaultConfig()
 	}
 	if config.ServerName == "" {
-		config = tlsCloneConfig(config)
+		config = config.Clone()
 		config.ServerName = hostname
 	}
 	// Do not make conn.Handshake() here because downstairs we will prepare
