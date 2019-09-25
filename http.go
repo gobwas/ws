@@ -39,14 +39,23 @@ var (
 )
 
 var (
-	headerHost          = textproto.CanonicalMIMEHeaderKey("Host")
-	headerUpgrade       = textproto.CanonicalMIMEHeaderKey("Upgrade")
-	headerConnection    = textproto.CanonicalMIMEHeaderKey("Connection")
-	headerSecVersion    = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Version")
-	headerSecProtocol   = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Protocol")
-	headerSecExtensions = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Extensions")
-	headerSecKey        = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Key")
-	headerSecAccept     = textproto.CanonicalMIMEHeaderKey("Sec-Websocket-Accept")
+	headerHost          = "Host"
+	headerUpgrade       = "Upgrade"
+	headerConnection    = "Connection"
+	headerSecVersion    = "Sec-WebSocket-Version"
+	headerSecProtocol   = "Sec-WebSocket-Protocol"
+	headerSecExtensions = "Sec-WebSocket-Extensions"
+	headerSecKey        = "Sec-WebSocket-Key"
+	headerSecAccept     = "Sec-WebSocket-Accept"
+
+	headerHostCanonical          = textproto.CanonicalMIMEHeaderKey(headerHost)
+	headerUpgradeCanonical       = textproto.CanonicalMIMEHeaderKey(headerUpgrade)
+	headerConnectionCanonical    = textproto.CanonicalMIMEHeaderKey(headerConnection)
+	headerSecVersionCanonical    = textproto.CanonicalMIMEHeaderKey(headerSecVersion)
+	headerSecProtocolCanonical   = textproto.CanonicalMIMEHeaderKey(headerSecProtocol)
+	headerSecExtensionsCanonical = textproto.CanonicalMIMEHeaderKey(headerSecExtensions)
+	headerSecKeyCanonical        = textproto.CanonicalMIMEHeaderKey(headerSecKey)
+	headerSecAcceptCanonical     = textproto.CanonicalMIMEHeaderKey(headerSecAccept)
 )
 
 var (
@@ -252,7 +261,12 @@ func httpWriteUpgradeRequest(
 	httpWriteHeaderBts(bw, headerUpgrade, specHeaderValueUpgrade)
 	httpWriteHeaderBts(bw, headerConnection, specHeaderValueConnection)
 	httpWriteHeaderBts(bw, headerSecVersion, specHeaderValueSecVersion)
-	httpWriteHeaderBts(bw, headerSecKey, nonce[:])
+
+	// NOTE: write nonce bytes as a string to prevent heap allocation –
+	// WriteString() copy given string into its inner buffer, unlike Write()
+	// which may write p directly to the underlying io.Writer – which in turn
+	// will lead to p escape.
+	httpWriteHeader(bw, headerSecKey, btsToString(nonce))
 
 	if len(protocols) > 0 {
 		httpWriteHeaderKey(bw, headerSecProtocol)

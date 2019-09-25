@@ -41,16 +41,17 @@ func SelectEqual(v string) func(string) bool {
 	}
 }
 
-func strToBytes(str string) []byte {
-	s := *(*reflect.StringHeader)(unsafe.Pointer(&str))
-	b := &reflect.SliceHeader{Data: s.Data, Len: s.Len, Cap: s.Len}
-	return *(*[]byte)(unsafe.Pointer(b))
+func strToBytes(str string) (bts []byte) {
+	s := (*reflect.StringHeader)(unsafe.Pointer(&str))
+	b := (*reflect.SliceHeader)(unsafe.Pointer(&bts))
+	b.Data = s.Data
+	b.Len = s.Len
+	b.Cap = s.Len
+	return
 }
 
-func btsToString(bts []byte) string {
-	b := *(*reflect.SliceHeader)(unsafe.Pointer(&bts))
-	s := &reflect.StringHeader{Data: b.Data, Len: b.Len}
-	return *(*string)(unsafe.Pointer(s))
+func btsToString(bts []byte) (str string) {
+	return *(*string)(unsafe.Pointer(&bts))
 }
 
 // asciiToInt converts bytes to int.
@@ -202,38 +203,7 @@ func readLine(br *bufio.Reader) ([]byte, error) {
 // Note that p must be only ascii letters. That is, every byte in p belongs to
 // range ['a','z'] or ['A','Z'].
 func strEqualFold(s, p string) bool {
-	if len(s) != len(p) {
-		return false
-	}
-	n := len(s)
-	// Prepare manual conversion on bytes that not lay in uint64.
-	m := n % 8
-	for i := 0; i < m; i++ {
-		if s[i]|toLower != p[i]|toLower {
-			return false
-		}
-	}
-	// Iterate over uint64 parts of s.
-	n = (n - m) >> 3
-	if n == 0 {
-		// There are no bytes to compare.
-		return true
-	}
-
-	ah := *(*reflect.StringHeader)(unsafe.Pointer(&s))
-	ap := ah.Data + uintptr(m)
-	bh := *(*reflect.StringHeader)(unsafe.Pointer(&p))
-	bp := bh.Data + uintptr(m)
-
-	for i := 0; i < n; i, ap, bp = i+1, ap+8, bp+8 {
-		av := *(*uint64)(unsafe.Pointer(ap))
-		bv := *(*uint64)(unsafe.Pointer(bp))
-		if av|toLower8 != bv|toLower8 {
-			return false
-		}
-	}
-
-	return true
+	return btsEqualFold(strToBytes(s), strToBytes(p))
 }
 
 // btsEqualFold checks s to be case insensitive equal to p.
@@ -254,18 +224,14 @@ func btsEqualFold(s, p []byte) bool {
 	// Iterate over uint64 parts of s.
 	n = (n - m) >> 3
 	if n == 0 {
-		// There are no bytes to compare.
+		// There are no more bytes to compare.
 		return true
 	}
 
-	ah := *(*reflect.SliceHeader)(unsafe.Pointer(&s))
-	ap := ah.Data + uintptr(m)
-	bh := *(*reflect.SliceHeader)(unsafe.Pointer(&p))
-	bp := bh.Data + uintptr(m)
-
-	for i := 0; i < n; i, ap, bp = i+1, ap+8, bp+8 {
-		av := *(*uint64)(unsafe.Pointer(ap))
-		bv := *(*uint64)(unsafe.Pointer(bp))
+	for i := 0; i < n; i++ {
+		x := m + (i << 3)
+		av := *(*uint64)(unsafe.Pointer(&s[x]))
+		bv := *(*uint64)(unsafe.Pointer(&p[x]))
 		if av|toLower8 != bv|toLower8 {
 			return false
 		}

@@ -27,7 +27,7 @@ type DebugUpgrader struct {
 // Upgrade calls Upgrade() on underlying ws.Upgrader and tracks I/O on conn.
 func (d *DebugUpgrader) Upgrade(conn io.ReadWriter) (hs ws.Handshake, err error) {
 	var (
-		// Take the Reader and Writer partst from conn to be probably replaced
+		// Take the Reader and Writer parts from conn to be probably replaced
 		// below.
 		r io.Reader = conn
 		w io.Writer = conn
