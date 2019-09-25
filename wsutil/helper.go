@@ -152,7 +152,7 @@ func ReadServerBinary(rw io.ReadWriter) ([]byte, error) {
 
 // WriteMessage is a helper function that writes message to the w. It
 // constructs single frame with given operation code and payload.
-// It uses given state to prepare side-dependtend things, like cipher
+// It uses given state to prepare side-dependent things, like cipher
 // payload bytes from client to server. It will not mutate p bytes if
 // cipher must be made.
 //

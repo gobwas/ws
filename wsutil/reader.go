@@ -12,7 +12,7 @@ import (
 // preceding NextFrame() call.
 var ErrNoFrameAdvance = errors.New("no frame advance")
 
-// FrameHandlerFunc handles parsed frame header and its body represetned by
+// FrameHandlerFunc handles parsed frame header and its body represented by
 // io.Reader.
 //
 // Note that reader represents already unmasked body.
