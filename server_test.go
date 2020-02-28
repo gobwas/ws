@@ -28,7 +28,7 @@ type upgradeCase struct {
 	label string
 
 	protocol  func(string) bool
-	extension func(httphead.Option) bool
+	negotiate func(httphead.Option) (httphead.Option, error)
 	onRequest func(u []byte) error
 	onHost    func(h []byte) error
 	onHeader  func(k, v []byte) error
@@ -153,12 +153,12 @@ var upgradeCases = []upgradeCase{
 		hs: Handshake{Protocol: "b"},
 	},
 	{
-		extension: func(opt httphead.Option) bool {
+		negotiate: func(opt httphead.Option) (ret httphead.Option, err error) {
 			switch string(opt.Name) {
 			case "b", "d":
-				return true
+				return opt.Clone(), nil
 			default:
-				return false
+				return ret, nil
 			}
 		},
 		nonce: mustMakeNonce(),
@@ -335,8 +335,8 @@ var upgradeCases = []upgradeCase{
 			headerSecVersion:    []string{"13"},
 			headerSecExtensions: []string{"=["},
 		}),
-		extension: func(opt httphead.Option) bool {
-			return false
+		negotiate: func(opt httphead.Option) (ret httphead.Option, err error) {
+			return ret, nil
 		},
 		res: mustMakeErrResponse(400, ErrMalformedRequest, nil),
 		err: ErrMalformedRequest,
@@ -390,7 +390,7 @@ func TestHTTPUpgrader(t *testing.T) {
 
 			u := HTTPUpgrader{
 				Protocol:  test.protocol,
-				Extension: test.extension,
+				Negotiate: test.negotiate,
 			}
 			_, _, hs, err := u.Upgrade(req, res)
 			if test.err != err {
@@ -445,9 +445,7 @@ func TestUpgrader(t *testing.T) {
 				Protocol: func(p []byte) bool {
 					return test.protocol(string(p))
 				},
-				Extension: func(e httphead.Option) bool {
-					return test.extension(e)
-				},
+				Negotiate: test.negotiate,
 				OnHeader:  test.onHeader,
 				OnRequest: test.onRequest,
 			}
@@ -497,7 +495,7 @@ func BenchmarkHTTPUpgrader(b *testing.B) {
 
 		u := HTTPUpgrader{
 			Protocol:  bench.protocol,
-			Extension: bench.extension,
+			Negotiate: bench.negotiate,
 		}
 
 		b.Run(bench.label, func(b *testing.B) {
@@ -528,9 +526,7 @@ func BenchmarkUpgrader(b *testing.B) {
 			Protocol: func(p []byte) bool {
 				return bench.protocol(btsToString(p))
 			},
-			Extension: func(e httphead.Option) bool {
-				return bench.extension(e)
-			},
+			Negotiate: bench.negotiate,
 		}
 
 		reqBytes := dumpRequest(bench.req)

@@ -448,28 +448,6 @@ func TestDialerHandshake(t *testing.T) {
 			accept: acceptValid,
 			err:    ErrHandshakeBadExtensions,
 		},
-		{
-			name: "bad extensions",
-			dialer: Dialer{
-				Extensions: []httphead.Option{
-					httphead.NewOption("foo", map[string]string{
-						"bar": "1",
-					}),
-				},
-			},
-			res: &http.Response{
-				StatusCode: 101,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header: http.Header{
-					headerConnection:    []string{"Upgrade"},
-					headerUpgrade:       []string{"websocket"},
-					headerSecExtensions: []string{"foo;bar=2"},
-				},
-			},
-			accept: acceptValid,
-			err:    ErrHandshakeBadExtensions,
-		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client, server := net.Pipe()

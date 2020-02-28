@@ -206,6 +206,28 @@ func (h Header) Rsv2() bool { return h.Rsv&bit6 != 0 }
 // Rsv3 reports whether the header has third rsv bit set.
 func (h Header) Rsv3() bool { return h.Rsv&bit7 != 0 }
 
+// Rsv creates rsv byte representation from bits.
+func Rsv(r1, r2, r3 bool) (rsv byte) {
+	if r1 {
+		rsv |= bit5
+	}
+	if r2 {
+		rsv |= bit6
+	}
+	if r3 {
+		rsv |= bit7
+	}
+	return rsv
+}
+
+// RsvBits returns rsv bits from bytes representation.
+func RsvBits(rsv byte) (r1, r2, r3 bool) {
+	r1 = rsv&bit5 != 0
+	r2 = rsv&bit6 != 0
+	r3 = rsv&bit7 != 0
+	return
+}
+
 // Frame represents websocket frame.
 // See https://tools.ietf.org/html/rfc6455#section-5.2
 type Frame struct {
@@ -377,20 +399,6 @@ func MustCompileFrame(f Frame) []byte {
 		panic(err)
 	}
 	return bts
-}
-
-// Rsv creates rsv byte representation.
-func Rsv(r1, r2, r3 bool) (rsv byte) {
-	if r1 {
-		rsv |= bit5
-	}
-	if r2 {
-		rsv |= bit6
-	}
-	if r3 {
-		rsv |= bit7
-	}
-	return rsv
 }
 
 func makeCloseFrame(code StatusCode) Frame {

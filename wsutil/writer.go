@@ -84,38 +84,6 @@ func (c *ControlWriter) Flush() error {
 	return c.w.Flush()
 }
 
-// Writer contains logic of buffering output data into a WebSocket fragments.
-// It is much the same as bufio.Writer, except the thing that it works with
-// WebSocket frames, not the raw data.
-//
-// Writer writes frames with specified OpCode.
-// It uses ws.State to decide whether the output frames must be masked.
-//
-// Note that it does not check control frame size or other RFC rules.
-// That is, it must be used with special care to write control frames without
-// violation of RFC. You could use ControlWriter that wraps Writer and contains
-// some guards for writing control frames.
-//
-// If an error occurs writing to a Writer, no more data will be accepted and
-// all subsequent writes will return the error.
-// After all data has been written, the client should call the Flush() method
-// to guarantee all data has been forwarded to the underlying io.Writer.
-type Writer struct {
-	dest io.Writer
-
-	n   int    // Buffered bytes counter.
-	raw []byte // Raw representation of buffer, including reserved header bytes.
-	buf []byte // Writeable part of buffer, without reserved header bytes.
-
-	op    ws.OpCode
-	state ws.State
-
-	dirty      bool
-	fragmented bool
-
-	err error
-}
-
 var writers = pool.New(128, 65536)
 
 // GetWriter tries to reuse Writer getting it from the pool.
@@ -145,7 +113,63 @@ func PutWriter(w *Writer) {
 	writers.Put(w, w.Size())
 }
 
+// Writer contains logic of buffering output data into a WebSocket fragments.
+// It is much the same as bufio.Writer, except the thing that it works with
+// WebSocket frames, not the raw data.
+//
+// Writer writes frames with specified OpCode.
+// It uses ws.State to decide whether the output frames must be masked.
+//
+// Note that it does not check control frame size or other RFC rules.
+// That is, it must be used with special care to write control frames without
+// violation of RFC. You could use ControlWriter that wraps Writer and contains
+// some guards for writing control frames.
+//
+// If an error occurs writing to a Writer, no more data will be accepted and
+// all subsequent writes will return the error.
+// After all data has been written, the client should call the Flush() method
+// to guarantee all data has been forwarded to the underlying io.Writer.
+type Writer struct {
+	Dest  io.Writer
+	Op    ws.OpCode
+	State ws.State // Can not be changed.
+
+	// Extensions is a list of negotiated extensions for writer Dest.
+	// It is used to meet the specs and set appropriate bits in fragment
+	// header RSV segment.
+	Extensions []SendExtension
+
+	Limit        int
+	DisableFlush bool
+
+	n     int    // Buffered bytes counter.
+	raw   []byte // Raw representation of buffer, including reserved header bytes.
+	buf   []byte // Writeable part of buffer, without reserved header bytes.
+	dirty bool
+	fseq  int
+	err   error
+}
+
+func (w *Writer) init() {
+	if w.buf != nil {
+		return
+	}
+	n := w.Limit
+	if n == 0 {
+		n = DefaultWriteBuffer
+	}
+	buf := make([]byte, n)
+	offset := reserve(w.State, len(buf))
+	if len(buf) <= offset {
+		panic("wsutil: writer buffer too small")
+	}
+	w.raw = buf
+	w.buf = buf[offset:]
+}
+
 // NewWriter returns a new Writer whose buffer has the DefaultWriteBuffer size.
+//
+// DEPRECATED: use exported Writer fields instead.
 func NewWriter(dest io.Writer, state ws.State, op ws.OpCode) *Writer {
 	return NewWriterBufferSize(dest, state, op, 0)
 }
@@ -155,6 +179,8 @@ func NewWriter(dest io.Writer, state ws.State, op ws.OpCode) *Writer {
 // Write() is called on empty Writer with len(p) > n.
 //
 // If n <= 0 then the default buffer size is used as Writer's buffer size.
+//
+// DEPRECATED: use exported Writer fields instead.
 func NewWriterSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	if n > 0 {
 		n += headerSize(state, n)
@@ -169,6 +195,8 @@ func NewWriterSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer 
 // [ws.MinHeaderSize,ws.MaxHeaderSize]. That is, frames flushed by Writer
 // will not have payload length equal to n, except the case when Write() is
 // called on empty Writer with len(p) > n.
+//
+// DEPRECATED: use exported Writer fields instead.
 func NewWriterBufferSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	if n <= ws.MinHeaderSize {
 		n = DefaultWriteBuffer
@@ -185,44 +213,21 @@ func NewWriterBufferSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *W
 // header data.
 //
 // It panics if len(buf) is too small to fit header and payload data.
+//
+// DEPRECATED: use exported Writer fields instead.
 func NewWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *Writer {
 	offset := reserve(state, len(buf))
 	if len(buf) <= offset {
-		panic("buffer too small")
+		panic("wsutil: writer buffer too small")
 	}
-
 	return &Writer{
-		dest:  dest,
-		raw:   buf,
-		buf:   buf[offset:],
-		state: state,
-		op:    op,
-	}
-}
+		Dest:  dest,
+		State: state,
+		Op:    op,
 
-func reserve(state ws.State, n int) (offset int) {
-	var mask int
-	if state.ClientSide() {
-		mask = 4
+		raw: buf,
+		buf: buf[offset:],
 	}
-
-	switch {
-	case n <= int(len7)+mask+2:
-		return mask + 2
-	case n <= int(len16)+mask+4:
-		return mask + 4
-	default:
-		return mask + 10
-	}
-}
-
-// headerSize returns number of bytes needed to encode header of a frame with
-// given state and length.
-func headerSize(s ws.State, n int) int {
-	return ws.HeaderSize(ws.Header{
-		Length: int64(n),
-		Masked: s.ClientSide(),
-	})
 }
 
 // Reset discards any buffered data, clears error, and resets w to have given
@@ -230,10 +235,11 @@ func headerSize(s ws.State, n int) int {
 func (w *Writer) Reset(dest io.Writer, state ws.State, op ws.OpCode) {
 	w.n = 0
 	w.dirty = false
-	w.fragmented = false
-	w.dest = dest
-	w.state = state
-	w.op = op
+	w.fseq = 0
+
+	w.Dest = dest
+	w.State = state
+	w.Op = op
 }
 
 // Size returns the size of the underlying buffer in bytes.
@@ -258,11 +264,17 @@ func (w *Writer) Buffered() int {
 // with payload of N bytes will not fit into that buffer. Writer reserves some
 // space to fit WebSocket header data.
 func (w *Writer) Write(p []byte) (n int, err error) {
+	w.init()
+
 	// Even empty p may make a sense.
 	w.dirty = true
 
 	var nn int
 	for len(p) > w.Available() && w.err == nil {
+		if w.DisableFlush {
+			w.Grow(len(p) - w.Available())
+			continue
+		}
 		if w.Buffered() == 0 {
 			// Large write, empty buffer. Write directly from p to avoid copy.
 			// Trade off here is that we make additional Write() to underlying
@@ -295,9 +307,37 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	return n, w.err
 }
 
+func ceilPowerOfTwo(n int) int {
+	n |= n >> 1
+	n |= n >> 2
+	n |= n >> 4
+	n |= n >> 8
+	n |= n >> 16
+	n |= n >> 32
+	n++
+	return n
+}
+
+func (w *Writer) Grow(n int) {
+	w.init()
+	var (
+		offset = len(w.raw) - len(w.buf)
+		size   = ceilPowerOfTwo(offset + w.n + n)
+	)
+	if size <= len(w.raw) {
+		panic("wsutil: buffer grow leads to its reduce")
+	}
+	p := make([]byte, size)
+	copy(p, w.raw[:offset+w.n])
+	w.raw = p
+	w.buf = w.raw[offset:]
+}
+
 // WriteThrough writes data bypassing the buffer.
 // Note that Writer's buffer must be empty before calling WriteThrough().
 func (w *Writer) WriteThrough(p []byte) (n int, err error) {
+	w.init()
+
 	if w.err != nil {
 		return 0, w.err
 	}
@@ -305,23 +345,29 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		return 0, ErrNotEmpty
 	}
 
-	w.err = writeFrame(w.dest, w.state, w.opCode(), false, p)
+	w.err = writeFrame(w.Dest, w.State, w.opCode(), false, p)
 	if w.err == nil {
 		n = len(p)
 	}
 
 	w.dirty = true
-	w.fragmented = true
+	w.fseq++
 
 	return n, w.err
 }
 
 // ReadFrom implements io.ReaderFrom.
 func (w *Writer) ReadFrom(src io.Reader) (n int64, err error) {
+	w.init()
+
 	var nn int
 	for err == nil {
 		if w.Available() == 0 {
-			err = w.FlushFragment()
+			if w.DisableFlush {
+				w.Grow(w.Buffered()) // Twice bigger.
+			} else {
+				err = w.FlushFragment()
+			}
 			continue
 		}
 
@@ -367,7 +413,7 @@ func (w *Writer) Flush() error {
 	w.err = w.flushFragment(true)
 	w.n = 0
 	w.dirty = false
-	w.fragmented = false
+	w.fseq = 0
 
 	return w.err
 }
@@ -381,38 +427,52 @@ func (w *Writer) FlushFragment() error {
 
 	w.err = w.flushFragment(false)
 	w.n = 0
-	w.fragmented = true
+	w.fseq++
 
 	return w.err
 }
 
-func (w *Writer) flushFragment(fin bool) error {
-	frame := ws.NewFrame(w.opCode(), fin, w.buf[:w.n])
-	if w.state.ClientSide() {
-		frame = ws.MaskFrameInPlace(frame)
+func (w *Writer) flushFragment(fin bool) (err error) {
+	var (
+		payload = w.buf[:w.n]
+		header  = ws.Header{
+			OpCode: w.opCode(),
+			Fin:    fin,
+			Length: int64(len(payload)),
+		}
+	)
+	for _, ext := range w.Extensions {
+		header.Rsv, err = ext.BitsSend(w.fseq, header.Rsv)
+		if err != nil {
+			return err
+		}
 	}
-
+	if w.State.ClientSide() {
+		header.Masked = true
+		header.Mask = ws.NewMask()
+		ws.Cipher(payload, header.Mask, 0)
+	}
 	// Write header to the header segment of the raw buffer.
-	head := len(w.raw) - len(w.buf)
-	offset := head - ws.HeaderSize(frame.Header)
+	var (
+		offset = len(w.raw) - len(w.buf)
+		skip   = offset - ws.HeaderSize(header)
+	)
 	buf := bytesWriter{
-		buf: w.raw[offset:head],
+		buf: w.raw[skip:offset],
 	}
-	if err := ws.WriteHeader(&buf, frame.Header); err != nil {
+	if err := ws.WriteHeader(&buf, header); err != nil {
 		// Must never be reached.
 		panic("dump header error: " + err.Error())
 	}
-
-	_, err := w.dest.Write(w.raw[offset : head+w.n])
-
+	_, err = w.Dest.Write(w.raw[skip : offset+w.n])
 	return err
 }
 
 func (w *Writer) opCode() ws.OpCode {
-	if w.fragmented {
+	if w.fseq > 0 {
 		return ws.OpContinuation
 	}
-	return w.op
+	return w.Op
 }
 
 var errNoSpace = fmt.Errorf("not enough buffer space")
@@ -447,4 +507,29 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	}
 
 	return ws.WriteFrame(w, frame)
+}
+
+func reserve(state ws.State, n int) (offset int) {
+	var mask int
+	if state.ClientSide() {
+		mask = 4
+	}
+
+	switch {
+	case n <= int(len7)+mask+2:
+		return mask + 2
+	case n <= int(len16)+mask+4:
+		return mask + 4
+	default:
+		return mask + 10
+	}
+}
+
+// headerSize returns number of bytes needed to encode header of a frame with
+// given state and length.
+func headerSize(s ws.State, n int) int {
+	return ws.HeaderSize(ws.Header{
+		Length: int64(n),
+		Masked: s.ClientSide(),
+	})
 }
