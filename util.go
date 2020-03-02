@@ -230,8 +230,8 @@ func btsEqualFold(s, p []byte) bool {
 
 	for i := 0; i < n; i++ {
 		x := m + (i << 3)
-		av := uint64(*(*byte)(unsafe.Pointer(&s[x])))
-		bv := uint64(*(*byte)(unsafe.Pointer(&p[x])))
+		av := uint64(s[x])
+		bv := uint64(p[x])
 		if av|toLower8 != bv|toLower8 {
 			return false
 		}
