@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"math/rand"
@@ -17,8 +16,6 @@ import (
 	"testing"
 	"time"
 )
-
-var compareWithStd = flag.Bool("std", false, "compare with standard library implementation (if exists)")
 
 var readLineCases = []struct {
 	label   string
@@ -350,60 +347,6 @@ var equalFoldCases = []equalFoldCase{
 	{"upgrade", "Upgrade", "upgrade"},
 	randomEqualLetters(512),
 	inequalAt(randomEqualLetters(512), 256),
-}
-
-func TestStrEqualFold(t *testing.T) {
-	for i, test := range equalFoldCases {
-		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
-			if len(test.a) < 100 && len(test.b) < 100 {
-				t.Logf("\n\ta: %s\n\tb: %s\n", test.a, test.b)
-			}
-			exp := strings.EqualFold(test.a, test.b)
-			if act := strEqualFold(test.a, test.b); act != exp {
-				t.Errorf("strEqualFold(%q, %q) = %v; want %v", test.a, test.b, act, exp)
-			}
-		})
-	}
-}
-
-func BenchmarkStrEqualFold(b *testing.B) {
-	for i, bench := range equalFoldCases {
-		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = strEqualFold(bench.a, bench.b)
-			}
-		})
-	}
-	if *compareWithStd {
-		for i, bench := range equalFoldCases {
-			b.Run(fmt.Sprintf("%s#%d_std", bench.label, i), func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					_ = strings.EqualFold(bench.a, bench.b)
-				}
-			})
-		}
-	}
-}
-
-func BenchmarkBtsEqualFold(b *testing.B) {
-	for i, bench := range equalFoldCases {
-		ab, bb := []byte(bench.a), []byte(bench.b)
-		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = btsEqualFold(ab, bb)
-			}
-		})
-	}
-	if *compareWithStd {
-		for i, bench := range equalFoldCases {
-			ab, bb := []byte(bench.a), []byte(bench.b)
-			b.Run(fmt.Sprintf("%s#%d_std", bench.label, i), func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					_ = bytes.EqualFold(ab, bb)
-				}
-			})
-		}
-	}
 }
 
 func TestAsciiToInt(t *testing.T) {
