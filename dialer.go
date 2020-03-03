@@ -371,7 +371,7 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 		switch btsToString(k) {
 		case headerUpgradeCanonical:
 			headerSeen |= headerSeenUpgrade
-			if !bytes.Equal(v, specHeaderValueUpgrade) && !btsEqualFold(v, specHeaderValueUpgrade) {
+			if !bytes.Equal(v, specHeaderValueUpgrade) && !bytes.EqualFold(v, specHeaderValueUpgrade) {
 				err = ErrHandshakeBadUpgrade
 				return
 			}
@@ -382,7 +382,7 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 			//   > A |Connection| header field with value "Upgrade".
 			// That is, in server side, "Connection" header could contain
 			// multiple token. But in response it must contains exactly one.
-			if !bytes.Equal(v, specHeaderValueConnection) && !btsEqualFold(v, specHeaderValueConnection) {
+			if !bytes.Equal(v, specHeaderValueConnection) && !bytes.EqualFold(v, specHeaderValueConnection) {
 				err = ErrHandshakeBadConnection
 				return
 			}
