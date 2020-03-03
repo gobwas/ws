@@ -370,22 +370,20 @@ func Rsv(r1, r2, r3 bool) (rsv byte) {
 	return rsv
 }
 
-func makeCloseFrame(code StatusCode, reason string) Frame {
-	return NewCloseFrame(NewCloseFrameBody(
-		code, reason,
-	))
+func makeCloseFrame(code StatusCode) Frame {
+	return NewCloseFrame(NewCloseFrameBody(code, ""))
 }
 
 var (
-	closeFrameNormalClosure           = makeCloseFrame(StatusNormalClosure, "")
-	closeFrameGoingAway               = makeCloseFrame(StatusGoingAway, "")
-	closeFrameProtocolError           = makeCloseFrame(StatusProtocolError, "")
-	closeFrameUnsupportedData         = makeCloseFrame(StatusUnsupportedData, "")
-	closeFrameNoMeaningYet            = makeCloseFrame(StatusNoMeaningYet, "")
-	closeFrameInvalidFramePayloadData = makeCloseFrame(StatusInvalidFramePayloadData, "")
-	closeFramePolicyViolation         = makeCloseFrame(StatusPolicyViolation, "")
-	closeFrameMessageTooBig           = makeCloseFrame(StatusMessageTooBig, "")
-	closeFrameMandatoryExt            = makeCloseFrame(StatusMandatoryExt, "")
-	closeFrameInternalServerError     = makeCloseFrame(StatusInternalServerError, "")
-	closeFrameTLSHandshake            = makeCloseFrame(StatusTLSHandshake, "")
+	closeFrameNormalClosure           = makeCloseFrame(StatusNormalClosure)
+	closeFrameGoingAway               = makeCloseFrame(StatusGoingAway)
+	closeFrameProtocolError           = makeCloseFrame(StatusProtocolError)
+	closeFrameUnsupportedData         = makeCloseFrame(StatusUnsupportedData)
+	closeFrameNoMeaningYet            = makeCloseFrame(StatusNoMeaningYet)
+	closeFrameInvalidFramePayloadData = makeCloseFrame(StatusInvalidFramePayloadData)
+	closeFramePolicyViolation         = makeCloseFrame(StatusPolicyViolation)
+	closeFrameMessageTooBig           = makeCloseFrame(StatusMessageTooBig)
+	closeFrameMandatoryExt            = makeCloseFrame(StatusMandatoryExt)
+	closeFrameInternalServerError     = makeCloseFrame(StatusInternalServerError)
+	closeFrameTLSHandshake            = makeCloseFrame(StatusTLSHandshake)
 )
