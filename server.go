@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -18,6 +19,25 @@ import (
 const (
 	DefaultServerReadBufferSize  = 4096
 	DefaultServerWriteBufferSize = 512
+)
+
+// headerSeen constants helps to report whether or not some header was seen
+// during reading request bytes.
+const (
+	headerSeenHost = 1 << iota
+	headerSeenUpgrade
+	headerSeenConnection
+	headerSeenSecVersion
+	headerSeenSecKey
+
+	// headerSeenAll is the value that we expect to receive at the end of
+	// headers read/parse loop.
+	headerSeenAll = 0 |
+		headerSeenHost |
+		headerSeenUpgrade |
+		headerSeenConnection |
+		headerSeenSecVersion |
+		headerSeenSecKey
 )
 
 // Errors used by both client and server when preparing WebSocket handshake.
@@ -262,10 +282,16 @@ type Upgrader struct {
 	// The argument is only valid until the callback returns.
 	Protocol func([]byte) bool
 
-	// ProtocolCustrom allow user to parse Sec-WebSocket-Protocol header manually.
+	// ProtocolWithContext same as Protocol, except with context	
+	ProtocolWithContext func(context.Context, []byte) bool
+
+	// ProtocolCustom allow user to parse Sec-WebSocket-Protocol header manually.
 	// Note that returned bytes must be valid until Upgrade returns.
 	// If ProtocolCustom is set, it used instead of Protocol function.
 	ProtocolCustom func([]byte) (string, bool)
+
+	// ProtocolCustomWithContext same as ProtocolCustom, except with context
+	ProtocolCustomWithContext func(context.Context, []byte) (string, bool)
 
 	// Extension is a select function that is used to select extensions
 	// from list requested by client. If this field is set, then the all matched
@@ -285,10 +311,16 @@ type Upgrader struct {
 	// preferable."
 	Extension func(httphead.Option) bool
 
-	// ExtensionCustorm allow user to parse Sec-WebSocket-Extensions header manually.
+	// ExtensionWithContext same as Extension, except with context
+	ExtensionWithContext func(context.Context, httphead.Option) bool
+
+	// ExtensionCustom allow user to parse Sec-WebSocket-Extensions header manually.
 	// Note that returned options should be valid until Upgrade returns.
 	// If ExtensionCustom is set, it used instead of Extension function.
 	ExtensionCustom func([]byte, []httphead.Option) ([]httphead.Option, bool)
+
+	// ExtensionCustomWithContext same as ExtensionCustom, except with context
+	ExtensionCustomWithContext func(context.Context, []byte, []httphead.Option) ([]httphead.Option, bool)
 
 	// Header is an optional HandshakeHeader instance that could be used to
 	// write additional headers to the handshake response.
@@ -310,6 +342,9 @@ type Upgrader struct {
 	// RejectConnectionError could be used to get more control on response.
 	OnRequest func(uri []byte) error
 
+	// OnRequestWithContext same as OnRequest, except with context
+	OnRequestWithContext func(ctx context.Context, uri []byte) error
+
 	// OnHost is a callback that will be called after "Host" header successful
 	// parsing.
 	//
@@ -325,6 +360,9 @@ type Upgrader struct {
 	// RejectConnectionError could be used to get more control on response.
 	OnHost func(host []byte) error
 
+	// OnHostWithContext same as OnHost, except with context
+	OnHostWithContext func(ctx context.Context, host []byte) error
+
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
 	// it will be called with non-websocket headers, which could be relevant
@@ -337,6 +375,9 @@ type Upgrader struct {
 	//
 	// RejectConnectionError could be used to get more control on response.
 	OnHeader func(key, value []byte) error
+
+	// OnHeaderWithContext same as OnHeader, except with context
+	OnHeaderWithContext func(ctx context.Context, key, value []byte) error
 
 	// OnBeforeUpgrade is a callback that will be called before sending
 	// successful upgrade response.
@@ -352,6 +393,9 @@ type Upgrader struct {
 	//
 	// RejectConnectionError could be used to get more control on response.
 	OnBeforeUpgrade func() (header HandshakeHeader, err error)
+
+	// OnBeforeUpgradeWithContext same as OnBeforeUpgrade, except with context
+	OnBeforeUpgradeWithContext func(ctx context.Context) (header HandshakeHeader, err error)
 }
 
 // Upgrade zero-copy upgrades connection to WebSocket. It interprets given conn
@@ -364,25 +408,6 @@ type Upgrader struct {
 // Even when error is non-nil Upgrade will write appropriate response into
 // connection in compliance with RFC.
 func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
-	// headerSeen constants helps to report whether or not some header was seen
-	// during reading request bytes.
-	const (
-		headerSeenHost = 1 << iota
-		headerSeenUpgrade
-		headerSeenConnection
-		headerSeenSecVersion
-		headerSeenSecKey
-
-		// headerSeenAll is the value that we expect to receive at the end of
-		// headers read/parse loop.
-		headerSeenAll = 0 |
-			headerSeenHost |
-			headerSeenUpgrade |
-			headerSeenConnection |
-			headerSeenSecVersion |
-			headerSeenSecKey
-	)
-
 	// Prepare I/O buffers.
 	// TODO(gobwas): make it configurable.
 	br := pbufio.GetReader(conn,
@@ -571,6 +596,222 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 	case err == nil && u.OnBeforeUpgrade != nil:
 		header[1], err = u.OnBeforeUpgrade()
+	}
+	if err != nil {
+		var code int
+		if rej, ok := err.(*rejectConnectionError); ok {
+			code = rej.code
+			header[1] = rej.header
+		}
+		if code == 0 {
+			code = http.StatusInternalServerError
+		}
+		httpWriteResponseError(bw, err, code, header.WriteTo)
+		// Do not store Flush() error to not override already existing one.
+		bw.Flush()
+		return
+	}
+
+	httpWriteResponseUpgrade(bw, nonce, hs, header.WriteTo)
+	err = bw.Flush()
+
+	return
+}
+
+func (u Upgrader) UpgradeWithContext(ctx context.Context, conn io.ReadWriter) (hs Handshake, err error) {
+
+	// Prepare I/O buffers.
+	// TODO(gobwas): make it configurable.
+	br := pbufio.GetReader(conn,
+		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
+	)
+	bw := pbufio.GetWriter(conn,
+		nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
+	)
+	defer func() {
+		pbufio.PutReader(br)
+		pbufio.PutWriter(bw)
+	}()
+
+	// Read HTTP request line like "GET /ws HTTP/1.1".
+	rl, err := readLine(br)
+	if err != nil {
+		return
+	}
+	// Parse request line data like HTTP version, uri and method.
+	req, err := httpParseRequestLine(rl)
+	if err != nil {
+		return
+	}
+
+	// Prepare stack-based handshake header list.
+	header := handshakeHeader{
+		0: u.Header,
+	}
+
+	// Parse and check HTTP request.
+	// As RFC6455 says:
+	//   The client's opening handshake consists of the following parts. If the
+	//   server, while reading the handshake, finds that the client did not
+	//   send a handshake that matches the description below (note that as per
+	//   [RFC2616], the order of the header fields is not important), including
+	//   but not limited to any violations of the ABNF grammar specified for
+	//   the components of the handshake, the server MUST stop processing the
+	//   client's handshake and return an HTTP response with an appropriate
+	//   error code (such as 400 Bad Request).
+	//
+	// See https://tools.ietf.org/html/rfc6455#section-4.2.1
+
+	// An HTTP/1.1 or higher GET request, including a "Request-URI".
+	//
+	// Even if RFC says "1.1 or higher" without mentioning the part of the
+	// version, we apply it only to minor part.
+	switch {
+	case req.major != 1 || req.minor < 1:
+		// Abort processing the whole request because we do not even know how
+		// to actually parse it.
+		err = ErrHandshakeBadProtocol
+
+	case btsToString(req.method) != http.MethodGet:
+		err = ErrHandshakeBadMethod
+
+	default:
+		if OnRequestWithContext := u.OnRequestWithContext; OnRequestWithContext != nil {
+			err = OnRequestWithContext(ctx, req.uri)
+		}
+	}
+	// Start headers read/parse loop.
+	var (
+		// headerSeen reports which header was seen by setting corresponding
+		// bit on.
+		headerSeen byte
+
+		nonce = make([]byte, nonceSize)
+	)
+	for err == nil {
+		line, e := readLine(br)
+		if e != nil {
+			return hs, e
+		}
+		if len(line) == 0 {
+			// Blank line, no more lines to read.
+			break
+		}
+
+		k, v, ok := httpParseHeaderLine(line)
+		if !ok {
+			err = ErrMalformedRequest
+			break
+		}
+
+		switch btsToString(k) {
+		case headerHostCanonical:
+			headerSeen |= headerSeenHost
+			if OnHostWithContext := u.OnHostWithContext; OnHostWithContext != nil {
+				err = OnHostWithContext(ctx, v)
+			}
+
+		case headerUpgradeCanonical:
+			headerSeen |= headerSeenUpgrade
+			if !bytes.Equal(v, specHeaderValueUpgrade) && !bytes.EqualFold(v, specHeaderValueUpgrade) {
+				err = ErrHandshakeBadUpgrade
+			}
+
+		case headerConnectionCanonical:
+			headerSeen |= headerSeenConnection
+			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
+				err = ErrHandshakeBadConnection
+			}
+
+		case headerSecVersionCanonical:
+			headerSeen |= headerSeenSecVersion
+			if !bytes.Equal(v, specHeaderValueSecVersion) {
+				err = ErrHandshakeUpgradeRequired
+			}
+
+		case headerSecKeyCanonical:
+			headerSeen |= headerSeenSecKey
+			if len(v) != nonceSize {
+				err = ErrHandshakeBadSecKey
+			} else {
+				copy(nonce[:], v)
+			}
+
+		case headerSecProtocolCanonical:
+			if custom, check := u.ProtocolCustomWithContext, u.ProtocolWithContext; hs.Protocol == "" && (custom != nil || check != nil) {
+				var ok bool
+				if custom != nil {
+					hs.Protocol, ok = custom(ctx, v)
+				} else {
+					hs.Protocol, ok = btsSelectProtocol(v, func(i []byte) bool {
+						return check(ctx, i)
+					})
+				}
+				if !ok {
+					err = ErrMalformedRequest
+				}
+			}
+
+		case headerSecExtensionsCanonical:
+			if custom, check := u.ExtensionCustomWithContext, u.ExtensionWithContext; custom != nil || check != nil {
+				var ok bool
+				if custom != nil {
+					hs.Extensions, ok = custom(ctx, v, hs.Extensions)
+				} else {
+					hs.Extensions, ok = btsSelectExtensions(v, hs.Extensions, func(option httphead.Option) bool {
+						return check(ctx, option)
+					})
+				}
+				if !ok {
+					err = ErrMalformedRequest
+				}
+			}
+
+		default:
+			if OnHeaderWithContext := u.OnHeaderWithContext; OnHeaderWithContext != nil {
+				err = OnHeaderWithContext(ctx, k, v)
+			}
+		}
+	}
+	switch {
+	case err == nil && headerSeen != headerSeenAll:
+		switch {
+		case headerSeen&headerSeenHost == 0:
+			// As RFC2616 says:
+			//   A client MUST include a Host header field in all HTTP/1.1
+			//   request messages. If the requested URI does not include an
+			//   Internet host name for the service being requested, then the
+			//   Host header field MUST be given with an empty value. An
+			//   HTTP/1.1 proxy MUST ensure that any request message it
+			//   forwards does contain an appropriate Host header field that
+			//   identifies the service being requested by the proxy. All
+			//   Internet-based HTTP/1.1 servers MUST respond with a 400 (Bad
+			//   Request) status code to any HTTP/1.1 request message which
+			//   lacks a Host header field.
+			err = ErrHandshakeBadHost
+		case headerSeen&headerSeenUpgrade == 0:
+			err = ErrHandshakeBadUpgrade
+		case headerSeen&headerSeenConnection == 0:
+			err = ErrHandshakeBadConnection
+		case headerSeen&headerSeenSecVersion == 0:
+			// In case of empty or not present version we do not send 426 status,
+			// because it does not meet the ABNF rules of RFC6455:
+			//
+			// version = DIGIT | (NZDIGIT DIGIT) |
+			// ("1" DIGIT DIGIT) | ("2" DIGIT DIGIT)
+			// ; Limited to 0-255 range, with no leading zeros
+			//
+			// That is, if version is really invalid – we sent 426 status as above, if it
+			// not present – it is 400.
+			err = ErrHandshakeBadSecVersion
+		case headerSeen&headerSeenSecKey == 0:
+			err = ErrHandshakeBadSecKey
+		default:
+			panic("unknown headers state")
+		}
+
+	case err == nil && u.OnBeforeUpgradeWithContext != nil:
+		header[1], err = u.OnBeforeUpgradeWithContext(ctx)
 	}
 	if err != nil {
 		var code int
