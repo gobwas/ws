@@ -17,7 +17,7 @@ func TestDebugUpgrader(t *testing.T) {
 		req      []byte
 	}{
 		{
-		// Base case.
+			// Base case.
 		},
 		{
 			req: []byte("" +
