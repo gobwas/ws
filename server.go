@@ -361,7 +361,7 @@ type Upgrader struct {
 	// preferable."
 	Extension func(httphead.Option) bool
 
-	// ExtensionCustorm allow user to parse Sec-WebSocket-Extensions header manually.
+	// ExtensionCustom allow user to parse Sec-WebSocket-Extensions header manually.
 	// Note that returned options should be valid until Upgrade returns.
 	// If ExtensionCustom is set, it used instead of Extension function.
 	// If ExtensionCustom is set, it overwrite CompressionEnabled flag and
