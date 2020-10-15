@@ -319,6 +319,29 @@ func MaskFrameInPlace(f Frame) Frame {
 	return MaskFrameInPlaceWith(f, NewMask())
 }
 
+var zeroMask [4]byte
+
+// UnmaskFrame unmasks frame and returns frame with unmasked payload and Mask
+// header's field cleared.
+// Note that it copies f payload.
+func UnmaskFrame(f Frame) Frame {
+	p := make([]byte, len(f.Payload))
+	copy(p, f.Payload)
+	f.Payload = p
+	return UnmaskFrameInPlace(f)
+}
+
+// UnmaskFrameInPlace unmasks frame and returns frame with unmasked payload and
+// Mask header's field cleared.
+// Note that it applies xor cipher to f.Payload without copying, that is, it
+// modifies f.Payload inplace.
+func UnmaskFrameInPlace(f Frame) Frame {
+	Cipher(f.Payload, f.Header.Mask, 0)
+	f.Header.Masked = false
+	f.Header.Mask = zeroMask
+	return f
+}
+
 // MaskFrameInPlaceWith masks frame with given mask and returns frame
 // with masked payload and Mask header's field set.
 // Note that it applies xor cipher to f.Payload without copying, that is, it
