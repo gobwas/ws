@@ -366,6 +366,12 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		Fin:    false,
 		Length: int64(len(p)),
 	}
+	for _, ext := range w.extensions {
+		frame.Header.Rsv, err = ext.BitsSend(w.fseq, frame.Header.Rsv)
+		if err != nil {
+			return 0, err
+		}
+	}
 	if w.state.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
 		payload := pbytes.GetLen(len(p))
