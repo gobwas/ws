@@ -378,7 +378,7 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		frame.Payload = p
 	}
 
-	w.err = ws.WriteFrame(w, frame)
+	w.err = ws.WriteFrame(w.dest, frame)
 	if w.err == nil {
 		n = len(p)
 	}

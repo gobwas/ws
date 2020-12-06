@@ -544,7 +544,7 @@ func frames(p []byte) (ret []ws.Frame) {
 func pretty(f ...ws.Frame) string {
 	str := "\n"
 	for _, f := range f {
-		str += fmt.Sprintf("\t%#v\n\t%#x (%s)\n\t----\n", f.Header, f.Payload, f.Payload)
+		str += fmt.Sprintf("\t%#v\n\t%#x (%#q)\n\t----\n", f.Header, f.Payload, f.Payload)
 	}
 	return str
 }
