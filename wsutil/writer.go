@@ -127,49 +127,45 @@ func PutWriter(w *Writer) {
 //
 // If an error occurs writing to a Writer, no more data will be accepted and
 // all subsequent writes will return the error.
+//
 // After all data has been written, the client should call the Flush() method
 // to guarantee all data has been forwarded to the underlying io.Writer.
 type Writer struct {
-	Dest  io.Writer
-	Op    ws.OpCode
-	State ws.State // Can not be changed.
+	// dest specifies a destination of buffer flushes.
+	dest io.Writer
 
-	// Extensions is a list of negotiated extensions for writer Dest.
+	// op specifies the WebSocket operation code used in flushed frames.
+	op ws.OpCode
+
+	// state specifies the state of the Writer.
+	state ws.State
+
+	// extensions is a list of negotiated extensions for writer Dest.
 	// It is used to meet the specs and set appropriate bits in fragment
 	// header RSV segment.
-	Extensions []SendExtension
+	extensions []SendExtension
 
-	Limit        int
-	DisableFlush bool
+	// noFlush reports whether buffer must grow instead of being flushed.
+	noFlush bool
 
-	n     int    // Buffered bytes counter.
-	raw   []byte // Raw representation of buffer, including reserved header bytes.
-	buf   []byte // Writeable part of buffer, without reserved header bytes.
+	// Raw representation of the buffer, including reserved header bytes.
+	raw []byte
+
+	// Writeable part of buffer, without reserved header bytes.
+	// Resetting this to nil will not result in reallocation if raw is not nil.
+	// And vice versa: if buf is not nil, then Writer is assumed as ready and
+	// initialized.
+	buf []byte
+
+	// Buffered bytes counter.
+	n int
+
 	dirty bool
 	fseq  int
 	err   error
 }
 
-func (w *Writer) init() {
-	if w.buf != nil {
-		return
-	}
-	n := w.Limit
-	if n == 0 {
-		n = DefaultWriteBuffer
-	}
-	buf := make([]byte, n)
-	offset := reserve(w.State, len(buf))
-	if len(buf) <= offset {
-		panic("wsutil: writer buffer too small")
-	}
-	w.raw = buf
-	w.buf = buf[offset:]
-}
-
 // NewWriter returns a new Writer whose buffer has the DefaultWriteBuffer size.
-//
-// DEPRECATED: use exported Writer fields instead.
 func NewWriter(dest io.Writer, state ws.State, op ws.OpCode) *Writer {
 	return NewWriterBufferSize(dest, state, op, 0)
 }
@@ -179,8 +175,6 @@ func NewWriter(dest io.Writer, state ws.State, op ws.OpCode) *Writer {
 // Write() is called on empty Writer with len(p) > n.
 //
 // If n <= 0 then the default buffer size is used as Writer's buffer size.
-//
-// DEPRECATED: use exported Writer fields instead.
 func NewWriterSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	if n > 0 {
 		n += headerSize(state, n)
@@ -195,8 +189,6 @@ func NewWriterSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer 
 // [ws.MinHeaderSize,ws.MaxHeaderSize]. That is, frames flushed by Writer
 // will not have payload length equal to n, except the case when Write() is
 // called on empty Writer with len(p) > n.
-//
-// DEPRECATED: use exported Writer fields instead.
 func NewWriterBufferSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	if n <= ws.MinHeaderSize {
 		n = DefaultWriteBuffer
@@ -213,36 +205,64 @@ func NewWriterBufferSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *W
 // header data.
 //
 // It panics if len(buf) is too small to fit header and payload data.
-//
-// DEPRECATED: use exported Writer fields instead.
 func NewWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *Writer {
-	offset := reserve(state, len(buf))
-	if len(buf) <= offset {
-		panic("wsutil: writer buffer too small")
+	w := &Writer{
+		dest:  dest,
+		state: state,
+		op:    op,
+		raw:   buf,
 	}
-	return &Writer{
-		Dest:  dest,
-		State: state,
-		Op:    op,
-
-		raw: buf,
-		buf: buf[offset:],
-	}
+	w.initBuf()
+	return w
 }
 
-// Reset discards any buffered data, clears error, and resets w to have given
-// state and write frames with given OpCode to dest.
+func (w *Writer) initBuf() {
+	offset := reserve(w.state, len(w.raw))
+	if len(w.raw) <= offset {
+		panic("wsutil: writer buffer is too small")
+	}
+	w.buf = w.raw[offset:]
+}
+
+// Reset resets Writer as it was created by New() methods.
+// Note that Reset does reset extenstions and other options was set after
+// Writer initialization.
 func (w *Writer) Reset(dest io.Writer, state ws.State, op ws.OpCode) {
+	w.dest = dest
+	w.state = state
+	w.op = op
+
+	w.initBuf()
+
 	w.n = 0
 	w.dirty = false
 	w.fseq = 0
-
-	w.Dest = dest
-	w.State = state
-	w.Op = op
+	w.extensions = w.extensions[:0]
+	w.noFlush = false
 }
 
-// Size returns the size of the underlying buffer in bytes.
+// ResetOp is an quick version of Reset().
+// ResetOp does reset unwritten fragments and does not reset results of
+// SetExtensions() or DisableFlush() methods.
+func (w *Writer) ResetOp(op ws.OpCode) {
+	w.op = op
+	w.n = 0
+	w.dirty = false
+	w.fseq = 0
+}
+
+// SetExtensions adds xs as extenstions to be used during writes.
+func (w *Writer) SetExtensions(xs ...SendExtension) {
+	w.extensions = xs
+}
+
+// DisableFlush denies Writer to write fragments.
+func (w *Writer) DisableFlush() {
+	w.noFlush = true
+}
+
+// Size returns the size of the underlying buffer in bytes (not including
+// WebSocket header bytes).
 func (w *Writer) Size() int {
 	return len(w.buf)
 }
@@ -264,14 +284,12 @@ func (w *Writer) Buffered() int {
 // with payload of N bytes will not fit into that buffer. Writer reserves some
 // space to fit WebSocket header data.
 func (w *Writer) Write(p []byte) (n int, err error) {
-	w.init()
-
 	// Even empty p may make a sense.
 	w.dirty = true
 
 	var nn int
 	for len(p) > w.Available() && w.err == nil {
-		if w.DisableFlush {
+		if w.noFlush {
 			w.Grow(len(p) - w.Available())
 			continue
 		}
@@ -319,7 +337,6 @@ func ceilPowerOfTwo(n int) int {
 }
 
 func (w *Writer) Grow(n int) {
-	w.init()
 	var (
 		offset = len(w.raw) - len(w.buf)
 		size   = ceilPowerOfTwo(offset + w.n + n)
@@ -336,8 +353,6 @@ func (w *Writer) Grow(n int) {
 // WriteThrough writes data bypassing the buffer.
 // Note that Writer's buffer must be empty before calling WriteThrough().
 func (w *Writer) WriteThrough(p []byte) (n int, err error) {
-	w.init()
-
 	if w.err != nil {
 		return 0, w.err
 	}
@@ -345,7 +360,25 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		return 0, ErrNotEmpty
 	}
 
-	w.err = writeFrame(w.Dest, w.State, w.opCode(), false, p)
+	var frame ws.Frame
+	frame.Header = ws.Header{
+		OpCode: w.opCode(),
+		Fin:    false,
+		Length: int64(len(p)),
+	}
+	if w.state.ClientSide() {
+		// Should copy bytes to prevent corruption of caller data.
+		payload := pbytes.GetLen(len(p))
+		defer pbytes.Put(payload)
+		copy(payload, p)
+
+		frame.Payload = payload
+		frame = ws.MaskFrameInPlace(frame)
+	} else {
+		frame.Payload = p
+	}
+
+	w.err = ws.WriteFrame(w, frame)
 	if w.err == nil {
 		n = len(p)
 	}
@@ -358,12 +391,10 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 
 // ReadFrom implements io.ReaderFrom.
 func (w *Writer) ReadFrom(src io.Reader) (n int64, err error) {
-	w.init()
-
 	var nn int
 	for err == nil {
 		if w.Available() == 0 {
-			if w.DisableFlush {
+			if w.noFlush {
 				w.Grow(w.Buffered()) // Twice bigger.
 			} else {
 				err = w.FlushFragment()
@@ -441,13 +472,13 @@ func (w *Writer) flushFragment(fin bool) (err error) {
 			Length: int64(len(payload)),
 		}
 	)
-	for _, ext := range w.Extensions {
+	for _, ext := range w.extensions {
 		header.Rsv, err = ext.BitsSend(w.fseq, header.Rsv)
 		if err != nil {
 			return err
 		}
 	}
-	if w.State.ClientSide() {
+	if w.state.ClientSide() {
 		header.Masked = true
 		header.Mask = ws.NewMask()
 		ws.Cipher(payload, header.Mask, 0)
@@ -464,7 +495,7 @@ func (w *Writer) flushFragment(fin bool) (err error) {
 		// Must never be reached.
 		panic("dump header error: " + err.Error())
 	}
-	_, err = w.Dest.Write(w.raw[skip : offset+w.n])
+	_, err = w.dest.Write(w.raw[skip : offset+w.n])
 	return err
 }
 
@@ -472,7 +503,7 @@ func (w *Writer) opCode() ws.OpCode {
 	if w.fseq > 0 {
 		return ws.OpContinuation
 	}
-	return w.Op
+	return w.op
 }
 
 var errNoSpace = fmt.Errorf("not enough buffer space")

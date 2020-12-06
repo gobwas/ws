@@ -225,13 +225,10 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 			wsutil.RecvExtensionFunc(wsflate.BitsRecv),
 		},
 	}
-	wr := wsutil.Writer{
-		Dest:  conn,
-		State: ws.StateServerSide | ws.StateExtended,
-		Extensions: []wsutil.SendExtension{
-			wsutil.SendExtensionFunc(wsflate.BitsSend),
-		},
-	}
+
+	wr := wsutil.NewWriter(conn, ws.StateServerSide|ws.StateExtended, 0)
+	wr.SetExtensions(wsutil.SendExtensionFunc(wsflate.BitsSend))
+
 	for {
 		h, err := rd.NextFrame()
 		if err != nil {
@@ -247,8 +244,9 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fr.Reset(&rd)
-		fw.Reset(&wr)
-		wr.Op = h.OpCode
+		fw.Reset(wr)
+
+		wr.ResetOp(h.OpCode)
 
 		// Copy incoming bytes right into writer through decompressor and compressor.
 		if _, err = io.Copy(fw, fr); err != nil {
