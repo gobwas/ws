@@ -13,16 +13,16 @@ while [[ $# -gt 0 ]]; do
 		--build)
 		case "$2" in
 			autobahn)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag autobahn
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
 				shift
 			;;
 			server)
-				docker build . --file autobahn/docker/server/Dockerfile --tag server
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
 				shift
 			;;
 			*)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag autobahn
-				docker build . --file autobahn/docker/server/Dockerfile --tag server
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
 			;;
 		esac
 		;;
@@ -64,10 +64,10 @@ with_prefix() {
 }
 
 random=$(xxd -l 4 -p /dev/random)
-server="${random}_server"
-autobahn="${random}_autobahn"
+server="${random}_ws-server"
+autobahn="${random}_ws-autobahn"
 
-network="ws-$random"
+network="ws-network-$random"
 docker network create --driver bridge "$network"
 if [ $? -ne 0 ]; then
 	exit 1
@@ -78,10 +78,10 @@ docker run \
 	--tty \
 	--detach \
 	--network="$network" \
-	--network-alias="server" \
+	--network-alias="ws-server" \
 	-v $(pwd)/autobahn/report:/report \
 	--name="$server" \
-	"server"
+	"ws-server"
 
 docker run \
 	--interactive \
@@ -91,12 +91,12 @@ docker run \
 	-v $(pwd)/autobahn/config:/config \
 	-v $(pwd)/autobahn/report:/report \
    	--name="$autobahn" \
-	"autobahn"
+	"ws-autobahn"
 
 
 if [[ $FOLLOW_LOGS -eq 1 ]]; then
-	(with_prefix "$(tput setaf 3)[autobahn]: $(tput sgr0)" docker logs --follow "$autobahn")&
-	(with_prefix "$(tput setaf 5)[server]:   $(tput sgr0)" docker logs --follow "$server")&
+	(with_prefix "$(tput setaf 3)[ws-autobahn]: $(tput sgr0)" docker logs --follow "$autobahn")&
+	(with_prefix "$(tput setaf 5)[ws-server]:   $(tput sgr0)" docker logs --follow "$server")&
 fi
 
 trap ctrl_c INT

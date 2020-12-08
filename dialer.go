@@ -474,11 +474,18 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 	index = -1
 	match := func() (ok bool) {
 		for _, want := range wanted {
-			if option.Equal(want) {
+			// A server accepts one or more extensions by including a
+			// |Sec-WebSocket-Extensions| header field containing one or more
+			// extensions that were requested by the client.
+			//
+			// The interpretation of any extension parameters, and what
+			// constitutes a valid response by a server to a requested set of
+			// parameters by a client, will be defined by each such extension.
+			if bytes.Equal(option.Name, want.Name) {
 				// Check parsed extension to be present in client
 				// requested extensions. We move matched extension
 				// from client list to avoid allocation.
-				received = append(received, want)
+				received = append(received, option)
 				return true
 			}
 		}

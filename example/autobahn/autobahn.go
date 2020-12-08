@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/flate"
 	"context"
 	"flag"
 	"fmt"
@@ -14,7 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gobwas/httphead"
 	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/wsflate"
 	"github.com/gobwas/ws/wsutil"
 )
 
@@ -28,6 +31,7 @@ func main() {
 
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/wsutil", wsutilHandler)
+	http.HandleFunc("/wsflate", wsflateHandler)
 	http.HandleFunc("/helpers/low", helpersLowLevelHandler)
 	http.HandleFunc("/helpers/high", helpersHighLevelHandler)
 
@@ -174,8 +178,100 @@ func wsutilHandler(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func wsflateHandler(w http.ResponseWriter, r *http.Request) {
+	e := wsflate.Extension{
+		Parameters: wsflate.Parameters{
+			ServerNoContextTakeover: true,
+			ClientNoContextTakeover: true,
+		},
+	}
+	u := ws.HTTPUpgrader{
+		Negotiate: e.Negotiate,
+	}
+	conn, _, _, err := u.Upgrade(r, w)
+	if err != nil {
+		log.Printf("upgrade error: %s", err)
+		return
+	}
+	defer conn.Close()
+
+	if _, ok := e.Accepted(); !ok {
+		log.Printf("no accepted extension")
+		return
+	}
+
+	// Using nil as a destination io.Writer since we will Reset() it in the
+	// loop below.
+	fw := wsflate.NewWriter(nil, func(w io.Writer) wsflate.Compressor {
+		// As flat.NewWriter() docs says:
+		//   If level is in the range [-2, 9] then the error returned will
+		//   be nil.
+		f, _ := flate.NewWriter(w, 9)
+		return f
+	})
+	// Using nil as a source io.Reader since we will Reset() it in the loop
+	// below.
+	fr := wsflate.NewReader(nil, func(r io.Reader) wsflate.Decompressor {
+		return flate.NewReader(r)
+	})
+	// Note that control frames are all written without compression.
+	controlHandler := wsutil.ControlFrameHandler(conn, ws.StateServerSide)
+	rd := wsutil.Reader{
+		Source:         conn,
+		State:          ws.StateServerSide | ws.StateExtended,
+		CheckUTF8:      false,
+		OnIntermediate: controlHandler,
+		Extensions: []wsutil.RecvExtension{
+			wsutil.RecvExtensionFunc(wsflate.BitsRecv),
+		},
+	}
+
+	wr := wsutil.NewWriter(conn, ws.StateServerSide|ws.StateExtended, 0)
+	wr.SetExtensions(wsutil.SendExtensionFunc(wsflate.BitsSend))
+
+	for {
+		h, err := rd.NextFrame()
+		if err != nil {
+			log.Printf("next frame error: %v", err)
+			return
+		}
+		if h.OpCode.IsControl() {
+			if err := controlHandler(h, &rd); err != nil {
+				log.Printf("handle control frame error: %v", err)
+				return
+			}
+			continue
+		}
+
+		fr.Reset(&rd)
+		fw.Reset(wr)
+
+		wr.ResetOp(h.OpCode)
+
+		// Copy incoming bytes right into writer through decompressor and compressor.
+		if _, err = io.Copy(fw, fr); err != nil {
+			log.Fatal(err)
+		}
+		// Flush the flate writer.
+		if err = fw.Close(); err != nil {
+			log.Fatal(err)
+		}
+		// Flush WebSocket fragment writer. We could send multiple fragments
+		// for large messages.
+		if err = wr.Flush(); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-	conn, _, _, err := ws.UpgradeHTTP(r, w)
+	u := ws.HTTPUpgrader{
+		Extension: func(opt httphead.Option) bool {
+			log.Printf("extension: %s", opt)
+			return false
+		},
+	}
+	conn, _, _, err := u.Upgrade(r, w)
 	if err != nil {
 		log.Printf("upgrade error: %s", err)
 		return

@@ -1,24 +1,46 @@
 {
-   "outdir": "/report",
-   "servers": [
-      {
-		 "agent": "ws",
-         "url":   "ws://server:9001/ws"
-      },
-      {
-		 "agent": "wsutil",
-         "url":   "ws://server:9001/wsutil"
-      },
-      {
-		 "agent": "helpers/low",
-         "url":   "ws://server:9001/helpers/low"
-      },
-      {
-		 "agent": "helpers/high",
-         "url":   "ws://server:9001/helpers/high"
-      }
-   ],
-   "cases": ["*"],
-   "exclude-cases": [],
-   "exclude-agent-cases": {}
+	"outdir": "/report",
+	"servers": [
+		{
+			"agent": "ws",
+			"url":	"ws://ws-server:9001/ws"
+		},
+		{
+			"agent": "wsutil",
+			"url":	"ws://ws-server:9001/wsutil"
+		},
+		{
+			"agent": "helpers/low",
+			"url":	"ws://ws-server:9001/helpers/low"
+		},
+		{
+			"agent": "helpers/high",
+			"url":	"ws://ws-server:9001/helpers/high"
+		},
+		{
+			"agent": "wsflate",
+			"url":	"ws://ws-server:9001/wsflate"
+		}
+	],
+	"cases": ["*"],
+	"exclude-cases": [],
+	"exclude-agent-cases": {
+		"ws": [
+			"12.*", "13.*"
+		],
+		"wsutil": [
+			"12.*", "13.*"
+		],
+		"helpers/low": [
+			"12.*", "13.*"
+		],
+		"helpers/high": [
+			"12.*", "13.*"
+		],
+		"wsflate": [
+			"1.*","2.*","3.*", "4.*",
+			"5.*","6.*","7.*", "8.*",
+			"9.*","10.*","11.*"
+		]
+	}
 }
