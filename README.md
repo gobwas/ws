@@ -1,7 +1,7 @@
 # ws
 
 [![GoDoc][godoc-image]][godoc-url]
-[![Travis][travis-image]][travis-url]
+[![CI][ci-badge]][ci-url]
 
 > [RFC6455][rfc-url] WebSocket implementation in Go.
 
@@ -445,6 +445,6 @@ func main() {
 [rfc-pmce]: https://tools.ietf.org/html/rfc7692#section-7
 [godoc-image]: https://godoc.org/github.com/gobwas/ws?status.svg
 [godoc-url]: https://godoc.org/github.com/gobwas/ws
-[travis-image]: https://travis-ci.org/gobwas/ws.svg?branch=master
-[travis-url]: https://travis-ci.org/gobwas/ws
 [compress/flate]: https://golang.org/pkg/compress/flate/
+[ci-badge]:    https://github.com/gobwas/ws/workflows/CI/badge.svg
+[ci-url]:      https://github.com/gobwas/ws/actions?query=workflow%3ACI
