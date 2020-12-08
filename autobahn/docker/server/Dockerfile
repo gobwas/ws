@@ -1,4 +1,4 @@
-FROM golang:1.10.3-alpine3.7
+FROM golang:1.15.6-alpine3.12
 
 RUN	apk add --no-cache git && \
 	go get github.com/gobwas/httphead/... && \
