@@ -32,5 +32,7 @@ jobs:
       if: >-
         startsWith(matrix.os,'ubuntu') ||
         startsWith(matrix.os,'macos')
+      env:
+        CRYPTOGRAPHY_ALLOW_OPENSSL_102: yes
       run: |
         make test autobahn
