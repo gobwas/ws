@@ -12,6 +12,8 @@ import (
 // preceding NextFrame() call.
 var ErrNoFrameAdvance = errors.New("no frame advance")
 
+var ErrReadLimit = errors.New("read limit exceeded")
+
 // FrameHandlerFunc handles parsed frame header and its body represented by
 // io.Reader.
 //
@@ -42,7 +44,12 @@ type Reader struct {
 	// header RSV segment.
 	Extensions []RecvExtension
 
-	// TODO(gobwas): add max frame size limit here.
+	// MaxFrameSizeBytes controls the maximum frame size in bytes
+	// that can be read. A message exceeding that size will return
+	// a ErrReadLimit to the application.
+	//
+	// Not setting this field means there is no limit.
+	MaxFrameSizeBytes int64
 
 	OnContinuation FrameHandlerFunc
 	OnIntermediate FrameHandlerFunc
@@ -173,6 +180,10 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	}
 	if err != nil {
 		return hdr, err
+	}
+
+	if r.MaxFrameSizeBytes > 0 && r.MaxFrameSizeBytes < hdr.Length {
+		return hdr, ErrReadLimit
 	}
 
 	// Save raw reader to use it on discarding frame without ciphering and
