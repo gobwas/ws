@@ -170,13 +170,14 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 
 func TestMaxFrameSize(t *testing.T) {
 	var buf bytes.Buffer
-	f := ws.NewTextFrame([]byte("small frame")) // 11 bytes
+	msg := []byte("small frame")
+	f := ws.NewTextFrame(msg)
 	if err := ws.WriteFrame(&buf, f); err != nil {
 		t.Fatal(err)
 	}
 	r := Reader{
 		Source:            &buf,
-		MaxFrameSizeBytes: 10,
+		MaxFrameSizeBytes: len(msg) - 1,
 	}
 
 	_, err := r.NextFrame()

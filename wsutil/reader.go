@@ -12,6 +12,8 @@ import (
 // preceding NextFrame() call.
 var ErrNoFrameAdvance = errors.New("no frame advance")
 
+// ErrReadLimit indicates that a message of length higher than
+// MaxFrameSizeBytes was being read.
 var ErrReadLimit = errors.New("read limit exceeded")
 
 // FrameHandlerFunc handles parsed frame header and its body represented by
