@@ -177,7 +177,7 @@ func TestMaxFrameSize(t *testing.T) {
 	}
 	r := Reader{
 		Source:            &buf,
-		MaxFrameSizeBytes: len(msg) - 1,
+		MaxFrameSizeBytes: int64(len(msg)) - 1,
 	}
 
 	_, err := r.NextFrame()
