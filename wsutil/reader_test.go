@@ -176,12 +176,12 @@ func TestMaxFrameSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := Reader{
-		Source:            &buf,
-		MaxFrameSizeBytes: int64(len(msg)) - 1,
+		Source:       &buf,
+		MaxFrameSize: int64(len(msg)) - 1,
 	}
 
 	_, err := r.NextFrame()
-	if got, want := err, ErrReadLimit; got != want {
+	if got, want := err, ErrFrameTooLarge; got != want {
 		t.Errorf("NextFrame() error = %v; want %v", got, want)
 	}
 
