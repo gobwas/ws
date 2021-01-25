@@ -168,6 +168,33 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 
 }
 
+func TestMaxFrameSize(t *testing.T) {
+	var buf bytes.Buffer
+	msg := []byte("small frame")
+	f := ws.NewTextFrame(msg)
+	if err := ws.WriteFrame(&buf, f); err != nil {
+		t.Fatal(err)
+	}
+	r := Reader{
+		Source:       &buf,
+		MaxFrameSize: int64(len(msg)) - 1,
+	}
+
+	_, err := r.NextFrame()
+	if got, want := err, ErrFrameTooLarge; got != want {
+		t.Errorf("NextFrame() error = %v; want %v", got, want)
+	}
+
+	p := make([]byte, 100)
+	n, err := r.Read(p)
+	if got, want := err, ErrNoFrameAdvance; got != want {
+		t.Errorf("Read() error = %v; want %v", got, want)
+	}
+	if got, want := n, 0; got != want {
+		t.Errorf("Read() bytes returned = %v; want %v", got, want)
+	}
+}
+
 func TestReaderUTF8(t *testing.T) {
 	yo := []byte("Ё")
 	if !utf8.ValidString(string(yo)) {
