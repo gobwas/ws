@@ -30,8 +30,17 @@ jobs:
 
     - name: Autobahn
       if: >-
-        startsWith(matrix.os,'ubuntu')
+        startsWith(matrix.os, 'ubuntu')
       env:
         CRYPTOGRAPHY_ALLOW_OPENSSL_102: yes
       run: |
         make test autobahn
+
+    - name: Autobahn Report Artifact
+      if: >-
+        startsWith(matrix.os, 'ubuntu')
+      uses: actions/upload-artifact@v2
+      with:
+        name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
+        path: autobahn/report
+        retention-days: 7
