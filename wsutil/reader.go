@@ -14,7 +14,7 @@ var ErrNoFrameAdvance = errors.New("no frame advance")
 
 // ErrFrameTooLarge indicates that a message of length higher than
 // MaxFrameSize was being read.
-var ErrFrameTooLarge = errors.New("read limit exceeded")
+var ErrFrameTooLarge = errors.New("frame too large")
 
 // FrameHandlerFunc handles parsed frame header and its body represented by
 // io.Reader.
