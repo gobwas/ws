@@ -60,7 +60,6 @@ type Reader struct {
 	frame  io.Reader        // Used to as frame reader.
 	raw    io.LimitedReader // Used to discard frames without cipher.
 	utf8   UTF8Reader       // Used to check UTF8 sequences if CheckUTF8 is true.
-	fseq   int              // Fragment sequence in message counter.
 }
 
 // NewReader creates new frame reader that reads from r keeping given state to
@@ -200,8 +199,8 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 		frame = NewCipherReader(frame, hdr.Mask)
 	}
 
-	for _, ext := range r.Extensions {
-		hdr.Rsv, err = ext.BitsRecv(r.fseq, hdr.Rsv)
+	for _, x := range r.Extensions {
+		hdr, err = x.UnsetBits(hdr)
 		if err != nil {
 			return hdr, err
 		}
@@ -237,10 +236,8 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 
 	if hdr.Fin {
 		r.State = r.State.Clear(ws.StateFragmented)
-		r.fseq = 0
 	} else {
 		r.State = r.State.Set(ws.StateFragmented)
-		r.fseq++
 	}
 
 	return
@@ -261,7 +258,6 @@ func (r *Reader) reset() {
 	r.raw = io.LimitedReader{}
 	r.frame = nil
 	r.utf8 = UTF8Reader{}
-	r.fseq = 0
 	r.opCode = 0
 }
 

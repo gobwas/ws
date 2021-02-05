@@ -98,18 +98,17 @@ func (h *Helper) DecompressFrame(in ws.Frame) (f ws.Frame, err error) {
 
 // CompressFrameBuffer compresses a frame using given buffer.
 // Returned frame's payload holds bytes returned by buf.Bytes().
-func (h *Helper) CompressFrameBuffer(buf Buffer, in ws.Frame) (f ws.Frame, err error) {
-	if !in.Header.Fin {
+func (h *Helper) CompressFrameBuffer(buf Buffer, f ws.Frame) (ws.Frame, error) {
+	if !f.Header.Fin {
 		return f, fmt.Errorf("wsflate: fragmented messages are not allowed")
 	}
-	if err := h.CompressTo(buf, in.Payload); err != nil {
+	if err := h.CompressTo(buf, f.Payload); err != nil {
 		return f, err
 	}
-	// Copy initial frame.
-	f = in
+	var err error
 	f.Payload = buf.Bytes()
 	f.Header.Length = int64(len(f.Payload))
-	f.Header.Rsv, err = BitsSend(0, f.Header.Rsv)
+	f.Header, err = SetBit(f.Header)
 	if err != nil {
 		return f, err
 	}
@@ -118,21 +117,30 @@ func (h *Helper) CompressFrameBuffer(buf Buffer, in ws.Frame) (f ws.Frame, err e
 
 // DecompressFrameBuffer decompresses a frame using given buffer.
 // Returned frame's payload holds bytes returned by buf.Bytes().
-func (h *Helper) DecompressFrameBuffer(buf Buffer, in ws.Frame) (f ws.Frame, err error) {
-	if !in.Header.Fin {
-		return f, fmt.Errorf("wsflate: fragmented messages are not allowed")
+func (h *Helper) DecompressFrameBuffer(buf Buffer, f ws.Frame) (ws.Frame, error) {
+	if !f.Header.Fin {
+		return f, fmt.Errorf(
+			"wsflate: fragmented messages are not supported by helper",
+		)
 	}
-	if err := h.DecompressTo(buf, in.Payload); err != nil {
-		return f, err
-	}
-	// Copy initial frame.
-	f = in
-	f.Payload = buf.Bytes()
-	f.Header.Length = int64(len(f.Payload))
-	f.Header.Rsv, err = BitsRecv(0, f.Header.Rsv)
+	var (
+		compressed bool
+		err        error
+	)
+	f.Header, compressed, err = UnsetBit(f.Header)
 	if err != nil {
 		return f, err
 	}
+	if !compressed {
+		return f, nil
+	}
+	if err := h.DecompressTo(buf, f.Payload); err != nil {
+		return f, err
+	}
+
+	f.Payload = buf.Bytes()
+	f.Header.Length = int64(len(f.Payload))
+
 	return f, nil
 }
 

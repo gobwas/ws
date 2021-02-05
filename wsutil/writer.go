@@ -366,8 +366,8 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 		Fin:    false,
 		Length: int64(len(p)),
 	}
-	for _, ext := range w.extensions {
-		frame.Header.Rsv, err = ext.BitsSend(w.fseq, frame.Header.Rsv)
+	for _, x := range w.extensions {
+		frame.Header, err = x.SetBits(frame.Header)
 		if err != nil {
 			return 0, err
 		}
@@ -479,7 +479,7 @@ func (w *Writer) flushFragment(fin bool) (err error) {
 		}
 	)
 	for _, ext := range w.extensions {
-		header.Rsv, err = ext.BitsSend(w.fseq, header.Rsv)
+		header, err = ext.SetBits(header)
 		if err != nil {
 			return err
 		}

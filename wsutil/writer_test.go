@@ -362,8 +362,9 @@ func TestWriterLargeWrite(t *testing.T) {
 
 	// Test that event for big writes extensions set their bits.
 	var rsv = [3]bool{true, true, false}
-	w.SetExtensions(SendExtensionFunc(func(fseq int, bits byte) (byte, error) {
-		return ws.Rsv(rsv[0], rsv[1], rsv[2]), nil
+	w.SetExtensions(SendExtensionFunc(func(h ws.Header) (ws.Header, error) {
+		h.Rsv = ws.Rsv(rsv[0], rsv[1], rsv[2])
+		return h, nil
 	}))
 
 	// Write message with size twice bigger than writer's internal buffer.

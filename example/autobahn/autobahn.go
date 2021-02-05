@@ -214,6 +214,13 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 	fr := wsflate.NewReader(nil, func(r io.Reader) wsflate.Decompressor {
 		return flate.NewReader(r)
 	})
+
+	// MessageState implements wsutil.Extension and is used to check whether
+	// received WebSocket message is compressed. That is, it's generally
+	// possible to receive uncompressed messaged even if compression extension
+	// was negotiated.
+	var msg wsflate.MessageState
+
 	// Note that control frames are all written without compression.
 	controlHandler := wsutil.ControlFrameHandler(conn, ws.StateServerSide)
 	rd := wsutil.Reader{
@@ -221,13 +228,11 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 		State:          ws.StateServerSide | ws.StateExtended,
 		CheckUTF8:      false,
 		OnIntermediate: controlHandler,
-		Extensions: []wsutil.RecvExtension{
-			wsutil.RecvExtensionFunc(wsflate.BitsRecv),
-		},
+		Extensions:     []wsutil.RecvExtension{&msg},
 	}
 
 	wr := wsutil.NewWriter(conn, ws.StateServerSide|ws.StateExtended, 0)
-	wr.SetExtensions(wsutil.SendExtensionFunc(wsflate.BitsSend))
+	wr.SetExtensions(&msg)
 
 	for {
 		h, err := rd.NextFrame()
@@ -243,18 +248,28 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		fr.Reset(&rd)
-		fw.Reset(wr)
-
 		wr.ResetOp(h.OpCode)
 
-		// Copy incoming bytes right into writer through decompressor and compressor.
-		if _, err = io.Copy(fw, fr); err != nil {
+		var (
+			src io.Reader = &rd
+			dst io.Writer = wr
+		)
+		if msg.IsCompressed() {
+			fr.Reset(src)
+			fw.Reset(dst)
+			src = fr
+			dst = fw
+		}
+		// Copy incoming bytes right into writer, probably through decompressor
+		// and compressor.
+		if _, err = io.Copy(dst, src); err != nil {
 			log.Fatal(err)
 		}
-		// Flush the flate writer.
-		if err = fw.Close(); err != nil {
-			log.Fatal(err)
+		if msg.IsCompressed() {
+			// Flush the flate writer.
+			if err = fw.Close(); err != nil {
+				log.Fatal(err)
+			}
 		}
 		// Flush WebSocket fragment writer. We could send multiple fragments
 		// for large messages.

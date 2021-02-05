@@ -2,7 +2,6 @@ package wsflate
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/gobwas/httphead"
 	"github.com/gobwas/ws"
@@ -89,40 +88,102 @@ func (n *Extension) Reset() {
 	n.params = Parameters{}
 }
 
-var errNonFirstFragmentEnabledBit = ws.ProtocolError(
-	"non-first fragment contains compression bit enabled",
+var ErrUnexpectedCompressionBit = ws.ProtocolError(
+	"control frame or non-first fragment of data contains compression bit set",
 )
 
-// BitsRecv changes RSV bits of the received frame header as if compression
-// extension was negotiated.
-func BitsRecv(fseq int, rsv byte) (byte, error) {
-	r1, r2, r3 := ws.RsvBits(rsv)
-	if fseq > 0 && r1 {
-		// An endpoint MUST NOT set the "Per-Message Compressed"
-		// bit of control frames and non-first fragments of a data
-		// message. An endpoint receiving such a frame MUST _Fail
-		// the WebSocket Connection_.
-		return rsv, errNonFirstFragmentEnabledBit
-	}
-	if fseq > 0 {
-		return rsv, nil
-	}
-	return ws.Rsv(false, r2, r3), nil
+// UnsetBit clears the Per-Message Compression bit in header h and returns its
+// modified copy. It reports whether compression bit was set in header h.
+// It returns non-nil error if compression bit has unexpected value.
+func UnsetBit(h ws.Header) (_ ws.Header, wasSet bool, err error) {
+	var s MessageState
+	h, err := s.UnsetBits(h)
+	return h, s.IsCompressed(), err
 }
 
-// BitsSend changes RSV bits of the frame header which is being send as if
-// compression extension was negotiated.
-func BitsSend(fseq int, rsv byte) (byte, error) {
-	r1, r2, r3 := ws.RsvBits(rsv)
-	if r1 {
-		return rsv, fmt.Errorf("wsflate: compression bit is already set")
-	}
-	if fseq > 0 {
+// SetBit sets the Per-Message Compression bit in header h and returns its
+// modified copy.
+// It returns non-nil error if compression bit has unexpected value.
+func SetBit(h ws.Header) (_ ws.Header, err error) {
+	var s MessageState
+	s.SetCompressed(true)
+	return s.SetBits(h)
+}
+
+// MessageState holds message compression state.
+//
+// It is consulted during SetBits(h) call to make a decision whether we must
+// set the Per-Message Compression bit for given header h argument.
+// It is updated during UnsetBits(h) to reflect compression state of a message
+// represented by header h argument.
+// It can also be consulted/updated directly by calling
+// IsCompressed()/SetCompressed().
+//
+// In general MessageState should be used when there is no direct access to
+// connection to read frame from, but it is still needed to know if message
+// being read is compressed. For other cases SetBit() and UnsetBit() should be
+// used instead.
+//
+// NOTE: the compression state is updated during UnsetBits(h) only when header
+// h argunent represents data (text or binary) frame.
+type MessageState struct {
+	compressed bool
+}
+
+// SetCompressed marks message as "compressed" or "uncompressed".
+// See https://tools.ietf.org/html/rfc7692#section-6
+func (s *MessageState) SetCompressed(v bool) {
+	s.compressed = v
+}
+
+// IsCompressed reports whether message is "compressed".
+// See https://tools.ietf.org/html/rfc7692#section-6
+func (s *MessageState) IsCompressed() bool {
+	return s.compressed
+}
+
+// UnsetBits changes RSV bits of the given frame header h as if compression
+// extension was negotiated. It returns modified copy of h and error if header
+// is malformed from the RFC perspective.
+func (s *MessageState) UnsetBits(h ws.Header) (ws.Header, error) {
+	r1, r2, r3 := ws.RsvBits(h.Rsv)
+	switch {
+	case h.OpCode.IsData() && h.OpCode != ws.OpContinuation:
+		h.Rsv = ws.Rsv(false, r2, r3)
+		s.SetCompressed(r1)
+		return h, nil
+
+	case r1:
 		// An endpoint MUST NOT set the "Per-Message Compressed"
 		// bit of control frames and non-first fragments of a data
 		// message. An endpoint receiving such a frame MUST _Fail
 		// the WebSocket Connection_.
-		return rsv, nil
+		return h, ErrUnexpectedCompressionBit
+
+	default:
+		// NOTE: do not change the state of s.compressed since UnsetBits()
+		// might also be called for (intermediate) control frames.
+		return h, nil
 	}
-	return ws.Rsv(true, r2, r3), nil
+}
+
+// SetBits changes RSV bits of the frame header h which is being send as if
+// compression extension was negotiated. It returns modified copy of h and
+// error if header is malformed from the RFC perspective.
+func (s *MessageState) SetBits(h ws.Header) (ws.Header, error) {
+	r1, r2, r3 := ws.RsvBits(h.Rsv)
+	if r1 {
+		return h, ErrUnexpectedCompressionBit
+	}
+	if !h.OpCode.IsData() || h.OpCode == ws.OpContinuation {
+		// An endpoint MUST NOT set the "Per-Message Compressed"
+		// bit of control frames and non-first fragments of a data
+		// message. An endpoint receiving such a frame MUST _Fail
+		// the WebSocket Connection_.
+		return h, nil
+	}
+	if s.IsCompressed() {
+		h.Rsv = ws.Rsv(true, r2, r3)
+	}
+	return h, nil
 }
