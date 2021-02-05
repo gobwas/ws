@@ -97,7 +97,7 @@ var ErrUnexpectedCompressionBit = ws.ProtocolError(
 // It returns non-nil error if compression bit has unexpected value.
 func UnsetBit(h ws.Header) (_ ws.Header, wasSet bool, err error) {
 	var s MessageState
-	h, err := s.UnsetBits(h)
+	h, err = s.UnsetBits(h)
 	return h, s.IsCompressed(), err
 }
 
