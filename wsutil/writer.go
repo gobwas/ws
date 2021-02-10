@@ -225,7 +225,7 @@ func (w *Writer) initBuf() {
 }
 
 // Reset resets Writer as it was created by New() methods.
-// Note that Reset does reset extenstions and other options was set after
+// Note that Reset does reset extensions and other options was set after
 // Writer initialization.
 func (w *Writer) Reset(dest io.Writer, state ws.State, op ws.OpCode) {
 	w.dest = dest
@@ -251,7 +251,7 @@ func (w *Writer) ResetOp(op ws.OpCode) {
 	w.fseq = 0
 }
 
-// SetExtensions adds xs as extenstions to be used during writes.
+// SetExtensions adds xs as extensions to be used during writes.
 func (w *Writer) SetExtensions(xs ...SendExtension) {
 	w.extensions = xs
 }

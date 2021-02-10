@@ -65,8 +65,8 @@ func DecompressFrameBuffer(buf Buffer, f ws.Frame) (ws.Frame, error) {
 	return DefaultHelper.DecompressFrameBuffer(buf, f)
 }
 
-// Helper is a helper struct that holds common code for compressing and
-// decompressing bytes or WebSocket frames.
+// Helper is a helper struct that holds common code for compression and
+// decompression bytes or WebSocket frames.
 //
 // Its purpose is to reduce boilerplate code in WebSocket applications.
 type Helper struct {

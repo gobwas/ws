@@ -98,7 +98,7 @@ var ErrUnexpectedCompressionBit = ws.ProtocolError(
 //
 // This function's main purpose is to be compatible with "Framing" section of
 // the Compression Extensions for WebSocket RFC. If you don't need to work with
-// chains of extenstions then IsCompressed() could be enought to check if
+// chains of extensions then IsCompressed() could be enough to check if
 // message is compressed.
 // See https://tools.ietf.org/html/rfc7692#section-6.2
 func UnsetBit(h ws.Header) (_ ws.Header, wasSet bool, err error) {
@@ -144,7 +144,7 @@ func IsCompressed(h ws.Header) (bool, error) {
 // used instead.
 //
 // NOTE: the compression state is updated during UnsetBits(h) only when header
-// h argunent represents data (text or binary) frame.
+// h argument represents data (text or binary) frame.
 type MessageState struct {
 	compressed bool
 }

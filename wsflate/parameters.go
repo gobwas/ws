@@ -33,7 +33,7 @@ func init() {
 	}
 }
 
-// Parameters contains compressin extension options.
+// Parameters contains compression extension options.
 type Parameters struct {
 	ServerNoContextTakeover bool
 	ClientNoContextTakeover bool
@@ -59,7 +59,7 @@ const (
 	MaxLZ77WindowSize = 32768 // 2^15
 )
 
-// Parse reads parameters from given HTTP header opiton accordingly to RFC.
+// Parse reads parameters from given HTTP header option accordingly to RFC.
 //
 // It returns non-nil error at least in these cases:
 //   - The negotiation offer contains an extension parameter not defined for
