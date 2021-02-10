@@ -360,6 +360,10 @@ It provides minimalistic I/O wrappers to be used in conjunction with any
 deflate implementation (for example, the standard library's
 [compress/flate][compress/flate].
 
+It is also compatible with `wsutil`'s reader and writer by providing
+`wsflate.MessageState` type, which implements `wsutil.SendExtension` and
+`wsutil.RecvExtension` interfaces.
+
 ```go
 package main
 
@@ -415,16 +419,25 @@ func main() {
 					// Handle error.
 					return
 				}
+
 				frame = ws.UnmaskFrameInPlace(frame)
-				frame, err = wsflate.DecompressFrame(frame)
-				if err != nil {
-					// Handle error.
-					return
+
+				if wsflate.IsCompressed(frame.Header) {
+					// Note that even after successful negotiation of
+					// compression extension, both sides are able to send
+					// non-compressed messages.
+					frame, err = wsflate.DecompressFrame(frame)
+					if err != nil {
+						// Handle error.
+						return
+					}
 				}
 
 				// Do something with frame...
 
 				ack := ws.NewTextFrame([]byte("this is an acknowledgement"))
+
+				// Compress response unconditionally.
 				ack, err = wsflate.CompressFrame(ack)
 				if err != nil {
 					// Handle error.
