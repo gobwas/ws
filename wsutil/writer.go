@@ -290,7 +290,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	var nn int
 	for len(p) > w.Available() && w.err == nil {
 		if w.noFlush {
-			w.Grow(len(p) - w.Available())
+			w.Grow(len(p))
 			continue
 		}
 		if w.Buffered() == 0 {
