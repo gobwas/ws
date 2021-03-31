@@ -399,6 +399,10 @@ func TestWriterGrow(t *testing.T) {
 			name:     "buffer grow leads to its reduce",
 			dataSize: 20,
 		},
+		{
+			name:     "header size increases",
+			dataSize: int(len16) + 10,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
