@@ -360,7 +360,7 @@ func TestWriterLargeWrite(t *testing.T) {
 	var dest bytes.Buffer
 	w := NewWriterSize(&dest, 0, 0, 16)
 
-	// Test that event for big writes extensions set their bits.
+	// Test that even for big writes extensions set their bits.
 	var rsv = [3]bool{true, true, false}
 	w.SetExtensions(SendExtensionFunc(func(h ws.Header) (ws.Header, error) {
 		h.Rsv = ws.Rsv(rsv[0], rsv[1], rsv[2])
@@ -387,6 +387,53 @@ func TestWriterLargeWrite(t *testing.T) {
 	act[0], act[1], act[2] = ws.RsvBits(frame.Header.Rsv)
 	if act != rsv {
 		t.Fatalf("unexpected rsv bits sent: %v; extension set %v", act, rsv)
+	}
+}
+
+func TestWriterGrow(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataSize int
+	}{
+		{
+			name:     "buffer grow leads to its reduce",
+			dataSize: 20,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var dest bytes.Buffer
+			w := NewWriterSize(&dest, 0, 0, 16)
+			w.DisableFlush()
+
+			// Test that even for big writes extensions set their bits.
+			var rsv = [3]bool{true, true, false}
+			w.SetExtensions(SendExtensionFunc(func(h ws.Header) (ws.Header, error) {
+				h.Rsv = ws.Rsv(rsv[0], rsv[1], rsv[2])
+				return h, nil
+			}))
+
+			// Write message with size bigger than writer's internal buffer.
+			// We expect Writer to grow its internal buffer.
+			bts := make([]byte, test.dataSize)
+			if _, err := w.Write(bts); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			frame, err := ws.ReadFrame(&dest)
+			if err != nil {
+				t.Fatalf("can't read frame: %v", err)
+			}
+
+			var act [3]bool
+			act[0], act[1], act[2] = ws.RsvBits(frame.Header.Rsv)
+			if act != rsv {
+				t.Fatalf("unexpected rsv bits sent: %v; extension set %v", act, rsv)
+			}
+		})
 	}
 }
 
