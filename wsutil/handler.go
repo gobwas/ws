@@ -81,10 +81,7 @@ func (c ControlHandler) HandlePing(h ws.Header) error {
 	}
 
 	// In other way reply with Pong frame with copied payload.
-	p := pbytes.GetLen(int(h.Length) + ws.HeaderSize(ws.Header{
-		Length: h.Length,
-		Masked: c.State.ClientSide(),
-	}))
+	p := pbytes.GetLen(int(h.Length) + reserve(c.State))
 	defer pbytes.Put(p)
 
 	// Deal with ciphering i/o:

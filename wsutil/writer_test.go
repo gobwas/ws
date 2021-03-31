@@ -45,14 +45,14 @@ func TestControlWriter(t *testing.T) {
 			exp:   ws.NewPingFrame([]byte("0123456789")),
 		},
 		{
-			size:  10 + reserve(server, 10),
+			size:  10 + reserve(server),
 			write: []byte("0123456789"),
 			state: server,
 			op:    ws.OpPing,
 			exp:   ws.NewPingFrame([]byte("0123456789")),
 		},
 		{
-			size:  10 + reserve(server, 10),
+			size:  10 + reserve(server),
 			write: []byte("0123456789a"),
 			state: server,
 			op:    ws.OpPing,
@@ -143,12 +143,12 @@ var reserveTestCases = []reserveTestCase{
 	{
 		name:      "len7",
 		buf:       int(len7) + 2,
-		expOffset: 2,
+		expOffset: 10,
 	},
 	{
 		name:      "len16",
 		buf:       int(len16) + 4,
-		expOffset: 4,
+		expOffset: 10,
 	},
 	{
 		name:      "maxint",
@@ -159,13 +159,13 @@ var reserveTestCases = []reserveTestCase{
 		name:      "len7 masked",
 		buf:       int(len7) + 6,
 		state:     ws.StateClientSide,
-		expOffset: 6,
+		expOffset: 14,
 	},
 	{
 		name:      "len16 masked",
 		buf:       int(len16) + 8,
 		state:     ws.StateClientSide,
-		expOffset: 8,
+		expOffset: 14,
 	},
 	{
 		name:      "maxint masked",
@@ -176,7 +176,7 @@ var reserveTestCases = []reserveTestCase{
 	{
 		name:      "split case",
 		buf:       128,
-		expOffset: 4,
+		expOffset: 10,
 	},
 }
 
@@ -195,12 +195,12 @@ func TestNewWriterBuffer(t *testing.T) {
 			panic: true,
 		},
 	)
-	cases = append(cases, genReserveTestCases(0, int(len7)-2, int(len7)+2, 2)...)
-	cases = append(cases, genReserveTestCases(0, int(len16)-4, int(len16)+4, 4)...)
+	cases = append(cases, genReserveTestCases(0, int(len7)-2, int(len7)+2, 10)...)
+	cases = append(cases, genReserveTestCases(0, int(len16)-4, int(len16)+4, 10)...)
 	cases = append(cases, genReserveTestCases(0, maxint-10, maxint, 10)...)
 
-	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len7)-6, int(len7)+6, 6)...)
-	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len16)-8, int(len16)+8, 8)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len7)-6, int(len7)+6, 14)...)
+	cases = append(cases, genReserveTestCases(ws.StateClientSide, int(len16)-8, int(len16)+8, 14)...)
 	cases = append(cases, genReserveTestCases(ws.StateClientSide, maxint-14, maxint, 14)...)
 
 	for _, test := range cases {

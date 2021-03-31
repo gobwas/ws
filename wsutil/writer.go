@@ -177,7 +177,7 @@ func NewWriter(dest io.Writer, state ws.State, op ws.OpCode) *Writer {
 // If n <= 0 then the default buffer size is used as Writer's buffer size.
 func NewWriterSize(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
 	if n > 0 {
-		n += headerSize(state, n)
+		n += reserve(state)
 	}
 	return NewWriterBufferSize(dest, state, op, n)
 }
@@ -217,7 +217,7 @@ func NewWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *
 }
 
 func (w *Writer) initBuf() {
-	offset := reserve(w.state, len(w.raw))
+	offset := reserve(w.state)
 	if len(w.raw) <= offset {
 		panic("wsutil: writer buffer is too small")
 	}
@@ -338,7 +338,7 @@ func ceilPowerOfTwo(n int) int {
 
 func (w *Writer) Grow(n int) {
 	var (
-		offset = len(w.raw) - len(w.buf)
+		offset = reserve(w.state)
 		size   = ceilPowerOfTwo(offset + w.n + n)
 	)
 	if size <= len(w.raw) {
@@ -546,20 +546,13 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	return ws.WriteFrame(w, frame)
 }
 
-func reserve(state ws.State, n int) (offset int) {
+func reserve(state ws.State) (offset int) {
 	var mask int
 	if state.ClientSide() {
 		mask = 4
 	}
 
-	switch {
-	case n <= int(len7)+mask+2:
-		return mask + 2
-	case n <= int(len16)+mask+4:
-		return mask + 4
-	default:
-		return mask + 10
-	}
+	return mask + 10
 }
 
 // headerSize returns number of bytes needed to encode header of a frame with
