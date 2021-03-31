@@ -57,7 +57,7 @@ func NewControlWriter(dest io.Writer, state ws.State, op ws.OpCode) *ControlWrit
 //
 // It panics if len(buf) <= ws.MinHeaderSize + x.
 func NewControlWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []byte) *ControlWriter {
-	max := ws.MaxControlFramePayloadSize + headerSize(state, ws.MaxControlFramePayloadSize)
+	max := ws.MaxControlFramePayloadSize + reserve(state)
 	if len(buf) > max {
 		buf = buf[:max]
 	}
