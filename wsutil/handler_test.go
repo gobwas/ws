@@ -34,6 +34,11 @@ func TestControlHandler(t *testing.T) {
 			out:   ws.NewPongFrame([]byte("catch the ball")),
 		},
 		{
+			name: "ping",
+			in:   ws.NewPingFrame(bytes.Repeat([]byte{0xfe}, 125)),
+			out:  ws.NewPongFrame(bytes.Repeat([]byte{0xfe}, 125)),
+		},
+		{
 			name:  "pong",
 			in:    ws.NewPongFrame(nil),
 			noOut: true,
@@ -62,6 +67,19 @@ func TestControlHandler(t *testing.T) {
 			err: ClosedError{
 				Code:   ws.StatusGoingAway,
 				Reason: "goodbye!",
+			},
+		},
+		{
+			name: "close",
+			in: ws.NewCloseFrame(ws.NewCloseFrameBody(
+				ws.StatusGoingAway, "bye",
+			)),
+			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
+				ws.StatusGoingAway, "",
+			)),
+			err: ClosedError{
+				Code:   ws.StatusGoingAway,
+				Reason: "bye",
 			},
 		},
 		{
