@@ -61,6 +61,26 @@ type suffixedReader struct {
 	r      io.Reader
 	pos    int // position in the suffix.
 	suffix [9]byte
+
+	rx struct{ io.Reader }
+}
+
+func (r *suffixedReader) iface() io.Reader {
+	if _, ok := r.r.(io.ByteReader); ok {
+		// If source io.Reader implements io.ByteReader, return full set of
+		// methods from suffixedReader struct (Read() and ReadByte()).
+		// This actually is an optimization needed for those Decompressor
+		// implementations (such as default flate.Reader) which do check if
+		// given source is already "buffered" by checking if source implements
+		// io.ByteReader. So without this checks we will always result in
+		// double-buffering for default decompressors.
+		return r
+	}
+	// Source io.Reader doesn't support io.ByteReader, so we should cut off the
+	// ReadByte() method from suffixedReader struct. We use r.srx field to
+	// avoid allocations.
+	r.rx.Reader = r
+	return &r.rx
 }
 
 func (r *suffixedReader) Read(p []byte) (n int, err error) {
@@ -78,6 +98,27 @@ func (r *suffixedReader) Read(p []byte) (n int, err error) {
 	n = copy(p, r.suffix[r.pos:])
 	r.pos += n
 	return n, nil
+}
+
+func (r *suffixedReader) ReadByte() (b byte, err error) {
+	if r.r != nil {
+		br, ok := r.r.(io.ByteReader)
+		if !ok {
+			panic("wsflate: internal error: incorrect use of suffixedReader")
+		}
+		b, err = br.ReadByte()
+		if err == io.EOF {
+			err = nil
+			r.r = nil
+		}
+		return b, err
+	}
+	if r.pos >= len(r.suffix) {
+		return 0, io.EOF
+	}
+	b = r.suffix[r.pos]
+	r.pos += 1
+	return b, nil
 }
 
 func (r *suffixedReader) reset(src io.Reader) {
