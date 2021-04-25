@@ -391,7 +391,7 @@ func TestWriterLargeWrite(t *testing.T) {
 }
 
 func TestWriterGrow(t *testing.T) {
-	tests := []struct {
+	for _, test := range []struct {
 		name     string
 		dataSize int
 	}{
@@ -403,8 +403,11 @@ func TestWriterGrow(t *testing.T) {
 			name:     "header size increases",
 			dataSize: int(len16) + 10,
 		},
-	}
-	for _, test := range tests {
+		{
+			name:     "split case for header offset",
+			dataSize: int(len7),
+		},
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			var dest bytes.Buffer
 			w := NewWriterSize(&dest, 0, 0, 16)
