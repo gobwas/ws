@@ -341,25 +341,17 @@ func ceilPowerOfTwo(n int) int {
 func (w *Writer) Grow(n int) {
 	// NOTE: we must respect the possibility of header reserved bytes grow.
 	var (
-		size     = len(w.raw)
-		offset   = len(w.raw) - len(w.buf)
-		buffered = w.Buffered()
+		oldOffset = len(w.raw) - len(w.buf)
+		newOffset = headerSize(w.state, w.n+n)
+		size      = ceilPowerOfTwo(newOffset + w.n + n)
 	)
-	for cap := size - offset - buffered; cap < n; {
-		// This loop runs twice only at split cases, when reservation of raw
-		// buffer space for the header shrinks capacity of new buffer such that
-		// it still less than n.
-		size = ceilPowerOfTwo(offset + buffered + n)
-		offset = headerSize(w.state, size)
-		cap = size - offset - buffered
-	}
 	if size <= len(w.raw) {
 		panic("wsutil: buffer grow leads to its reduce")
 	}
 	p := make([]byte, size)
-	copy(p, w.raw[:offset+buffered])
+	copy(p[newOffset-oldOffset:], w.raw[:oldOffset+w.n])
 	w.raw = p
-	w.buf = w.raw[offset:]
+	w.buf = w.raw[newOffset:]
 }
 
 // WriteThrough writes data bypassing the buffer.
