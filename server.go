@@ -251,7 +251,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = rw.Writer.Flush()
 	} else {
 		var code int
-		if rej, ok := err.(*rejectConnectionError); ok {
+		if rej, ok := err.(*ConnectionRejectedError); ok {
 			code = rej.code
 			header[1] = rej.header
 		}
@@ -630,7 +630,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	}
 	if err != nil {
 		var code int
-		if rej, ok := err.(*rejectConnectionError); ok {
+		if rej, ok := err.(*ConnectionRejectedError); ok {
 			code = rej.code
 			header[1] = rej.header
 		}
