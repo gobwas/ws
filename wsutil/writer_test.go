@@ -407,6 +407,14 @@ func TestWriterGrow(t *testing.T) {
 			name:     "split case for header offset",
 			dataSize: int(len7),
 		},
+		{
+			name:     "calculate header size from the payload instead of the whole buffer",
+			dataSize: int(len7/2 + 2),
+		},
+		{
+			name:     "shift current buffer when header size increase",
+			dataSize: int(len7 - 2),
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var dest bytes.Buffer
@@ -422,8 +430,13 @@ func TestWriterGrow(t *testing.T) {
 
 			// Write message with size bigger than writer's internal buffer.
 			// We expect Writer to grow its internal buffer.
-			bts := make([]byte, test.dataSize)
-			if _, err := w.Write(bts); err != nil {
+			bts := bytes.Repeat([]byte("0123456789"), test.dataSize/10+1)[:test.dataSize]
+			// Write twice to cover the cases that Grow should copy the existing data correctly.
+			pos := test.dataSize / 2
+			if _, err := w.Write(bts[:pos]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Write(bts[pos:]); err != nil {
 				t.Fatal(err)
 			}
 			if err := w.Flush(); err != nil {
@@ -439,6 +452,10 @@ func TestWriterGrow(t *testing.T) {
 			act[0], act[1], act[2] = ws.RsvBits(frame.Header.Rsv)
 			if act != rsv {
 				t.Fatalf("unexpected rsv bits sent: %v; extension set %v", act, rsv)
+			}
+
+			if !reflect.DeepEqual(frame.Payload, bts) {
+				t.Errorf("wrote frames:\nact:\t%s\nexp:\t%s\n", frame.Payload, bts)
 			}
 		})
 	}
