@@ -260,7 +260,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		}
 		httpWriteResponseError(rw.Writer, err, code, header.WriteTo)
 		// Do not store Flush() error to not override already existing one.
-		rw.Writer.Flush()
+		_ = rw.Writer.Flush()
 	}
 	return
 }
@@ -639,7 +639,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		}
 		httpWriteResponseError(bw, err, code, header.WriteTo)
 		// Do not store Flush() error to not override already existing one.
-		bw.Flush()
+		_ = bw.Flush()
 		return
 	}
 
