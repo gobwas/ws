@@ -2,6 +2,7 @@ package wsutil
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"reflect"
@@ -394,6 +395,7 @@ func TestWriterGrow(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		dataSize int
+		numWrite int
 	}{
 		{
 			name:     "buffer grow leads to its reduce",
@@ -410,10 +412,12 @@ func TestWriterGrow(t *testing.T) {
 		{
 			name:     "calculate header size from the payload instead of the whole buffer",
 			dataSize: int(len7/2 + 2),
+			numWrite: 2,
 		},
 		{
 			name:     "shift current buffer when header size increase",
 			dataSize: int(len7 - 2),
+			numWrite: 2,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -428,15 +432,18 @@ func TestWriterGrow(t *testing.T) {
 				return h, nil
 			}))
 
-			// Write message with size bigger than writer's internal buffer.
-			// We expect Writer to grow its internal buffer.
-			bts := bytes.Repeat([]byte("0123456789"), test.dataSize/10+1)[:test.dataSize]
-			// Write twice to cover the cases that Grow should copy the existing data correctly.
-			pos := test.dataSize / 2
-			if _, err := w.Write(bts[:pos]); err != nil {
+			bts := make([]byte, test.dataSize)
+			if _, err := rand.Read(bts); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := w.Write(bts[pos:]); err != nil {
+			if test.numWrite == 0 {
+				test.numWrite = 1
+			}
+			err := chunks(bts, test.numWrite, func(p []byte) error {
+				_, err := w.Write(p)
+				return err
+			})
+			if err != nil {
 				t.Fatal(err)
 			}
 			if err := w.Flush(); err != nil {
@@ -447,15 +454,13 @@ func TestWriterGrow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("can't read frame: %v", err)
 			}
-
 			var act [3]bool
 			act[0], act[1], act[2] = ws.RsvBits(frame.Header.Rsv)
 			if act != rsv {
 				t.Fatalf("unexpected rsv bits sent: %v; extension set %v", act, rsv)
 			}
-
-			if !reflect.DeepEqual(frame.Payload, bts) {
-				t.Errorf("wrote frames:\nact:\t%s\nexp:\t%s\n", frame.Payload, bts)
+			if !bytes.Equal(frame.Payload, bts) {
+				t.Errorf("wrote frames:\nact:\t%x\nexp:\t%x\n", frame.Payload, bts)
 			}
 		})
 	}
@@ -642,3 +647,20 @@ func omitMasks(f []ws.Frame) []ws.Frame {
 }
 
 func bts(b ...[]byte) [][]byte { return b }
+
+func chunks(p []byte, n int, fn func(p []byte) error) error {
+	if len(p) < n {
+		panic("buffer is smaller than requested number of chunks")
+	}
+	step := len(p) / n
+	for pos, i := 0, 0; i < len(p)/step; pos, i = pos+step, i+1 {
+		if i == n-1 {
+			// Last iteration.
+			step += len(p) % n
+		}
+		if err := fn(p[pos : pos+step]); err != nil {
+			return err
+		}
+	}
+	return nil
+}

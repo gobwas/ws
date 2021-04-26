@@ -341,25 +341,37 @@ func ceilPowerOfTwo(n int) int {
 func (w *Writer) Grow(n int) {
 	// NOTE: we must respect the possibility of header reserved bytes grow.
 	var (
-		size     = len(w.raw)
-		offset   = len(w.raw) - len(w.buf)
-		buffered = w.Buffered()
+		size       = len(w.raw)
+		prevOffset = len(w.raw) - len(w.buf)
+		nextOffset = len(w.raw) - len(w.buf)
+		buffered   = w.Buffered()
 	)
-	for cap := size - offset - buffered; cap < n; {
+	for cap := size - nextOffset - buffered; cap < n; {
 		// This loop runs twice only at split cases, when reservation of raw
 		// buffer space for the header shrinks capacity of new buffer such that
 		// it still less than n.
-		size = ceilPowerOfTwo(offset + buffered + n)
-		offset = headerSize(w.state, size)
-		cap = size - offset - buffered
+		//
+		// Loop is safe here because:
+		// - (offset + buffered + n) is greater than size, otherwise (cap < n)
+		//   would be false:
+		//   size  = offset + buffered + freeSpace (cap)
+		//   size' = offset + buffered + wantSpace (n)
+		//   Since (cap < n) is true in the loop condition, size' is guaranteed
+		//   to be greater => no infinite loop.
+		size = ceilPowerOfTwo(nextOffset + buffered + n)
+		nextOffset = reserve(w.state, size)
+		cap = size - nextOffset - buffered
 	}
-	if size <= len(w.raw) {
+	if size < len(w.raw) {
 		panic("wsutil: buffer grow leads to its reduce")
 	}
+	if size == len(w.raw) {
+		return
+	}
 	p := make([]byte, size)
-	copy(p, w.raw[:offset+buffered])
+	copy(p[nextOffset-prevOffset:], w.raw[:prevOffset+buffered])
 	w.raw = p
-	w.buf = w.raw[offset:]
+	w.buf = w.raw[nextOffset:]
 }
 
 // WriteThrough writes data bypassing the buffer.
@@ -558,12 +570,15 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	return ws.WriteFrame(w, frame)
 }
 
+// reserve calculates number of bytes need to be reserved for frame header.
+//
+// Note that instead of ws.HeaderSize() it does calculation based on the buffer
+// size, not the payload size.
 func reserve(state ws.State, n int) (offset int) {
 	var mask int
 	if state.ClientSide() {
 		mask = 4
 	}
-
 	switch {
 	case n <= int(len7)+mask+2:
 		return mask + 2
