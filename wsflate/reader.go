@@ -50,10 +50,11 @@ func (r *Reader) Reset(src io.Reader) {
 	r.err = nil
 	r.src = src
 	r.sr.reset(src)
+
 	if x, ok := r.d.(ReadResetter); ok {
-		x.Reset(&r.sr)
+		x.Reset(r.sr.iface())
 	} else {
-		r.d = r.ctor(&r.sr)
+		r.d = r.ctor(r.sr.iface())
 	}
 }
 
