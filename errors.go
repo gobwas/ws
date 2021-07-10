@@ -38,7 +38,8 @@ func RejectConnectionError(options ...RejectOption) error {
 	return err
 }
 
-// rejectConnectionError represents a rejection of upgrade error.
+// rejectConnectionError represents a rejection of connection during WebSocket
+// handshake error.
 //
 // It can be returned by Upgrader's On* hooks to control the way WebSocket
 // handshake is rejected.
