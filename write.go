@@ -47,6 +47,18 @@ func HeaderSize(h Header) (n int) {
 
 // WriteHeader writes header binary representation into w.
 func WriteHeader(w io.Writer, h Header) error {
+	headerData, err := MakeHeaderData(h)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(headerData)
+
+	return err
+}
+
+// MakeHeaderData construct header data for websocket frame
+func MakeHeaderData(h Header) ([]byte, error) {
 	// Make slice of bytes with capacity 14 that could hold any header.
 	bts := make([]byte, MaxHeaderSize)
 
@@ -73,7 +85,7 @@ func WriteHeader(w io.Writer, h Header) error {
 		n = 10
 
 	default:
-		return ErrHeaderLengthUnexpected
+		return nil, ErrHeaderLengthUnexpected
 	}
 
 	if h.Masked {
@@ -81,9 +93,7 @@ func WriteHeader(w io.Writer, h Header) error {
 		n += copy(bts[n:], h.Mask[:])
 	}
 
-	_, err := w.Write(bts[:n])
-
-	return err
+	return bts[:n], nil
 }
 
 // WriteFrame writes frame binary representation into w.
