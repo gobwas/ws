@@ -484,8 +484,10 @@ func matchSelectedExtensions(selected []byte, wanted, received []httphead.Option
 			if bytes.Equal(option.Name, want.Name) {
 				// Check parsed extension to be present in client
 				// requested extensions. We move matched extension
-				// from client list to avoid allocation.
-				received = append(received, option)
+				// from client list to avoid allocation of httphead.Option.Name,
+				// httphead.Option.Parameters have to be copied from the header
+				want.Parameters, _ = option.Parameters.Copy(make([]byte, option.Parameters.Size()))
+				received = append(received, want)
 				return true
 			}
 		}
