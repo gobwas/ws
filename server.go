@@ -54,9 +54,6 @@ var (
 		RejectionStatus(http.StatusBadRequest),
 		RejectionReason(fmt.Sprintf("handshake error: bad %q header", headerSecVersion)),
 	)
-	ErrHandshakeHijack = RejectConnectionError(
-		RejectionStatus(http.StatusTeapot),
-	)
 )
 
 // ErrMalformedResponse is returned by Dialer to indicate that server response
@@ -343,8 +340,6 @@ type Upgrader struct {
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	//
-	// Use ErrHandshakeHijack to return without writing to connection
 	Negotiate func(httphead.Option) (httphead.Option, error)
 
 	// Header is an optional HandshakeHeader instance that could be used to
@@ -365,8 +360,6 @@ type Upgrader struct {
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	//
-	// Use ErrHandshakeHijack to return without writing to connection
 	OnRequest func(uri []byte) error
 
 	// OnHost is a callback that will be called after "Host" header successful
@@ -382,9 +375,7 @@ type Upgrader struct {
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	//
-	// Use ErrHandshakeHijack to return without writing to connection
-	OnHost func(host []byte) error
+	OnHost func(err error, host []byte) error
 
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
@@ -397,9 +388,7 @@ type Upgrader struct {
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	//
-	// Use ErrHandshakeHijack to return without writing to connection
-	OnHeader func(key, value []byte) error
+	OnHeader func(err error, key, value []byte) error
 
 	// OnBeforeUpgrade is a callback that will be called before sending
 	// successful upgrade response.
@@ -414,8 +403,6 @@ type Upgrader struct {
 	// sent with appropriate HTTP error code and body set to error message.
 	//
 	// RejectConnectionError could be used to get more control on response.
-	//
-	// Use ErrHandshakeHijack to return without writing to connection
 	OnBeforeUpgrade func() (header HandshakeHeader, err error)
 }
 
@@ -516,7 +503,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		nonce = make([]byte, nonceSize)
 	)
-	for err == nil {
+	for {
 		line, e := readLine(br)
 		if e != nil {
 			return hs, e
@@ -536,31 +523,35 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		case headerHostCanonical:
 			headerSeen |= headerSeenHost
 			if onHost := u.OnHost; onHost != nil {
-				err = onHost(v)
+				err = onHost(err, v)
 			}
 
 		case headerUpgradeCanonical:
 			headerSeen |= headerSeenUpgrade
 			if !bytes.Equal(v, specHeaderValueUpgrade) && !bytes.EqualFold(v, specHeaderValueUpgrade) {
 				err = ErrHandshakeBadUpgrade
+				break
 			}
 
 		case headerConnectionCanonical:
 			headerSeen |= headerSeenConnection
 			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
 				err = ErrHandshakeBadConnection
+				break
 			}
 
 		case headerSecVersionCanonical:
 			headerSeen |= headerSeenSecVersion
 			if !bytes.Equal(v, specHeaderValueSecVersion) {
 				err = ErrHandshakeUpgradeRequired
+				break
 			}
 
 		case headerSecKeyCanonical:
 			headerSeen |= headerSeenSecKey
 			if len(v) != nonceSize {
 				err = ErrHandshakeBadSecKey
+				break
 			} else {
 				copy(nonce[:], v)
 			}
@@ -575,12 +566,16 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				}
 				if !ok {
 					err = ErrMalformedRequest
+					break
 				}
 			}
 
 		case headerSecExtensionsCanonical:
 			if f := u.Negotiate; err == nil && f != nil {
 				hs.Extensions, err = negotiateExtensions(v, hs.Extensions, f)
+				if err != nil {
+					break
+				}
 			}
 			// DEPRECATED path.
 			if custom, check := u.ExtensionCustom, u.Extension; u.Negotiate == nil && (custom != nil || check != nil) {
@@ -592,12 +587,13 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 				}
 				if !ok {
 					err = ErrMalformedRequest
+					break
 				}
 			}
 
 		default:
 			if onHeader := u.OnHeader; onHeader != nil {
-				err = onHeader(k, v)
+				err = onHeader(err, k, v)
 			}
 		}
 	}
@@ -643,13 +639,11 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	}
 	if err != nil {
 		var code int
+		if t, ok := err.(EscapeHatch); ok && t.Escape() {
+			return
+		}
 		if rej, ok := err.(*ConnectionRejectedError); ok {
 			code = rej.code
-			if code == http.StatusTeapot {
-				// Hijacked! Implementation knows what they are doing.
-				// Return current err without writing to connection.
-				return
-			}
 			header[1] = rej.header
 		}
 		if code == 0 {
