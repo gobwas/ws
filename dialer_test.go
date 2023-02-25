@@ -116,7 +116,7 @@ func makeAccept(nonce []byte) []byte {
 
 func BenchmarkPutAccept(b *testing.B) {
 	nonce := make([]byte, nonceSize)
-	_, err := rand.Read(nonce[:])
+	_, err := rand.Read(nonce)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func BenchmarkPutAccept(b *testing.B) {
 
 func BenchmarkCheckNonce(b *testing.B) {
 	nonce := make([]byte, nonceSize)
-	_, err := rand.Read(nonce[:])
+	_, err := rand.Read(nonce)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -511,6 +511,7 @@ func TestDialerHandshake(t *testing.T) {
 				if err != nil {
 					t.Errorf("read response inside OnStatusError error: %v", err)
 				}
+				defer res.Body.Close()
 				if act, exp := dumpResponse(res), dumpResponse(test.res); !bytes.Equal(act, exp) {
 					t.Errorf(
 						"unexpected response from OnStatusError:\nact:\n%s\nexp:\n%s\n",
@@ -611,7 +612,7 @@ func TestDialerCancelation(t *testing.T) {
 					if t.IsZero() {
 						return nil
 					}
-					d := t.Sub(time.Now())
+					d := time.Until(t)
 					if d < 0 {
 						deadline <- ioErrDeadline
 					} else {

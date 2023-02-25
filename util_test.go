@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -337,18 +336,6 @@ func BenchmarkHasToken(b *testing.B) {
 	}
 }
 
-type equalFoldCase struct {
-	label string
-	a, b  string
-}
-
-var equalFoldCases = []equalFoldCase{
-	{"websocket", "WebSocket", "websocket"},
-	{"upgrade", "Upgrade", "upgrade"},
-	randomEqualLetters(512),
-	inequalAt(randomEqualLetters(512), 256),
-}
-
 func TestAsciiToInt(t *testing.T) {
 	for _, test := range []struct {
 		bts []byte
@@ -361,7 +348,7 @@ func TestAsciiToInt(t *testing.T) {
 		{[]byte("420"), 420, false},
 		{[]byte("010050042"), 10050042, false},
 	} {
-		t.Run(fmt.Sprintf("%s", string(test.bts)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", test.bts), func(t *testing.T) {
 			act, err := asciiToInt(test.bts)
 			if (test.err && err == nil) || (!test.err && err != nil) {
 				t.Errorf("unexpected error: %v", err)
@@ -383,7 +370,7 @@ func TestBtrim(t *testing.T) {
 		{[]byte("abc "), []byte("abc")},
 		{[]byte(" abc "), []byte("abc")},
 	} {
-		t.Run(fmt.Sprintf("%s", string(test.bts)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", test.bts), func(t *testing.T) {
 			if act := btrim(test.bts); !bytes.Equal(act, test.exp) {
 				t.Errorf("btrim(%v) = %v; want %v", test.bts, act, test.exp)
 			}
@@ -402,7 +389,7 @@ func TestBSplit3(t *testing.T) {
 		{[]byte(""), ' ', []byte{}, nil, nil},
 		{[]byte("GET / HTTP/1.1"), ' ', []byte("GET"), []byte("/"), []byte("HTTP/1.1")},
 	} {
-		t.Run(fmt.Sprintf("%s", string(test.bts)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", test.bts), func(t *testing.T) {
 			b1, b2, b3 := bsplit3(test.bts, test.sep)
 			if !bytes.Equal(b1, test.exp1) || !bytes.Equal(b2, test.exp2) || !bytes.Equal(b3, test.exp3) {
 				t.Errorf(
@@ -428,7 +415,7 @@ var canonicalHeaderCases = [][]byte{
 
 func TestCanonicalizeHeaderKey(t *testing.T) {
 	for _, bts := range canonicalHeaderCases {
-		t.Run(fmt.Sprintf("%s", string(bts)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", bts), func(t *testing.T) {
 			act := append([]byte(nil), bts...)
 			canonicalizeHeaderKey(act)
 
@@ -437,7 +424,7 @@ func TestCanonicalizeHeaderKey(t *testing.T) {
 			if !bytes.Equal(act, exp) {
 				t.Errorf(
 					"canonicalizeHeaderKey(%v) = %v; want %v",
-					string(bts), string(act), string(exp),
+					bts, act, exp,
 				)
 			}
 		})
@@ -451,36 +438,5 @@ func BenchmarkCanonicalizeHeaderKey(b *testing.B) {
 				canonicalizeHeaderKey(bts)
 			}
 		})
-	}
-}
-
-func randomEqualLetters(n int) (c equalFoldCase) {
-	c.label = fmt.Sprintf("rnd_eq_%d", n)
-
-	a, b := make([]byte, n), make([]byte, n)
-
-	for i := 0; i < n; i++ {
-		c := byte(rand.Intn('Z'-'A'+1) + 'A') // Random character from 'A' to 'Z'.
-		a[i] = c
-		b[i] = c | ('a' - 'A') // Swap fold.
-	}
-
-	c.a = string(a)
-	c.b = string(b)
-
-	return
-}
-
-func inequalAt(c equalFoldCase, i int) equalFoldCase {
-	bts := make([]byte, len(c.a))
-	copy(bts, c.a)
-	for {
-		b := byte(rand.Intn('z'-'a'+1) + 'a')
-		if bts[i] != b {
-			bts[i] = b
-			c.a = string(bts)
-			c.label = fmt.Sprintf("rnd_ineq_%d_%d", len(c.a), i)
-			return c
-		}
 	}
 }

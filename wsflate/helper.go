@@ -169,13 +169,13 @@ func (h *Helper) Decompress(p []byte) ([]byte, error) {
 // CompressTo compresses bytes into given buffer.
 func (h *Helper) CompressTo(w io.Writer, p []byte) (err error) {
 	c := NewWriter(w, h.Compressor)
-	if _, err = c.Write(p); err != nil {
+	if _, err := c.Write(p); err != nil {
 		return err
 	}
-	if err = c.Flush(); err != nil {
+	if err := c.Flush(); err != nil {
 		return err
 	}
-	if err = c.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		return err
 	}
 	return nil
@@ -185,10 +185,10 @@ func (h *Helper) CompressTo(w io.Writer, p []byte) (err error) {
 // Returned bytes are bytes returned by buf.Bytes().
 func (h *Helper) DecompressTo(w io.Writer, p []byte) (err error) {
 	fr := NewReader(bytes.NewReader(p), h.Decompressor)
-	if _, err = io.Copy(w, fr); err != nil {
+	if _, err := io.Copy(w, fr); err != nil {
 		return err
 	}
-	if err = fr.Close(); err != nil {
+	if err := fr.Close(); err != nil {
 		return err
 	}
 	return nil

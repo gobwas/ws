@@ -200,6 +200,7 @@ func strSelectProtocol(h string, check func(string) bool) (ret string, ok bool) 
 	})
 	return
 }
+
 func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) {
 	var selected []byte
 	ok = httphead.ScanTokens(h, func(v []byte) bool {

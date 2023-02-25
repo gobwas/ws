@@ -51,7 +51,7 @@ func Cipher(payload []byte, mask [4]byte, offset int) {
 			chunk = payload[j : j+8]
 		)
 		p := binary.LittleEndian.Uint64(chunk)
-		p = p ^ m2
+		p ^= m2
 		binary.LittleEndian.PutUint64(chunk, p)
 	}
 }

@@ -21,8 +21,6 @@ import (
 	"github.com/gobwas/ws/wsutil"
 )
 
-const dir = "./example/autobahn"
-
 var addr = flag.String("listen", ":9001", "addr to listen")
 
 func main() {
@@ -262,18 +260,18 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// Copy incoming bytes right into writer, probably through decompressor
 		// and compressor.
-		if _, err = io.Copy(dst, src); err != nil {
+		if _, err := io.Copy(dst, src); err != nil {
 			log.Fatal(err)
 		}
 		if msg.IsCompressed() {
 			// Flush the flate writer.
-			if err = fw.Close(); err != nil {
+			if err := fw.Close(); err != nil {
 				log.Fatal(err)
 			}
 		}
 		// Flush WebSocket fragment writer. We could send multiple fragments
 		// for large messages.
-		if err = wr.Flush(); err != nil {
+		if err := wr.Flush(); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -305,7 +303,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("read header error: %s", err)
 			break
 		}
-		if err = ws.CheckHeader(header, state); err != nil {
+		if err := ws.CheckHeader(header, state); err != nil {
 			log.Printf("header check error: %s", err)
 			conn.Write(closeProtocolError)
 			return

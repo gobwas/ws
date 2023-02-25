@@ -30,7 +30,6 @@ type upgradeCase struct {
 	protocol  func(string) bool
 	negotiate func(httphead.Option) (httphead.Option, error)
 	onRequest func(u []byte) error
-	onHost    func(h []byte) error
 	onHeader  func(k, v []byte) error
 
 	nonce        []byte
@@ -241,7 +240,6 @@ var upgradeCases = []upgradeCase{
 		}),
 
 		onRequest: func([]byte) error { return nil },
-		onHost:    func([]byte) error { return nil },
 		onHeader:  func(k, v []byte) error { return nil },
 
 		res: mustMakeErrResponse(400, ErrHandshakeBadUpgrade, nil),
@@ -431,7 +429,7 @@ func TestUpgrader(t *testing.T) {
 	for _, test := range upgradeCases {
 		t.Run(test.label, func(t *testing.T) {
 			if !test.removeSecKey {
-				nonce := test.nonce[:]
+				nonce := test.nonce
 				if test.badSecKey {
 					nonce = nonce[:nonceSize-1]
 				}
@@ -491,7 +489,7 @@ func TestUpgrader(t *testing.T) {
 
 func BenchmarkHTTPUpgrader(b *testing.B) {
 	for _, bench := range upgradeCases {
-		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+		bench.req.Header.Set(headerSecKey, string(bench.nonce))
 
 		u := HTTPUpgrader{
 			Protocol:  bench.protocol,
@@ -520,7 +518,7 @@ func BenchmarkHTTPUpgrader(b *testing.B) {
 
 func BenchmarkUpgrader(b *testing.B) {
 	for _, bench := range upgradeCases {
-		bench.req.Header.Set(headerSecKey, string(bench.nonce[:]))
+		bench.req.Header.Set(headerSecKey, string(bench.nonce))
 
 		u := Upgrader{
 			Protocol: func(p []byte) bool {
@@ -668,7 +666,7 @@ func dumpResponse(res *http.Response) []byte {
 		panic(err)
 	}
 	if !res.Close {
-		bts = bytes.Replace(bts, []byte("Connection: close\r\n"), nil, -1)
+		bts = bytes.ReplaceAll(bts, []byte("Connection: close\r\n"), nil)
 	}
 
 	return bts
@@ -699,12 +697,6 @@ func sortHeaders(bts []byte) []byte {
 	sort.Sort(headersBytes(lines[1 : len(lines)-2]))
 	return bytes.Join(lines, []byte("\r\n"))
 }
-
-//go:linkname httpPutBufioReader net/http.putBufioReader
-func httpPutBufioReader(*bufio.Reader)
-
-//go:linkname httpPutBufioWriter net/http.putBufioWriter
-func httpPutBufioWriter(*bufio.Writer)
 
 //go:linkname httpNewBufioReader net/http.newBufioReader
 func httpNewBufioReader(io.Reader) *bufio.Reader
@@ -775,7 +767,7 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 }
 
 func mustMakeRequest(method, url string, headers http.Header) *http.Request {
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, http.NoBody)
 	if err != nil {
 		panic(err)
 	}

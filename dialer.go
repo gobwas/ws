@@ -204,7 +204,7 @@ func tlsDefaultConfig() *tls.Config {
 	return &tlsEmptyConfig
 }
 
-func hostport(host string, defaultPort string) (hostname, addr string) {
+func hostport(host, defaultPort string) (hostname, addr string) {
 	var (
 		colon   = strings.LastIndexByte(host, ':')
 		bracket = strings.IndexByte(host, ']')

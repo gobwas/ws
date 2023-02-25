@@ -120,16 +120,8 @@ func btsHasToken(header, token []byte) (has bool) {
 }
 
 const (
-	toLower  = 'a' - 'A'      // for use with OR.
-	toUpper  = ^byte(toLower) // for use with AND.
-	toLower8 = uint64(toLower) |
-		uint64(toLower)<<8 |
-		uint64(toLower)<<16 |
-		uint64(toLower)<<24 |
-		uint64(toLower)<<32 |
-		uint64(toLower)<<40 |
-		uint64(toLower)<<48 |
-		uint64(toLower)<<56
+	toLower = 'a' - 'A'      // for use with OR.
+	toUpper = ^byte(toLower) // for use with AND.
 )
 
 // Algorithm below is like standard textproto/CanonicalMIMEHeaderKey, except

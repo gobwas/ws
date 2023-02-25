@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -24,11 +25,11 @@ const (
 var (
 	ErrHandshakeBadProtocol = RejectConnectionError(
 		RejectionStatus(http.StatusHTTPVersionNotSupported),
-		RejectionReason(fmt.Sprintf("handshake error: bad HTTP protocol version")),
+		RejectionReason("handshake error: bad HTTP protocol version"),
 	)
 	ErrHandshakeBadMethod = RejectConnectionError(
 		RejectionStatus(http.StatusMethodNotAllowed),
-		RejectionReason(fmt.Sprintf("handshake error: bad HTTP request method")),
+		RejectionReason("handshake error: bad HTTP request method"),
 	)
 	ErrHandshakeBadHost = RejectConnectionError(
 		RejectionStatus(http.StatusBadRequest),
@@ -58,7 +59,7 @@ var (
 
 // ErrMalformedResponse is returned by Dialer to indicate that server response
 // can not be parsed.
-var ErrMalformedResponse = fmt.Errorf("malformed HTTP response")
+var ErrMalformedResponse = errors.New("malformed HTTP response")
 
 // ErrMalformedRequest is returned when HTTP request can not be parsed.
 var ErrMalformedRequest = RejectConnectionError(
@@ -130,7 +131,7 @@ type HTTPUpgrader struct {
 	// list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	//
-	// DEPRECATED. Use Negotiate instead.
+	// Deprecated: Use Negotiate instead.
 	Extension func(httphead.Option) bool
 
 	// Negotiate is the callback that is used to negotiate extensions from
@@ -311,7 +312,7 @@ type Upgrader struct {
 	// header fields it wishes to use, with the first options listed being most
 	// preferable."
 	//
-	// DEPRECATED. Use Negotiate instead.
+	// Deprecated: Use Negotiate instead.
 	Extension func(httphead.Option) bool
 
 	// ExtensionCustom allow user to parse Sec-WebSocket-Extensions header
@@ -549,7 +550,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			if len(v) != nonceSize {
 				err = ErrHandshakeBadSecKey
 			} else {
-				copy(nonce[:], v)
+				copy(nonce, v)
 			}
 
 		case headerSecProtocolCanonical:

@@ -115,10 +115,10 @@ func main() {
 				// Reset writer to write frame with right operation code.
 				writer.Reset(conn, state, header.OpCode)
 
-				if _, err = io.Copy(writer, reader); err != nil {
+				if _, err := io.Copy(writer, reader); err != nil {
 					// handle error
 				}
-				if err = writer.Flush(); err != nil {
+				if err := writer.Flush(); err != nil {
 					// handle error
 				}
 			}
@@ -153,7 +153,7 @@ We can apply the same pattern to read and write structured responses through a J
 		if err := encoder.Encode(&resp); err != nil {
 			return err
 		}
-		if err = w.Flush(); err != nil {
+		if err := w.Flush(); err != nil {
 			return err
 		}
 	}
@@ -443,7 +443,7 @@ func main() {
 					// Handle error.
 					return
 				}
-				if err = ws.WriteFrame(conn, ack); err != nil {
+				if err := ws.WriteFrame(conn, ack); err != nil {
 					// Handle error.
 					return
 				}

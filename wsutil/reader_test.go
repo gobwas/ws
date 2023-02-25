@@ -34,7 +34,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 			}
 			intermediate = append(
 				intermediate,
-				append(([]byte)(nil), bts...),
+				append([]byte(nil), bts...),
 			)
 			return nil
 		},
