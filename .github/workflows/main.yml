@@ -57,7 +57,7 @@ jobs:
     - name: Autobahn Report Artifact
       if: >-
         startsWith(matrix.os, 'ubuntu')
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
         path: autobahn/report
