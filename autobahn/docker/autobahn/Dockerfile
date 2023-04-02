@@ -9,10 +9,12 @@ ENV NODE_PATH /usr/local/lib/node_modules/
 # make "pypy" available as "python"
 RUN ln -s /usr/local/bin/pypy /usr/local/bin/python
 
+# We need this to fix pip & cryptography
+RUN apt-get update && apt-get install -y build-essential libssl-dev
+
 # install Autobahn|Testsuite
 RUN pip install -U pip typing && \
 	pip install autobahntestsuite=='0.8.2'
-
 
 VOLUME /config
 VOLUME /report
