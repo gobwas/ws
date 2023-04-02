@@ -1,9 +1,9 @@
-FROM alpine:3.12
+FROM alpine:3.17
 
-RUN apk add --no-cache python2 python2-dev gcc build-base musl-dev libffi-dev openssl-dev && \
+RUN apk add --no-cache python3 python3-dev gcc build-base musl-dev libffi-dev openssl-dev && \
 	python -m ensurepip && \
-	pip install --upgrade pip && \
-	pip install --no-python-version-warning autobahntestsuite
+	pip3 install --upgrade pip && \
+	pip3 install --no-python-version-warning autobahntestsuite
 
 VOLUME /config
 VOLUME /report

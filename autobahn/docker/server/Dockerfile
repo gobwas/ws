@@ -1,4 +1,4 @@
-FROM golang:1.15.6-alpine3.12
+FROM golang:1.20.2-alpine3.17
 
 WORKDIR /go/src/github.com/gobwas/ws
 
