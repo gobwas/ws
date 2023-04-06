@@ -348,7 +348,7 @@ func TestAsciiToInt(t *testing.T) {
 		{[]byte("420"), 420, false},
 		{[]byte("010050042"), 10050042, false},
 	} {
-		t.Run(fmt.Sprint(test.bts), func(t *testing.T) {
+		t.Run(string(test.bts), func(t *testing.T) {
 			act, err := asciiToInt(test.bts)
 			if (test.err && err == nil) || (!test.err && err != nil) {
 				t.Errorf("unexpected error: %v", err)
@@ -370,7 +370,7 @@ func TestBtrim(t *testing.T) {
 		{[]byte("abc "), []byte("abc")},
 		{[]byte(" abc "), []byte("abc")},
 	} {
-		t.Run(fmt.Sprint(test.bts), func(t *testing.T) {
+		t.Run(string(test.bts), func(t *testing.T) {
 			if act := btrim(test.bts); !bytes.Equal(act, test.exp) {
 				t.Errorf("btrim(%v) = %v; want %v", test.bts, act, test.exp)
 			}
@@ -389,7 +389,7 @@ func TestBSplit3(t *testing.T) {
 		{[]byte(""), ' ', []byte{}, nil, nil},
 		{[]byte("GET / HTTP/1.1"), ' ', []byte("GET"), []byte("/"), []byte("HTTP/1.1")},
 	} {
-		t.Run(fmt.Sprint(test.bts), func(t *testing.T) {
+		t.Run(string(test.bts), func(t *testing.T) {
 			b1, b2, b3 := bsplit3(test.bts, test.sep)
 			if !bytes.Equal(b1, test.exp1) || !bytes.Equal(b2, test.exp2) || !bytes.Equal(b3, test.exp3) {
 				t.Errorf(
@@ -415,7 +415,7 @@ var canonicalHeaderCases = [][]byte{
 
 func TestCanonicalizeHeaderKey(t *testing.T) {
 	for _, bts := range canonicalHeaderCases {
-		t.Run(fmt.Sprint(bts), func(t *testing.T) {
+		t.Run(string(bts), func(t *testing.T) {
 			act := append([]byte(nil), bts...)
 			canonicalizeHeaderKey(act)
 
@@ -433,7 +433,7 @@ func TestCanonicalizeHeaderKey(t *testing.T) {
 
 func BenchmarkCanonicalizeHeaderKey(b *testing.B) {
 	for _, bts := range canonicalHeaderCases {
-		b.Run(fmt.Sprint(bts), func(b *testing.B) {
+		b.Run(string(bts), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				canonicalizeHeaderKey(bts)
 			}
