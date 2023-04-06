@@ -63,12 +63,11 @@ const (
 //
 // It returns non-nil error at least in these cases:
 //   - The negotiation offer contains an extension parameter not defined for
-//   use in an offer/response.
+//     use in an offer/response.
 //   - The negotiation offer/response contains an extension parameter with an
-//   invalid value.
+//     invalid value.
 //   - The negotiation offer/response contains multiple extension parameters
-//   with
-// the same name.
+//     with the same name.
 func (p *Parameters) Parse(opt httphead.Option) (err error) {
 	const (
 		clientMaxWindowBitsSeen = 1 << iota
@@ -143,7 +142,7 @@ func (p *Parameters) Parse(opt httphead.Option) (err error) {
 		}
 		return true
 	})
-	return
+	return err
 }
 
 // Option encodes parameters into HTTP header option.

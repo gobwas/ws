@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"strconv"
 
@@ -48,14 +47,14 @@ var (
 	headerSecKey        = "Sec-WebSocket-Key"
 	headerSecAccept     = "Sec-WebSocket-Accept"
 
-	headerHostCanonical          = textproto.CanonicalMIMEHeaderKey(headerHost)
-	headerUpgradeCanonical       = textproto.CanonicalMIMEHeaderKey(headerUpgrade)
-	headerConnectionCanonical    = textproto.CanonicalMIMEHeaderKey(headerConnection)
-	headerSecVersionCanonical    = textproto.CanonicalMIMEHeaderKey(headerSecVersion)
-	headerSecProtocolCanonical   = textproto.CanonicalMIMEHeaderKey(headerSecProtocol)
-	headerSecExtensionsCanonical = textproto.CanonicalMIMEHeaderKey(headerSecExtensions)
-	headerSecKeyCanonical        = textproto.CanonicalMIMEHeaderKey(headerSecKey)
-	headerSecAcceptCanonical     = textproto.CanonicalMIMEHeaderKey(headerSecAccept)
+	headerHostCanonical          = headerHost
+	headerUpgradeCanonical       = headerUpgrade
+	headerConnectionCanonical    = headerConnection
+	headerSecVersionCanonical    = "Sec-Websocket-Version"
+	headerSecProtocolCanonical   = "Sec-Websocket-Protocol"
+	headerSecExtensionsCanonical = "Sec-Websocket-Extensions"
+	headerSecKeyCanonical        = "Sec-Websocket-Key"
+	headerSecAcceptCanonical     = "Sec-Websocket-Accept"
 )
 
 var (
@@ -91,10 +90,9 @@ func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	req.major, req.minor, ok = httpParseVersion(proto)
 	if !ok {
 		err = ErrMalformedRequest
-		return
+		return req, err
 	}
-
-	return
+	return req, err
 }
 
 func httpParseResponseLine(line []byte) (resp httpResponseLine, err error) {
@@ -198,8 +196,9 @@ func strSelectProtocol(h string, check func(string) bool) (ret string, ok bool) 
 		}
 		return true
 	})
-	return
+	return ret, ok
 }
+
 func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) {
 	var selected []byte
 	ok = httphead.ScanTokens(h, func(v []byte) bool {
@@ -212,7 +211,7 @@ func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) 
 	if ok && selected != nil {
 		return string(selected), true
 	}
-	return
+	return ret, ok
 }
 
 func btsSelectExtensions(h []byte, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {

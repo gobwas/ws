@@ -21,8 +21,6 @@ import (
 	"github.com/gobwas/ws/wsutil"
 )
 
-const dir = "./example/autobahn"
-
 var addr = flag.String("listen", ":9001", "addr to listen")
 
 func main() {

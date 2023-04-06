@@ -92,15 +92,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var servers []string
+	servers := make([]string, 0, len(report))
 	for s := range report {
 		servers = append(servers, s)
 	}
 	sort.Strings(servers)
 
-	var (
-		failed bool
-	)
+	var failed bool
 	tw := tabwriter.NewWriter(os.Stderr, 0, 4, 1, ' ', 0)
 	for _, server := range servers {
 		var (
@@ -174,10 +172,6 @@ func main() {
 
 	tw.Flush()
 	os.Exit(rc)
-}
-
-type spec struct {
-	OutDir string `json:"outdir"`
 }
 
 type report map[string]server

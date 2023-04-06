@@ -116,7 +116,7 @@ func makeAccept(nonce []byte) []byte {
 
 func BenchmarkPutAccept(b *testing.B) {
 	nonce := make([]byte, nonceSize)
-	_, err := rand.Read(nonce[:])
+	_, err := rand.Read(nonce)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func BenchmarkPutAccept(b *testing.B) {
 
 func BenchmarkCheckNonce(b *testing.B) {
 	nonce := make([]byte, nonceSize)
-	_, err := rand.Read(nonce[:])
+	_, err := rand.Read(nonce)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestDialerHandshake(t *testing.T) {
 	}{
 		{
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -174,7 +174,7 @@ func TestDialerHandshake(t *testing.T) {
 				Protocols: []string{"xml", "json", "soap"},
 			},
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -190,7 +190,7 @@ func TestDialerHandshake(t *testing.T) {
 				Protocols: []string{"xml", "json", "soap"},
 			},
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -210,7 +210,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -231,7 +231,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -252,7 +252,7 @@ func TestDialerHandshake(t *testing.T) {
 				},
 			},
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -267,7 +267,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "resp with frames",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -284,7 +284,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "resp with body",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -303,7 +303,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad proto",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 2,
 				ProtoMinor: 1,
 				Header:     make(http.Header),
@@ -313,7 +313,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad status",
 			res: &http.Response{
-				StatusCode: 400,
+				StatusCode: http.StatusBadRequest,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header:     make(http.Header),
@@ -324,7 +324,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad status with body",
 			res: &http.Response{
-				StatusCode: 400,
+				StatusCode: http.StatusBadRequest,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header:     make(http.Header),
@@ -339,7 +339,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad upgrade",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -352,7 +352,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad upgrade",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -366,7 +366,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad connection",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -379,7 +379,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad connection",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -393,7 +393,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad accept",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -407,7 +407,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad accept",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -421,7 +421,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad subprotocol",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -436,7 +436,7 @@ func TestDialerHandshake(t *testing.T) {
 		{
 			name: "bad extensions",
 			res: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header: http.Header{
@@ -457,7 +457,7 @@ func TestDialerHandshake(t *testing.T) {
 				// set in test case.
 				req, err := http.ReadRequest(bufio.NewReader(client))
 				if err != nil {
-					t.Fatal(err)
+					panic(err)
 				}
 
 				switch test.accept {
@@ -479,7 +479,7 @@ func TestDialerHandshake(t *testing.T) {
 				var buf bytes.Buffer
 				for _, f := range test.frames {
 					if err := WriteFrame(&buf, f); err != nil {
-						t.Fatal(err)
+						panic(err)
 					}
 					bts = append(bts, buf.Bytes()...)
 					buf.Reset()
@@ -611,7 +611,7 @@ func TestDialerCancelation(t *testing.T) {
 					if t.IsZero() {
 						return nil
 					}
-					d := t.Sub(time.Now())
+					d := time.Until(t)
 					if d < 0 {
 						deadline <- ioErrDeadline
 					} else {
@@ -691,7 +691,7 @@ func BenchmarkDialer(b *testing.B) {
 		rand.Seed(0)
 
 		resp := &http.Response{
-			StatusCode: 101,
+			StatusCode: http.StatusSwitchingProtocols,
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 			Header: http.Header{
@@ -827,18 +827,21 @@ func (s stubConn) Close() error {
 	}
 	return nil
 }
+
 func (s stubConn) SetDeadline(t time.Time) error {
 	if s.setDeadline != nil {
 		return s.setDeadline(t)
 	}
 	return nil
 }
+
 func (s stubConn) SetReadDeadline(t time.Time) error {
 	if s.setReadDeadline != nil {
 		return s.setReadDeadline(t)
 	}
 	return nil
 }
+
 func (s stubConn) SetWriteDeadline(t time.Time) error {
 	if s.setWriteDeadline != nil {
 		return s.setWriteDeadline(t)

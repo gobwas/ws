@@ -117,7 +117,7 @@ func (r *suffixedReader) ReadByte() (b byte, err error) {
 		return 0, io.EOF
 	}
 	b = r.suffix[r.pos]
-	r.pos += 1
+	r.pos++
 	return b, nil
 }
 

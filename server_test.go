@@ -668,7 +668,7 @@ func dumpResponse(res *http.Response) []byte {
 		panic(err)
 	}
 	if !res.Close {
-		bts = bytes.Replace(bts, []byte("Connection: close\r\n"), nil, -1)
+		bts = bytes.ReplaceAll(bts, []byte("Connection: close\r\n"), nil)
 	}
 
 	return bts
@@ -744,7 +744,7 @@ func (r *recorder) Bytes() []byte {
 func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 	if r.hijacked {
 		err = fmt.Errorf("already hijacked")
-		return
+		return conn, brw, err
 	}
 
 	r.hijacked = true
@@ -771,11 +771,11 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 
 	brw = bufio.NewReadWriter(br, bw)
 
-	return
+	return conn, brw, err
 }
 
 func mustMakeRequest(method, url string, headers http.Header) *http.Request {
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, http.NoBody)
 	if err != nil {
 		panic(err)
 	}
@@ -837,5 +837,5 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 func mustMakeNonce() (ret []byte) {
 	ret = make([]byte, nonceSize)
 	initNonce(ret)
-	return
+	return ret
 }

@@ -169,15 +169,27 @@ func BenchmarkCipher(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		//b.Run(fmt.Sprintf("naive_bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
-		//	for i := 0; i < b.N; i++ {
-		//		cipherNaiveNoCp(bts, mask, bench.offset)
-		//	}
-		//})
+		b.Run(fmt.Sprintf("naive_bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
+			var sink int64
+			for i := 0; i < b.N; i++ {
+				r := cipherNaiveNoCp(bts, mask, bench.offset)
+				sink += int64(len(r))
+			}
+			sinkValue(sink)
+		})
 		b.Run(fmt.Sprintf("bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
+			var sink int64
 			for i := 0; i < b.N; i++ {
 				Cipher(bts, mask, bench.offset)
+				sink += int64(len(bts))
 			}
+			sinkValue(sink)
 		})
+	}
+}
+
+func sinkValue(v int64) {
+	if r := rand.Float32(); r > 2 {
+		panic(fmt.Sprintf("impossible %g: %v", r, v))
 	}
 }
