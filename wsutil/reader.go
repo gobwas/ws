@@ -137,7 +137,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		err = io.EOF
 	}
 
-	return
+	return n, err
 }
 
 // Discard discards current message unread bytes.
@@ -240,7 +240,7 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 		r.State = r.State.Set(ws.StateFragmented)
 	}
 
-	return
+	return hdr, err
 }
 
 func (r *Reader) fragmented() bool {

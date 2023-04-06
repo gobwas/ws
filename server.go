@@ -24,11 +24,11 @@ const (
 var (
 	ErrHandshakeBadProtocol = RejectConnectionError(
 		RejectionStatus(http.StatusHTTPVersionNotSupported),
-		RejectionReason(fmt.Sprintf("handshake error: bad HTTP protocol version")),
+		RejectionReason("handshake error: bad HTTP protocol version"),
 	)
 	ErrHandshakeBadMethod = RejectConnectionError(
 		RejectionStatus(http.StatusMethodNotAllowed),
-		RejectionReason(fmt.Sprintf("handshake error: bad HTTP request method")),
+		RejectionReason("handshake error: bad HTTP request method"),
 	)
 	ErrHandshakeBadHost = RejectConnectionError(
 		RejectionStatus(http.StatusBadRequest),
@@ -130,7 +130,7 @@ type HTTPUpgrader struct {
 	// list requested by client. If this field is set, then the all matched
 	// extensions are sent to a client as negotiated.
 	//
-	// DEPRECATED. Use Negotiate instead.
+	// Deprecated: use Negotiate instead.
 	Extension func(httphead.Option) bool
 
 	// Negotiate is the callback that is used to negotiate extensions from
@@ -163,7 +163,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 	}
 	if err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
-		return
+		return conn, rw, hs, err
 	}
 
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
@@ -262,7 +262,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		// Do not store Flush() error to not override already existing one.
 		_ = rw.Writer.Flush()
 	}
-	return
+	return conn, rw, hs, err
 }
 
 // Upgrader contains options for upgrading connection to websocket.
@@ -311,7 +311,7 @@ type Upgrader struct {
 	// header fields it wishes to use, with the first options listed being most
 	// preferable."
 	//
-	// DEPRECATED. Use Negotiate instead.
+	// Deprecated: use Negotiate instead.
 	Extension func(httphead.Option) bool
 
 	// ExtensionCustom allow user to parse Sec-WebSocket-Extensions header
@@ -549,7 +549,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			if len(v) != nonceSize {
 				err = ErrHandshakeBadSecKey
 			} else {
-				copy(nonce[:], v)
+				copy(nonce, v)
 			}
 
 		case headerSecProtocolCanonical:
@@ -646,7 +646,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	httpWriteResponseUpgrade(bw, nonce, hs, header.WriteTo)
 	err = bw.Flush()
 
-	return
+	return hs, err
 }
 
 type handshakeHeader [2]HandshakeHeader

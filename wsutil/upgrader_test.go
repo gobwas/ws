@@ -90,7 +90,7 @@ func TestDebugUpgrader(t *testing.T) {
 
 type falseReader struct{}
 
-func (f falseReader) Read(p []byte) (int, error) {
+func (f falseReader) Read([]byte) (int, error) {
 	return 0, fmt.Errorf("falsy read")
 }
 

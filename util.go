@@ -47,7 +47,7 @@ func strToBytes(str string) (bts []byte) {
 	b.Data = s.Data
 	b.Len = s.Len
 	b.Cap = s.Len
-	return
+	return bts
 }
 
 func btsToString(bts []byte) (str string) {
@@ -73,7 +73,7 @@ func asciiToInt(bts []byte) (ret int, err error) {
 }
 
 // pow for integers implementation.
-// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3
+// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3.
 func pow(a, b int) int {
 	p := 1
 	for b > 0 {
@@ -116,7 +116,7 @@ func btsHasToken(header, token []byte) (has bool) {
 		has = bytes.EqualFold(v, token)
 		return !has
 	})
-	return
+	return has
 }
 
 const (

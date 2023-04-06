@@ -117,7 +117,7 @@ var RWTestCases = []RWTestCase{
 }
 
 func bits(s string) []byte {
-	s = strings.Replace(s, " ", "", -1)
+	s = strings.ReplaceAll(s, " ", "")
 	bts := make([]byte, len(s)/8)
 
 	for i, j := 0, 0; i < len(s); i, j = i+8, j+1 {

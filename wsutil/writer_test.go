@@ -362,7 +362,7 @@ func TestWriterLargeWrite(t *testing.T) {
 	w := NewWriterSize(&dest, 0, 0, 16)
 
 	// Test that even for big writes extensions set their bits.
-	var rsv = [3]bool{true, true, false}
+	rsv := [3]bool{true, true, false}
 	w.SetExtensions(SendExtensionFunc(func(h ws.Header) (ws.Header, error) {
 		h.Rsv = ws.Rsv(rsv[0], rsv[1], rsv[2])
 		return h, nil
@@ -426,7 +426,7 @@ func TestWriterGrow(t *testing.T) {
 			w.DisableFlush()
 
 			// Test that even for big writes extensions set their bits.
-			var rsv = [3]bool{true, true, false}
+			rsv := [3]bool{true, true, false}
 			w.SetExtensions(SendExtensionFunc(func(h ws.Header) (ws.Header, error) {
 				h.Rsv = ws.Rsv(rsv[0], rsv[1], rsv[2])
 				return h, nil
@@ -615,7 +615,7 @@ func frames(p []byte) (ret []ws.Frame) {
 		}
 		ret = append(ret, f)
 	}
-	return
+	return ret
 }
 
 func pretty(f ...ws.Frame) string {
