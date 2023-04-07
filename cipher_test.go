@@ -188,6 +188,7 @@ func BenchmarkCipher(b *testing.B) {
 	}
 }
 
+// sinkValue makes variable used and prevents dead code elimination.
 func sinkValue(v int64) {
 	if r := rand.Float32(); r > 2 {
 		panic(fmt.Sprintf("impossible %g: %v", r, v))
