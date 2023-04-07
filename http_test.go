@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"io/ioutil"
+	"net/textproto"
 	"net/url"
 	"testing"
 
@@ -34,6 +35,51 @@ func TestParseHttpVersion(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestHeaderNames(t *testing.T) {
+	testCases := []struct {
+		have, want string
+	}{
+		{
+			have: headerHost,
+			want: headerHostCanonical,
+		},
+		{
+			have: headerUpgrade,
+			want: headerUpgradeCanonical,
+		},
+		{
+			have: headerConnection,
+			want: headerConnectionCanonical,
+		},
+		{
+			have: headerSecVersion,
+			want: headerSecVersionCanonical,
+		},
+		{
+			have: headerSecProtocol,
+			want: headerSecProtocolCanonical,
+		},
+		{
+			have: headerSecExtensions,
+			want: headerSecExtensionsCanonical,
+		},
+		{
+			have: headerSecKey,
+			want: headerSecKeyCanonical,
+		},
+		{
+			have: headerSecAccept,
+			want: headerSecAcceptCanonical,
+		},
+	}
+
+	for _, tc := range testCases {
+		if have := textproto.CanonicalMIMEHeaderKey(tc.have); have != tc.want {
+			t.Errorf("have %q want %q,", have, tc.want)
+		}
 	}
 }
 

@@ -37,7 +37,7 @@ var (
 	textTailErrUpgradeRequired        = errorText(ErrHandshakeUpgradeRequired)
 )
 
-var (
+const (
 	headerHost          = "Host"
 	headerUpgrade       = "Upgrade"
 	headerConnection    = "Connection"
