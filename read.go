@@ -84,7 +84,7 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 		copy(h.Mask[:], bts)
 	}
 
-	return h, err
+	return h, nil
 }
 
 // ReadFrame reads a frame from r.
