@@ -45,7 +45,7 @@ func (c *cbuf) split(p []byte) (head, tail []byte) {
 		x := n - len(c.buf)
 		head = p[:x]
 		tail = p[x:]
-		return
+		return head, tail
 	}
 	return nil, p
 }

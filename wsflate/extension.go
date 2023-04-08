@@ -27,20 +27,20 @@ type Extension struct {
 // nil error.
 func (n *Extension) Negotiate(opt httphead.Option) (accept httphead.Option, err error) {
 	if !bytes.Equal(opt.Name, ExtensionNameBytes) {
-		return
+		return accept, nil
 	}
 	if n.accepted {
 		// Negotiate might be called multiple times during upgrade.
 		// We stick to first one accepted extension since they must be passed
 		// in ordered by preference.
-		return
+		return accept, nil
 	}
 
 	want := n.Parameters
 
 	// NOTE: Parse() resets params inside, so no worries.
-	if err = n.params.Parse(opt); err != nil {
-		return
+	if err := n.params.Parse(opt); err != nil {
+		return accept, err
 	}
 	{
 		offer := n.params.ServerMaxWindowBits
@@ -49,7 +49,7 @@ func (n *Extension) Negotiate(opt httphead.Option) (accept httphead.Option, err 
 			// A server declines an extension negotiation offer
 			// with this parameter if the server doesn't support
 			// it.
-			return
+			return accept, nil
 		}
 	}
 	{
@@ -60,14 +60,14 @@ func (n *Extension) Negotiate(opt httphead.Option) (accept httphead.Option, err 
 		offer := n.params.ClientMaxWindowBits
 		want := want.ClientMaxWindowBits
 		if want > offer {
-			return
+			return accept, nil
 		}
 	}
 	{
 		offer := n.params.ServerNoContextTakeover
 		want := want.ServerNoContextTakeover
 		if offer && !want {
-			return
+			return accept, nil
 		}
 	}
 
