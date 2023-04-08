@@ -38,6 +38,7 @@ var (
 )
 
 const (
+	// Every new header must be added to TestHeaderNames test.
 	headerHost          = "Host"
 	headerUpgrade       = "Upgrade"
 	headerConnection    = "Connection"
