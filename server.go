@@ -451,12 +451,12 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 	// Read HTTP request line like "GET /ws HTTP/1.1".
 	rl, err := readLine(br)
 	if err != nil {
-		return
+		return hs, err
 	}
 	// Parse request line data like HTTP version, uri and method.
 	req, err := httpParseRequestLine(rl)
 	if err != nil {
-		return
+		return hs, err
 	}
 
 	// Prepare stack-based handshake header list.
@@ -640,7 +640,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		httpWriteResponseError(bw, err, code, header.WriteTo)
 		// Do not store Flush() error to not override already existing one.
 		_ = bw.Flush()
-		return
+		return hs, err
 	}
 
 	httpWriteResponseUpgrade(bw, nonce, hs, header.WriteTo)

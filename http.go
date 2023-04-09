@@ -91,7 +91,6 @@ func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	req.major, req.minor, ok = httpParseVersion(proto)
 	if !ok {
 		err = ErrMalformedRequest
-		return req, err
 	}
 	return req, err
 }
@@ -127,25 +126,25 @@ func httpParseVersion(bts []byte) (major, minor int, ok bool) {
 	case bytes.Equal(bts, httpVersion1_1):
 		return 1, 1, true
 	case len(bts) < 8:
-		return
+		return 0, 0, false
 	case !bytes.Equal(bts[:5], httpVersionPrefix):
-		return
+		return 0, 0, false
 	}
 
 	bts = bts[5:]
 
 	dot := bytes.IndexByte(bts, '.')
 	if dot == -1 {
-		return
+		return 0, 0, false
 	}
 	var err error
 	major, err = asciiToInt(bts[:dot])
 	if err != nil {
-		return
+		return major, 0, false
 	}
 	minor, err = asciiToInt(bts[dot+1:])
 	if err != nil {
-		return
+		return major, minor, false
 	}
 
 	return major, minor, true
@@ -156,7 +155,7 @@ func httpParseVersion(bts []byte) (major, minor int, ok bool) {
 func httpParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 	colon := bytes.IndexByte(line, ':')
 	if colon == -1 {
-		return
+		return nil, nil, false
 	}
 
 	k = btrim(line[:colon])

@@ -146,7 +146,7 @@ type Dialer struct {
 func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *bufio.Reader, hs Handshake, err error) {
 	u, err := url.ParseRequestURI(urlstr)
 	if err != nil {
-		return
+		return nil, nil, hs, err
 	}
 
 	// Prepare context to dial with. Initially it is the same as original, but
@@ -164,7 +164,7 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 		}
 	}
 	if conn, err = d.dial(dialctx, u); err != nil {
-		return conn, br, hs, err
+		return conn, nil, hs, err
 	}
 	defer func() {
 		if err != nil {
@@ -229,7 +229,7 @@ func (d Dialer) dial(ctx context.Context, u *url.URL) (conn net.Conn, err error)
 		hostname, addr := hostport(u.Host, ":443")
 		conn, err = dial(ctx, "tcp", addr)
 		if err != nil {
-			return
+			return nil, err
 		}
 		tlsClient := d.TLSClient
 		if tlsClient == nil {
