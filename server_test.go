@@ -17,9 +17,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	_ "unsafe" // for go:linkname
 
 	"github.com/gobwas/httphead"
+	"github.com/gobwas/pool/pbufio"
 )
 
 // TODO(gobwas): upgradeGenericCase with methods like configureUpgrader,
@@ -700,18 +700,6 @@ func sortHeaders(bts []byte) []byte {
 	return bytes.Join(lines, []byte("\r\n"))
 }
 
-//go:linkname httpPutBufioReader net/http.putBufioReader
-func httpPutBufioReader(*bufio.Reader)
-
-//go:linkname httpPutBufioWriter net/http.putBufioWriter
-func httpPutBufioWriter(*bufio.Writer)
-
-//go:linkname httpNewBufioReader net/http.newBufioReader
-func httpNewBufioReader(io.Reader) *bufio.Reader
-
-//go:linkname httpNewBufioWriterSize net/http.newBufioWriterSize
-func httpNewBufioWriterSize(io.Writer, int) *bufio.Writer
-
 type recorder struct {
 	*httptest.ResponseRecorder
 	hijacked bool
@@ -764,10 +752,8 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 		}
 	}
 
-	// Use httpNewBufio* linked functions here to make
-	// benchmark more closer to real life usage.
-	br := httpNewBufioReader(conn)
-	bw := httpNewBufioWriterSize(conn, 4<<10)
+	br := pbufio.GetReader(conn, DefaultClientReadBufferSize)
+	bw := pbufio.GetWriter(conn, DefaultClientWriteBufferSize)
 
 	brw = bufio.NewReadWriter(br, bw)
 
