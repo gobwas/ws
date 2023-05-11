@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gobwas/httphead"
-	"github.com/gobwas/pool/pbufio"
+	"github.com/gobwas/ws/internal/pbufio"
 )
 
 // Constants used by Dialer.

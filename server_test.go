@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/gobwas/httphead"
-	"github.com/gobwas/pool/pbufio"
+	"github.com/gobwas/ws/internal/pbufio"
 )
 
 // TODO(gobwas): upgradeGenericCase with methods like configureUpgrader,

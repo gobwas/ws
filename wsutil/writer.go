@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/gobwas/pool"
-	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
+	pool "github.com/gobwas/ws/internal"
+	"github.com/gobwas/ws/internal/pbytes"
 )
 
 // DefaultWriteBuffer contains size of Writer's default buffer. It used by
