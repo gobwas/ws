@@ -237,7 +237,7 @@ func min(a, b int) int {
 func handlerIndex() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if *verbose {
-			log.Printf("reqeust to %s", r.URL)
+			log.Printf("request to %s", r.URL)
 		}
 		if r.URL.Path != "/" {
 			w.WriteHeader(http.StatusNotFound)
