@@ -41,8 +41,14 @@ jobs:
     - name: Go Mod Verify
       run: |
         go mod verify
-      
+
+    - name: Test Go 1.15
+      if: matrix.go == '1.15'
+      run: |
+        go test -v -race -cover ./...
+
     - name: Test
+      if: matrix.go != '1.15'
       run: |
         go test -v -race -shuffle=on -cover ./...
 
