@@ -3,7 +3,6 @@ package wsutil
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 
 	"github.com/gobwas/ws"
 )
@@ -144,7 +143,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 // It discards all frames of fragmented message.
 func (r *Reader) Discard() (err error) {
 	for {
-		_, err = io.Copy(ioutil.Discard, &r.raw)
+		_, err = io.Copy(io.Discard, &r.raw)
 		if err != nil {
 			break
 		}
@@ -171,7 +170,7 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 		// unexpected.
 		//
 		// NOTE: This is necessary to prevent callers such that
-		// ioutil.ReadAll to receive some amount of bytes without an error.
+		// io.ReadAll to receive some amount of bytes without an error.
 		// ReadAll() ignores an io.EOF error, thus caller may think that
 		// whole message fetched, but actually only part of it.
 		err = io.ErrUnexpectedEOF
@@ -213,7 +212,7 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 			}
 			if err == nil {
 				// Ensure that src is empty.
-				_, err = io.Copy(ioutil.Discard, &r.raw)
+				_, err = io.Copy(io.Discard, &r.raw)
 			}
 			return hdr, err
 		}

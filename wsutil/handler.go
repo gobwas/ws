@@ -3,7 +3,6 @@ package wsutil
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"strconv"
 
 	"github.com/gobwas/pool/pbytes"
@@ -123,7 +122,7 @@ func (c ControlHandler) HandlePong(h ws.Header) error {
 	// A Pong frame MAY be sent unsolicited. This serves as a
 	// unidirectional heartbeat. A response to an unsolicited Pong frame
 	// is not expected.
-	_, err := io.CopyBuffer(ioutil.Discard, c.Src, buf)
+	_, err := io.CopyBuffer(io.Discard, c.Src, buf)
 
 	return err
 }
