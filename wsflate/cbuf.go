@@ -45,7 +45,7 @@ func (c *cbuf) split(p []byte) (head, tail []byte) {
 		x := n - len(c.buf)
 		head = p[:x]
 		tail = p[x:]
-		return
+		return head, tail
 	}
 	return nil, p
 }
@@ -117,7 +117,7 @@ func (r *suffixedReader) ReadByte() (b byte, err error) {
 		return 0, io.EOF
 	}
 	b = r.suffix[r.pos]
-	r.pos += 1
+	r.pos++
 	return b, nil
 }
 

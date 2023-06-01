@@ -17,9 +17,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	_ "unsafe" // for go:linkname
 
 	"github.com/gobwas/httphead"
+	"github.com/gobwas/pool/pbufio"
 )
 
 // TODO(gobwas): upgradeGenericCase with methods like configureUpgrader,
@@ -668,7 +668,7 @@ func dumpResponse(res *http.Response) []byte {
 		panic(err)
 	}
 	if !res.Close {
-		bts = bytes.Replace(bts, []byte("Connection: close\r\n"), nil, -1)
+		bts = bytes.ReplaceAll(bts, []byte("Connection: close\r\n"), nil)
 	}
 
 	return bts
@@ -699,18 +699,6 @@ func sortHeaders(bts []byte) []byte {
 	sort.Sort(headersBytes(lines[1 : len(lines)-2]))
 	return bytes.Join(lines, []byte("\r\n"))
 }
-
-//go:linkname httpPutBufioReader net/http.putBufioReader
-func httpPutBufioReader(*bufio.Reader)
-
-//go:linkname httpPutBufioWriter net/http.putBufioWriter
-func httpPutBufioWriter(*bufio.Writer)
-
-//go:linkname httpNewBufioReader net/http.newBufioReader
-func httpNewBufioReader(io.Reader) *bufio.Reader
-
-//go:linkname httpNewBufioWriterSize net/http.newBufioWriterSize
-func httpNewBufioWriterSize(io.Writer, int) *bufio.Writer
 
 type recorder struct {
 	*httptest.ResponseRecorder
@@ -744,7 +732,7 @@ func (r *recorder) Bytes() []byte {
 func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 	if r.hijacked {
 		err = fmt.Errorf("already hijacked")
-		return
+		return conn, brw, err
 	}
 
 	r.hijacked = true
@@ -764,18 +752,16 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 		}
 	}
 
-	// Use httpNewBufio* linked functions here to make
-	// benchmark more closer to real life usage.
-	br := httpNewBufioReader(conn)
-	bw := httpNewBufioWriterSize(conn, 4<<10)
+	br := pbufio.GetReader(conn, DefaultClientReadBufferSize)
+	bw := pbufio.GetWriter(conn, DefaultClientWriteBufferSize)
 
 	brw = bufio.NewReadWriter(br, bw)
 
-	return
+	return conn, brw, err
 }
 
 func mustMakeRequest(method, url string, headers http.Header) *http.Request {
-	req, err := http.NewRequest(method, url, nil)
+	req, err := http.NewRequest(method, url, http.NoBody)
 	if err != nil {
 		panic(err)
 	}
@@ -837,5 +823,5 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 func mustMakeNonce() (ret []byte) {
 	ret = make([]byte, nonceSize)
 	initNonce(ret)
-	return
+	return ret
 }

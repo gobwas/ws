@@ -92,15 +92,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var servers []string
+	servers := make([]string, 0, len(report))
 	for s := range report {
 		servers = append(servers, s)
 	}
 	sort.Strings(servers)
 
-	var (
-		failed bool
-	)
+	var failed bool
 	tw := tabwriter.NewWriter(os.Stderr, 0, 4, 1, ' ', 0)
 	for _, server := range servers {
 		var (
@@ -176,10 +174,6 @@ func main() {
 	os.Exit(rc)
 }
 
-type spec struct {
-	OutDir string `json:"outdir"`
-}
-
 type report map[string]server
 
 type server map[string]entry
@@ -243,7 +237,7 @@ func min(a, b int) int {
 func handlerIndex() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if *verbose {
-			log.Printf("reqeust to %s", r.URL)
+			log.Printf("request to %s", r.URL)
 		}
 		if r.URL.Path != "/" {
 			w.WriteHeader(http.StatusNotFound)

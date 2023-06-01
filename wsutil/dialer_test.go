@@ -32,7 +32,7 @@ func TestDebugDialer(t *testing.T) {
 		{
 			name: "fail",
 			resp: &http.Response{
-				StatusCode: 101,
+				StatusCode: http.StatusSwitchingProtocols,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 			},
@@ -41,7 +41,7 @@ func TestDebugDialer(t *testing.T) {
 		{
 			name: "fail",
 			resp: &http.Response{
-				StatusCode: 400,
+				StatusCode: http.StatusBadRequest,
 				ProtoMajor: 42,
 				ProtoMinor: 1,
 			},
@@ -50,7 +50,7 @@ func TestDebugDialer(t *testing.T) {
 		{
 			name: "fail",
 			resp: &http.Response{
-				StatusCode: 400,
+				StatusCode: http.StatusBadRequest,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 			},
@@ -59,7 +59,7 @@ func TestDebugDialer(t *testing.T) {
 		{
 			name: "fail footer",
 			resp: &http.Response{
-				StatusCode: 400,
+				StatusCode: http.StatusBadRequest,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 			},
@@ -72,7 +72,7 @@ func TestDebugDialer(t *testing.T) {
 			// response with body that does not fit to Dialer read buffer,
 			// OnResponse will still be called with full response bytes.
 			resp: &http.Response{
-				StatusCode: 200,
+				StatusCode: http.StatusOK,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Body: ioutil.NopCloser(bytes.NewReader(
@@ -121,14 +121,14 @@ func TestDebugDialer(t *testing.T) {
 				if test.resp == nil {
 					_, err := ws.Upgrade(conn)
 					if err != nil {
-						t.Fatal(err)
+						panic(err)
 					}
 				} else {
 					if _, err := http.ReadRequest(bufio.NewReader(conn)); err != nil {
-						t.Fatal(err)
+						panic(err)
 					}
 					if err := test.resp.Write(conn); err != nil {
-						t.Fatal(err)
+						panic(err)
 					}
 				}
 

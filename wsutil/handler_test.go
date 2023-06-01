@@ -45,7 +45,7 @@ func TestControlHandler(t *testing.T) {
 		},
 		{
 			name:  "pong",
-			in:    ws.NewPongFrame([]byte("catched")),
+			in:    ws.NewPongFrame([]byte("caught")),
 			noOut: true,
 		},
 		{
