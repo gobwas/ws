@@ -534,10 +534,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			}
 
 		case headerConnectionCanonical:
-			headerSeen |= headerSeenConnection
-			if !bytes.Equal(v, specHeaderValueConnection) && !btsHasToken(v, specHeaderValueConnectionLower) {
-				err = ErrHandshakeBadConnection
-				break
+			if bytes.Equal(v, specHeaderValueConnection) || btsHasToken(v, specHeaderValueConnectionLower) {
+				headerSeen |= headerSeenConnection
 			}
 
 		case headerSecVersionCanonical:
@@ -633,7 +631,6 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		default:
 			panic("unknown headers state")
 		}
-
 	case err == nil && u.OnBeforeUpgrade != nil:
 		header[1], err = u.OnBeforeUpgrade()
 	}
