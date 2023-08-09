@@ -155,12 +155,7 @@ type HTTPUpgrader struct {
 func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
 	// Hijack connection first to get the ability to write rejection errors the
 	// same way as in Upgrader.
-	hj, ok := w.(http.Hijacker)
-	if ok {
-		conn, rw, err = hj.Hijack()
-	} else {
-		err = ErrNotHijacker
-	}
+	conn, rw, err = hijack(w)
 	if err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 		return conn, rw, hs, err
