@@ -1,10 +1,18 @@
 version: 2
 updates:
-  - package-ecosystem: gomod
+  - package-ecosystem: "gomod"
+    commit-message:
+      prefix: "deps:"
     directory: "/"
     schedule:
-      interval: weekly
-  - package-ecosystem: github-actions
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
+  - package-ecosystem: "github-actions"
+    commit-message:
+      prefix: "ci:"
     directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+      day: "sunday"
+      time: "09:00"
