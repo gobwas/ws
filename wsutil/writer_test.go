@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
-	"unsafe"
 
 	"github.com/gobwas/ws"
 )
@@ -131,15 +130,6 @@ func genReserveTestCases(s ws.State, n, m, exp int) []reserveTestCase {
 	return ret
 }
 
-func fakeMake(n int) (r []byte) {
-	rh := (*reflect.SliceHeader)(unsafe.Pointer(&r))
-	*rh = reflect.SliceHeader{
-		Len: n,
-		Cap: n,
-	}
-	return r
-}
-
 var reserveTestCases = []reserveTestCase{
 	{
 		name:      "len7",
@@ -215,7 +205,7 @@ func TestNewWriterBuffer(t *testing.T) {
 					t.Errorf("unexpected panic: %v", thePanic)
 				}
 			}()
-			w := NewWriterBuffer(nil, test.state, 0, fakeMake(test.buf))
+			w := NewWriterBuffer(nil, test.state, 0, make([]byte, test.buf))
 			if act, exp := len(w.raw)-len(w.buf), test.expOffset; act != exp {
 				t.Errorf(
 					"NewWriteBuffer(%d bytes) has offset %d; want %d",

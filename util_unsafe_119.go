@@ -1,5 +1,5 @@
-//go:build !purego
-// +build !purego
+//go:build !purego && !go1.20
+// +build !purego,!go1.20
 
 package ws
 
