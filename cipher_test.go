@@ -91,8 +91,7 @@ func TestCipherChops(t *testing.T) {
 					l, r := j-s, j
 					Cipher(b[l:r], m, l)
 					if !reflect.DeepEqual(b[l:r], exp[l:r]) {
-						t.Errorf("unexpected Cipher([%d:%d]) = %x; want %x", l, r, b[l:r], exp[l:r])
-						return
+						t.Fatalf("unexpected Cipher([%d:%d]) = %x; want %x", l, r, b[l:r], exp[l:r])
 					}
 				}
 			}
@@ -103,8 +102,7 @@ func TestCipherChops(t *testing.T) {
 				r := rand.Intn(n-l) + l + 1
 				Cipher(b[l:r], m, l)
 				if !reflect.DeepEqual(b[l:r], exp[l:r]) {
-					t.Errorf("unexpected Cipher([%d:%d]):\nact:\t%v\nexp:\t%v\nact:\t%#x\nexp:\t%#x\n\n", l, r, b[l:r], exp[l:r], b[l:r], exp[l:r])
-					return
+					t.Fatalf("unexpected Cipher([%d:%d]):\nact:\t%v\nexp:\t%v\nact:\t%#x\nexp:\t%#x\n\n", l, r, b[l:r], exp[l:r], b[l:r], exp[l:r])
 				}
 				l = r
 			}

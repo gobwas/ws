@@ -105,7 +105,7 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 				var buf bytes.Buffer
 				f := ws.NewTextFrame([]byte("this part will be lost"))
 				if err := ws.WriteHeader(&buf, f.Header); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 				return &buf
 			},
@@ -117,7 +117,7 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 				var buf bytes.Buffer
 				f := ws.NewTextFrame([]byte("foobar"))
 				if err := ws.WriteHeader(&buf, f.Header); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 				buf.WriteString("foo")
 				return &buf
@@ -130,7 +130,7 @@ func TestReaderNextFrameAndReadEOF(t *testing.T) {
 				var buf bytes.Buffer
 				f := ws.NewFrame(ws.OpText, false, []byte("payload"))
 				if err := ws.WriteFrame(&buf, f); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 				return &buf
 			},
@@ -197,7 +197,7 @@ func TestMaxFrameSize(t *testing.T) {
 func TestReaderUTF8(t *testing.T) {
 	yo := []byte("Ё")
 	if !utf8.ValidString(string(yo)) {
-		panic("bad fixture")
+		t.Fatal("bad fixture")
 	}
 
 	var buf bytes.Buffer
@@ -324,8 +324,7 @@ func TestNextReader(t *testing.T) {
 				bts, err = ioutil.ReadAll(reader)
 			}
 			if err != test.err {
-				t.Errorf("unexpected error; got %v; want %v", err, test.err)
-				return
+				t.Fatalf("unexpected error; got %v; want %v", err, test.err)
 			}
 			if test.err == nil && !bytes.Equal(bts, test.exp) {
 				t.Errorf(

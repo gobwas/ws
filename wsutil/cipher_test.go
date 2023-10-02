@@ -38,12 +38,10 @@ func TestCipherReader(t *testing.T) {
 
 			bts, err := ioutil.ReadAll(rd)
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
-				return
+				t.Fatalf("unexpected error: %s", err)
 			}
 			if !reflect.DeepEqual(bts, test.data) {
-				t.Errorf("read data is not equal:\n\tact:\t%#v\n\texp:\t%#x\n", bts, test.data)
-				return
+				t.Fatalf("read data is not equal:\n\tact:\t%#v\n\texp:\t%#x\n", bts, test.data)
 			}
 		})
 	}
