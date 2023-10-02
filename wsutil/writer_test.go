@@ -87,8 +87,7 @@ func TestControlWriter(t *testing.T) {
 				return
 			}
 			if !test.err && err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+				t.Fatalf("unexpected error: %v", err)
 			}
 
 			act, err := ws.ReadFrame(&buf)
@@ -338,12 +337,12 @@ func TestWriter(t *testing.T) {
 				if bts := buf.Bytes(); !bytes.Equal(test.expBts, bts) {
 					t.Errorf(
 						"wrote bytes:\nact:\t%#x\nexp:\t%#x\nacth:\t%s\nexph:\t%s\n", bts, test.expBts,
-						pretty(frames(bts)...), pretty(frames(test.expBts)...),
+						pretty(frames(t, bts)...), pretty(frames(t, test.expBts)...),
 					)
 				}
 			}
 			if test.expFrm != nil {
-				act := omitMasks(frames(buf.Bytes()))
+				act := omitMasks(frames(t, buf.Bytes()))
 				exp := omitMasks(test.expFrm)
 
 				if !reflect.DeepEqual(act, exp) {
@@ -529,7 +528,7 @@ func TestWriterReadFrom(t *testing.T) {
 			if n != test.n {
 				t.Errorf("ReadFrom() read out %d; want %d", n, test.n)
 			}
-			if frames := frames(dst.Bytes()); !reflect.DeepEqual(frames, test.exp) {
+			if frames := frames(t, dst.Bytes()); !reflect.DeepEqual(frames, test.exp) {
 				t.Errorf("ReadFrom() read frames:\n\tact:\t%s\n\texp:\t%s\n", pretty(frames...), pretty(test.exp...))
 			}
 		})
@@ -603,7 +602,8 @@ func (w *writeCounter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func frames(p []byte) (ret []ws.Frame) {
+func frames(tb testing.TB, p []byte) (ret []ws.Frame) {
+	tb.Helper()
 	r := bytes.NewReader(p)
 	for stop := false; !stop; {
 		f, err := ws.ReadFrame(r)
@@ -611,7 +611,7 @@ func frames(p []byte) (ret []ws.Frame) {
 			if err == io.EOF {
 				break
 			}
-			panic(err)
+			tb.Fatal(err)
 		}
 		ret = append(ret, f)
 	}

@@ -151,20 +151,16 @@ func TestUTF8Reader(t *testing.T) {
 				}
 			}
 			if test.err && err == nil {
-				t.Errorf("want error; got nil")
-				return
+				t.Fatalf("want error; got nil")
 			}
 			if !test.err && err != nil {
-				t.Errorf("unexpected error: %s", err)
-				return
+				t.Fatalf("unexpected error: %s", err)
 			}
 			if test.err && err == ErrInvalidUTF8 && i != test.at {
-				t.Errorf("received error at %d; want at %d", i, test.at)
-				return
+				t.Fatalf("received error at %d; want at %d", i, test.at)
 			}
 			if act, exp := r.Valid(), test.valid; act != exp {
-				t.Errorf("Valid() = %v; want %v", act, exp)
-				return
+				t.Fatalf("Valid() = %v; want %v", act, exp)
 			}
 			if !test.err && !bytes.Equal(bts, data) {
 				t.Errorf("bytes are not equal")

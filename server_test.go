@@ -394,21 +394,19 @@ func TestHTTPUpgrader(t *testing.T) {
 			}
 			_, _, hs, err := u.Upgrade(req, res)
 			if test.err != err {
-				t.Errorf(
+				t.Fatalf(
 					"expected error to be '%v', got '%v';\non request:\n====\n%s\n====",
 					test.err, err, dumpRequest(req),
 				)
-				return
 			}
 
 			actRespBts := sortHeaders(res.Bytes())
 			expRespBts := sortHeaders(dumpResponse(test.res))
 			if !bytes.Equal(actRespBts, expRespBts) {
-				t.Errorf(
+				t.Fatalf(
 					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n==== on request:\n%s\n====",
 					actRespBts, expRespBts, dumpRequest(test.req),
 				)
-				return
 			}
 
 			if act, exp := hs.Protocol, test.hs.Protocol; act != exp {
@@ -458,19 +456,16 @@ func TestUpgrader(t *testing.T) {
 
 			hs, err := u.Upgrade(conn)
 			if test.err != err {
-
-				t.Errorf("expected error to be '%v', got '%v'", test.err, err)
-				return
+				t.Fatalf("expected error to be '%v', got '%v'", test.err, err)
 			}
 
 			actRespBts := sortHeaders(conn.Bytes())
 			expRespBts := sortHeaders(dumpResponse(test.res))
 			if !bytes.Equal(actRespBts, expRespBts) {
-				t.Errorf(
+				t.Fatalf(
 					"unexpected http response:\n---- act:\n%s\n---- want:\n%s\n==== on request:\n%s\n====",
 					actRespBts, expRespBts, dumpRequest(test.req),
 				)
-				return
 			}
 
 			if act, exp := hs.Protocol, test.hs.Protocol; act != exp {

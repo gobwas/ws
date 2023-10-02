@@ -101,8 +101,7 @@ func TestDialerRequest(t *testing.T) {
 				t.Errorf("unexpected request:\nact:\n%s\nexp:\n%s\n", act, exp)
 			}
 			if _, err := http.ReadRequest(bufio.NewReader(&buf)); err != nil {
-				t.Errorf("read request error: %s", err)
-				return
+				t.Fatalf("read request error: %s", err)
 			}
 		})
 	}

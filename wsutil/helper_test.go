@@ -26,7 +26,7 @@ func TestReadMessageEOF(t *testing.T) {
 				var buf bytes.Buffer
 				f := ws.NewTextFrame([]byte("this part will be lost"))
 				if err := ws.WriteHeader(&buf, f.Header); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 				return &buf
 			},
@@ -44,7 +44,7 @@ func TestReadMessageEOF(t *testing.T) {
 				}
 				for _, f := range fs {
 					if err := ws.WriteFrame(&buf, f); err != nil {
-						panic(err)
+						t.Fatal(err)
 					}
 				}
 				return &buf
