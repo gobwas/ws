@@ -19,10 +19,10 @@ func New(min, max int) *Pool {
 	return &Pool{pool.New(min, max)}
 }
 
-// New creates new Pool with given options.
-func Custom(opts ...pool.Option) *Pool {
-	return &Pool{pool.Custom(opts...)}
-}
+// // New creates new Pool with given options.
+// func Custom(opts ...pool.Option) *Pool {
+// 	return &Pool{pool.Custom(opts...)}
+// }
 
 // Get returns probably reused slice of bytes with at least capacity of c and
 // exactly len of n.
@@ -48,10 +48,10 @@ func (p *Pool) Put(bts []byte) {
 	p.pool.Put(bts, cap(bts))
 }
 
-// GetCap returns probably reused slice of bytes with at least capacity of n.
-func (p *Pool) GetCap(c int) []byte {
-	return p.Get(0, c)
-}
+// // GetCap returns probably reused slice of bytes with at least capacity of n.
+// func (p *Pool) GetCap(c int) []byte {
+// 	return p.Get(0, c)
+// }
 
 // GetLen returns probably reused slice of bytes with at least capacity of n
 // and exactly len of n.

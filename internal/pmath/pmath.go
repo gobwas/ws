@@ -17,10 +17,10 @@ func LogarithmicRange(min, max int, cb func(int)) {
 	}
 }
 
-// IsPowerOfTwo reports whether given integer is a power of two.
-func IsPowerOfTwo(n int) bool {
-	return n&(n-1) == 0
-}
+// // IsPowerOfTwo reports whether given integer is a power of two.
+// func IsPowerOfTwo(n int) bool {
+// 	return n&(n-1) == 0
+// }
 
 // Identity is identity.
 func Identity(n int) int {
@@ -42,17 +42,17 @@ func CeilToPowerOfTwo(n int) int {
 	return n
 }
 
-// FloorToPowerOfTwo returns the greatest power of two integer value less than
-// or equal to n.
-func FloorToPowerOfTwo(n int) int {
-	if n <= 2 {
-		return n
-	}
-	n = fillBits(n)
-	n >>= 1
-	n++
-	return n
-}
+// // FloorToPowerOfTwo returns the greatest power of two integer value less than
+// // or equal to n.
+// func FloorToPowerOfTwo(n int) int {
+// 	if n <= 2 {
+// 		return n
+// 	}
+// 	n = fillBits(n)
+// 	n >>= 1
+// 	n++
+// 	return n
+// }
 
 func fillBits(n int) int {
 	n |= n >> 1

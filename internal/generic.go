@@ -105,13 +105,6 @@ func WithLogSizeRange(min, max int) Option {
 	}
 }
 
-// WithSize returns an Option that will add given pooling size to the pool.
-func WithSize(n int) Option {
-	return func(c Config) {
-		c.AddSize(n)
-	}
-}
-
 func WithSizeMapping(sz func(int) int) Option {
 	return func(c Config) {
 		c.SetSizeMapping(sz)
@@ -120,8 +113,4 @@ func WithSizeMapping(sz func(int) int) Option {
 
 func WithLogSizeMapping() Option {
 	return WithSizeMapping(pmath.CeilToPowerOfTwo)
-}
-
-func WithIdentitySizeMapping() Option {
-	return WithSizeMapping(pmath.Identity)
 }

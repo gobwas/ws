@@ -46,10 +46,10 @@ func NewWriterPool(min, max int) *WriterPool {
 	return &WriterPool{pool.New(min, max)}
 }
 
-// CustomWriterPool creates new WriterPool with given options.
-func CustomWriterPool(opts ...pool.Option) *WriterPool {
-	return &WriterPool{pool.Custom(opts...)}
-}
+// // CustomWriterPool creates new WriterPool with given options.
+// func CustomWriterPool(opts ...pool.Option) *WriterPool {
+// 	return &WriterPool{pool.Custom(opts...)}
+// }
 
 // Get returns bufio.Writer whose buffer has at least size bytes.
 func (wp *WriterPool) Get(w io.Writer, size int) *bufio.Writer {
@@ -81,10 +81,10 @@ func NewReaderPool(min, max int) *ReaderPool {
 	return &ReaderPool{pool.New(min, max)}
 }
 
-// CustomReaderPool creates new ReaderPool with given options.
-func CustomReaderPool(opts ...pool.Option) *ReaderPool {
-	return &ReaderPool{pool.Custom(opts...)}
-}
+// // CustomReaderPool creates new ReaderPool with given options.
+// func CustomReaderPool(opts ...pool.Option) *ReaderPool {
+// 	return &ReaderPool{pool.Custom(opts...)}
+// }
 
 // Get returns bufio.Reader whose buffer has at least size bytes.
 func (rp *ReaderPool) Get(r io.Reader, size int) *bufio.Reader {

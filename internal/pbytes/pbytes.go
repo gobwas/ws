@@ -8,11 +8,11 @@ var DefaultPool = New(128, 65536)
 // Get returns probably reused slice of bytes with at least capacity of c and
 // exactly len of n.
 // Get is a wrapper around DefaultPool.Get().
-func Get(n, c int) []byte { return DefaultPool.Get(n, c) }
+// func Get(n, c int) []byte { return DefaultPool.Get(n, c) }
 
 // GetCap returns probably reused slice of bytes with at least capacity of n.
 // GetCap is a wrapper around DefaultPool.GetCap().
-func GetCap(c int) []byte { return DefaultPool.GetCap(c) }
+// func GetCap(c int) []byte { return DefaultPool.GetCap(c) }
 
 // GetLen returns probably reused slice of bytes with at least capacity of n
 // and exactly len of n.
