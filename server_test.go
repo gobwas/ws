@@ -760,6 +760,9 @@ func mustMakeRequest(method, url string, headers http.Header) *http.Request {
 	if err != nil {
 		panic(err)
 	}
+	if host := headers.Get("Host"); host != "" {
+		req.Host = host
+	}
 	req.Header = headers
 	return req
 }

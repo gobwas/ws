@@ -46,12 +46,14 @@ func TestDialerRequest(t *testing.T) {
 					httphead.NewOption("baz", nil),
 				},
 				Header: HandshakeHeaderHTTP(http.Header{
-					"Origin": []string{"who knows"},
+					headerHost: []string{"www.example.org"},
+					"Origin":   []string{"who knows"},
 				}),
 			},
 			url: "wss://example.org/chat",
 			exp: setProto(1, 1,
 				mustMakeRequest("GET", "wss://example.org/chat", http.Header{
+					headerHost:       []string{"www.example.org"},
 					headerUpgrade:    []string{"websocket"},
 					headerConnection: []string{"Upgrade"},
 					headerSecVersion: []string{"13"},
