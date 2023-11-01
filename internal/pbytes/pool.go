@@ -1,9 +1,20 @@
-//go:build !pool_sanitize
-// +build !pool_sanitize
-
+// Package pbytes contains tools for pooling byte pool.
+// Note that by default it reuse slices with capacity from 128 to 65536 bytes.
 package pbytes
 
 import pool "github.com/gobwas/ws/internal"
+
+// defaultPool is used by pacakge level functions.
+var defaultPool = New(128, 65536)
+
+// GetLen returns probably reused slice of bytes with at least capacity of n
+// and exactly len of n.
+// GetLen is a wrapper around defaultPool.GetLen().
+func GetLen(n int) []byte { return defaultPool.GetLen(n) }
+
+// Put returns given slice to reuse pool.
+// Put is a wrapper around defaultPool.Put().
+func Put(p []byte) { defaultPool.Put(p) }
 
 // Pool contains logic of reusing byte slices of various size.
 type Pool struct {
@@ -18,11 +29,6 @@ type Pool struct {
 func New(min, max int) *Pool {
 	return &Pool{pool.New(min, max)}
 }
-
-// // New creates new Pool with given options.
-// func Custom(opts ...pool.Option) *Pool {
-// 	return &Pool{pool.Custom(opts...)}
-// }
 
 // Get returns probably reused slice of bytes with at least capacity of c and
 // exactly len of n.
@@ -47,11 +53,6 @@ func (p *Pool) Get(n, c int) []byte {
 func (p *Pool) Put(bts []byte) {
 	p.pool.Put(bts, cap(bts))
 }
-
-// // GetCap returns probably reused slice of bytes with at least capacity of n.
-// func (p *Pool) GetCap(c int) []byte {
-// 	return p.Get(0, c)
-// }
 
 // GetLen returns probably reused slice of bytes with at least capacity of n
 // and exactly len of n.
