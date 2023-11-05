@@ -2,6 +2,7 @@ package wsflate
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/gobwas/httphead"
 	"github.com/gobwas/ws"
@@ -146,18 +147,23 @@ func IsCompressed(h ws.Header) (bool, error) {
 // NOTE: the compression state is updated during UnsetBits(h) only when header
 // h argument represents data (text or binary) frame.
 type MessageState struct {
+	mu         sync.Mutex
 	compressed bool
 }
 
 // SetCompressed marks message as "compressed" or "uncompressed".
 // See https://tools.ietf.org/html/rfc7692#section-6
 func (s *MessageState) SetCompressed(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.compressed = v
 }
 
 // IsCompressed reports whether message is "compressed".
 // See https://tools.ietf.org/html/rfc7692#section-6
 func (s *MessageState) IsCompressed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.compressed
 }
 
