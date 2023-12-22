@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 
@@ -291,7 +292,13 @@ func httpWriteUpgradeRequest(
 	bw.WriteString(u.RequestURI())
 	bw.WriteString(" HTTP/1.1\r\n")
 
-	httpWriteHeader(bw, headerHost, u.Host)
+	host := u.Host
+	if header != nil {
+		if v := header.Get(headerHost); v != "" {
+			host = v
+		}
+	}
+	httpWriteHeader(bw, headerHost, host)
 
 	httpWriteHeaderBts(bw, headerUpgrade, specHeaderValueUpgrade)
 	httpWriteHeaderBts(bw, headerConnection, specHeaderValueConnection)
@@ -443,11 +450,16 @@ func errorText(err error) string {
 // response headers into a given io.Writer.
 type HandshakeHeader interface {
 	io.WriterTo
+	Get(key string) string
 }
 
 // HandshakeHeaderString is an adapter to allow the use of headers represented
 // by ordinary string as HandshakeHeader.
 type HandshakeHeaderString string
+
+func (s HandshakeHeaderString) Get(key string) string {
+	return HandshakeHeaderBytes(s).Get(key)
+}
 
 // WriteTo implements HandshakeHeader (and io.WriterTo) interface.
 func (s HandshakeHeaderString) WriteTo(w io.Writer) (int64, error) {
@@ -459,6 +471,16 @@ func (s HandshakeHeaderString) WriteTo(w io.Writer) (int64, error) {
 // by ordinary slice of bytes as HandshakeHeader.
 type HandshakeHeaderBytes []byte
 
+func (b HandshakeHeaderBytes) Get(key string) string {
+	reader := bufio.NewReader(bytes.NewReader(b))
+	tp := textproto.NewReader(reader)
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil && err != io.EOF {
+		return ""
+	}
+	return http.Header(mimeHeader).Get(key)
+}
+
 // WriteTo implements HandshakeHeader (and io.WriterTo) interface.
 func (b HandshakeHeaderBytes) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(b)
@@ -469,6 +491,15 @@ func (b HandshakeHeaderBytes) WriteTo(w io.Writer) (int64, error) {
 // ordinary function as HandshakeHeader.
 type HandshakeHeaderFunc func(io.Writer) (int64, error)
 
+func (f HandshakeHeaderFunc) Get(key string) string {
+	buf := new(bytes.Buffer)
+	i, err := f(buf)
+	if err != nil || i == 0 {
+		return ""
+	}
+	return HandshakeHeaderBytes(buf.Bytes()).Get(key)
+}
+
 // WriteTo implements HandshakeHeader (and io.WriterTo) interface.
 func (f HandshakeHeaderFunc) WriteTo(w io.Writer) (int64, error) {
 	return f(w)
@@ -477,6 +508,10 @@ func (f HandshakeHeaderFunc) WriteTo(w io.Writer) (int64, error) {
 // HandshakeHeaderHTTP is an adapter to allow the use of http.Header as
 // HandshakeHeader.
 type HandshakeHeaderHTTP http.Header
+
+func (h HandshakeHeaderHTTP) Get(key string) string {
+	return http.Header(h).Get(key)
+}
 
 // WriteTo implements HandshakeHeader (and io.WriterTo) interface.
 func (h HandshakeHeaderHTTP) WriteTo(w io.Writer) (int64, error) {

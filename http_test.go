@@ -2,6 +2,7 @@ package ws
 
 import (
 	"bufio"
+	"io"
 	"io/ioutil"
 	"net/textproto"
 	"net/url"
@@ -134,4 +135,75 @@ func makeURL(s string) *url.URL {
 		panic(err)
 	}
 	return ret
+}
+
+func TestHandshakeHeader_Get(t *testing.T) {
+	tests := []struct {
+		name string
+		h    HandshakeHeader
+		key  string
+		want string
+	}{
+		{
+			name: "HandshakeHeaderString empty",
+			h:    HandshakeHeaderString(""),
+			key:  headerHost,
+			want: "",
+		},
+		{
+			name: "HandshakeHeaderString",
+			h:    HandshakeHeaderString(headerHost + ": bar\r\n"),
+			key:  headerHost,
+			want: "bar",
+		},
+		{
+			name: "HandshakeHeaderBytes empty",
+			h:    HandshakeHeaderBytes(""),
+			key:  headerHost,
+			want: "",
+		},
+		{
+			name: "HandshakeHeaderBytes",
+			h:    HandshakeHeaderBytes(headerHost + ": bar\r\n"),
+			key:  headerHost,
+			want: "bar",
+		},
+		{
+			name: "HandshakeHeaderFunc empty",
+			h: HandshakeHeaderFunc(func(w io.Writer) (int64, error) {
+				n, err := w.Write([]byte(""))
+				return int64(n), err
+			}),
+			key:  headerHost,
+			want: "",
+		},
+		{
+			name: "HandshakeHeaderFunc",
+			h: HandshakeHeaderFunc(func(w io.Writer) (int64, error) {
+				n, err := w.Write([]byte(headerHost + ": bar\r\n"))
+				return int64(n), err
+			}),
+			key:  headerHost,
+			want: "bar",
+		},
+		{
+			name: "HandshakeHeaderHTTP empty",
+			h:    HandshakeHeaderHTTP(map[string][]string{}),
+			key:  headerHost,
+			want: "",
+		},
+		{
+			name: "HandshakeHeaderHTTP",
+			h:    HandshakeHeaderHTTP(map[string][]string{headerHost: {"bar"}}),
+			key:  headerHost,
+			want: "bar",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.h.Get(tt.key); got != tt.want {
+				t.Errorf("Get() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
