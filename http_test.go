@@ -99,9 +99,14 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 		protocols  []string
 		extensions []httphead.Option
 		headers    HandshakeHeaderFunc
+		host       string
 	}{
 		{
 			url: makeURL("ws://example.org"),
+		},
+		{
+			url:  makeURL("ws://example.org"),
+			host: "test-host",
 		},
 	} {
 		bw := bufio.NewWriter(ioutil.Discard)
@@ -122,6 +127,7 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 					test.protocols,
 					test.extensions,
 					headers,
+					test.host,
 				)
 			}
 		})
