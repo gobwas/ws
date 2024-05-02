@@ -169,6 +169,8 @@ func BenchmarkCipher(b *testing.B) {
 
 		b.Run(fmt.Sprintf("naive_bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
 			var sink int64
+			b.SetBytes(int64(bench.size))
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				r := cipherNaiveNoCp(bts, mask, bench.offset)
 				sink += int64(len(r))
@@ -177,6 +179,8 @@ func BenchmarkCipher(b *testing.B) {
 		})
 		b.Run(fmt.Sprintf("bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
 			var sink int64
+			b.SetBytes(int64(bench.size))
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				Cipher(bts, mask, bench.offset)
 				sink += int64(len(bts))
