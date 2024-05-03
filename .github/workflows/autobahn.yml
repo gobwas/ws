@@ -1,4 +1,4 @@
-name: CI
+name: Autobahn
 
 on:
   push:
@@ -9,14 +9,14 @@ on:
   - cron: '0 10 * * 1' # run "At 10:00 on Monday"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: autobahn-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ ubuntu-latest ]
         go: [ 'stable', 'oldstable' ]
 
     runs-on: ${{ matrix.os }}
@@ -30,18 +30,15 @@ jobs:
         go-version: ${{ matrix.go }}
         check-latest: true
 
-    - name: Go Env
+    - name: Autobahn
+      env:
+        CRYPTOGRAPHY_ALLOW_OPENSSL_102: yes
       run: |
-        go env
+        make test autobahn
 
-    - name: Go Mod
-      run: |
-        go mod download
-
-    - name: Go Mod Verify
-      run: |
-        go mod verify
-
-    - name: Test
-      run: |
-        go test -v -race -shuffle=on -cover ./...
+    - name: Autobahn Report Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
+        path: autobahn/report
+        retention-days: 7
