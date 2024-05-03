@@ -57,3 +57,7 @@ func (r *ConnectionRejectedError) Error() string {
 func (r *ConnectionRejectedError) StatusCode() int {
 	return r.code
 }
+
+type EscapeHatch interface {
+	Escape() bool
+}
