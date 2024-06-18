@@ -109,6 +109,10 @@ func Upgrade(conn io.ReadWriter) (Handshake, error) {
 // HTTPUpgrader contains options for upgrading connection to websocket from
 // net/http Handler arguments.
 type HTTPUpgrader struct {
+	// CopyHeadersToHandshake setting specifies whether headers should be preserved during the handshake process.
+	// If enabled, the headers will be copied to Handshake.Header.
+	CopyHeadersToHandshake bool
+
 	// Timeout is the maximum amount of time an Upgrade() will spent while
 	// writing handshake response.
 	//
@@ -242,8 +246,10 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		header[0] = HandshakeHeaderHTTP(h)
 	}
 
-	// set handshake header
-	hs.Header = r.Header
+	if u.CopyHeadersToHandshake {
+		// set handshake header
+		hs.Header = r.Header
+	}
 
 	if err == nil {
 		httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, header.WriteTo)
@@ -266,6 +272,10 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 
 // Upgrader contains options for upgrading connection to websocket.
 type Upgrader struct {
+	// CopyHeadersToHandshake setting specifies whether headers should be preserved during the handshake process.
+	// If enabled, the headers will be copied to Handshake.Header.
+	CopyHeadersToHandshake bool
+
 	// ReadBufferSize and WriteBufferSize is an I/O buffer sizes.
 	// They used to read and write http data while upgrading to WebSocket.
 	// Allocated buffers are pooled with sync.Pool to avoid extra allocations.
@@ -503,8 +513,10 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		nonce = make([]byte, nonceSize)
 	)
 
-	// init handshake headers
-	hs.Header = make(http.Header)
+	if u.CopyHeadersToHandshake {
+		// init handshake headers
+		hs.Header = make(http.Header)
+	}
 
 	for err == nil {
 		line, e := readLine(br)
@@ -522,8 +534,10 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			break
 		}
 
-		// copy and add header
-		hs.Header.Add(btsToString(bytes.Clone(k)), btsToString(bytes.Clone(v)))
+		if u.CopyHeadersToHandshake {
+			// copy and add header
+			hs.Header.Add(btsToString(bytes.Clone(k)), btsToString(bytes.Clone(v)))
+		}
 
 		switch btsToString(k) {
 		case headerHostCanonical:
