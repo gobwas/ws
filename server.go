@@ -241,6 +241,10 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 	if h := u.Header; h != nil {
 		header[0] = HandshakeHeaderHTTP(h)
 	}
+
+	// set handshake header
+	hs.Header = r.Header
+
 	if err == nil {
 		httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, header.WriteTo)
 		err = rw.Writer.Flush()
@@ -498,6 +502,10 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		nonce = make([]byte, nonceSize)
 	)
+
+	// init handshake headers
+	hs.Header = make(http.Header)
+
 	for err == nil {
 		line, e := readLine(br)
 		if e != nil {
@@ -513,6 +521,9 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 			err = ErrMalformedRequest
 			break
 		}
+
+		// copy and add header
+		hs.Header.Add(btsToString(bytes.Clone(k)), btsToString(bytes.Clone(v)))
 
 		switch btsToString(k) {
 		case headerHostCanonical:
