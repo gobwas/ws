@@ -37,7 +37,7 @@ jobs:
         make test autobahn
 
     - name: Autobahn Report Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
         path: autobahn/report
