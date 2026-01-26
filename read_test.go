@@ -38,18 +38,40 @@ func TestReadHeader(t *testing.T) {
 }
 
 func BenchmarkReadHeader(b *testing.B) {
+	setup := func(header Header, n int) (rds []io.Reader) {
+		bts := MustCompileFrame(Frame{Header: header})
+		rds = make([]io.Reader, n)
+		for i := 0; i < n; i++ {
+			rds[i] = bytes.NewReader(bts)
+		}
+
+		return
+	}
+
 	for i, bench := range RWBenchCases {
 		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
-			bts := MustCompileFrame(Frame{Header: bench.header})
-			rds := make([]io.Reader, b.N)
-			for i := 0; i < b.N; i++ {
-				rds[i] = bytes.NewReader(bts)
-			}
+			rds := setup(bench.header, b.N)
 
+			b.ReportAllocs()
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
 				_, err := ReadHeader(rds[i])
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+
+		b.Run(fmt.Sprintf("reused-buffer-%s#%d", bench.label, i), func(b *testing.B) {
+			rds := setup(bench.header, b.N)
+			bts := make([]byte, MaxHeaderSize)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				_, err := ReadHeaderBuffer(rds[i], bts)
 				if err != nil {
 					b.Fatal(err)
 				}

@@ -21,6 +21,18 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 	// So 14 - 2 = 12.
 	bts := make([]byte, 2, MaxHeaderSize-2)
 
+	return ReadHeaderBuffer(r, bts)
+}
+
+// ReadHeaderBuffer reads a frame header from r using user-provided buffer.
+// Provided buffer must be at least 12 bytes long.
+func ReadHeaderBuffer(r io.Reader, bts []byte) (h Header, err error) {
+	if cap(bts) < MaxHeaderSize-2 {
+		return h, io.ErrShortBuffer
+	}
+
+	bts = bts[:2]
+
 	// Prepare to hold first 2 bytes to choose size of next read.
 	_, err = io.ReadFull(r, bts)
 	if err != nil {

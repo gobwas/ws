@@ -50,11 +50,23 @@ func WriteHeader(w io.Writer, h Header) error {
 	// Make slice of bytes with capacity 14 that could hold any header.
 	bts := make([]byte, MaxHeaderSize)
 
+	return WriteHeaderBuffer(w, h, bts)
+}
+
+// WriteHeaderBuffer writes header binary representation into w using user-provided buffer.
+// Provided buffer must be at least 14 bytes long.
+func WriteHeaderBuffer(w io.Writer, h Header, bts []byte) error {
+	if cap(bts) < MaxHeaderSize {
+		return io.ErrShortBuffer
+	}
+
+	bts = bts[:MaxHeaderSize]
+
+	bts[0] = h.Rsv<<4 | byte(h.OpCode)
+
 	if h.Fin {
 		bts[0] |= bit0
 	}
-	bts[0] |= h.Rsv << 4
-	bts[0] |= byte(h.OpCode)
 
 	var n int
 	switch {
