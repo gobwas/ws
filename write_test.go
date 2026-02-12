@@ -31,8 +31,24 @@ func TestWriteHeader(t *testing.T) {
 func BenchmarkWriteHeader(b *testing.B) {
 	for _, bench := range RWBenchCases {
 		b.Run(bench.label, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
 			for i := 0; i < b.N; i++ {
 				if err := WriteHeader(ioutil.Discard, bench.header); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+
+		b.Run("reused-buffer-"+bench.label, func(b *testing.B) {
+			bts := make([]byte, MaxHeaderSize)
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				if err := WriteHeaderBuffer(ioutil.Discard, bench.header, bts); err != nil {
 					b.Fatal(err)
 				}
 			}
