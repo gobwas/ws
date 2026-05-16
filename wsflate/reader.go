@@ -11,7 +11,7 @@ type Decompressor interface {
 
 // ReadResetter is an optional interface that Decompressor can implement.
 type ReadResetter interface {
-	Reset(io.Reader)
+	Reset(io.Reader, []byte) error
 }
 
 // Reader implements decompression from an io.Reader object using Decompressor.
@@ -50,9 +50,10 @@ func (r *Reader) Reset(src io.Reader) {
 	r.err = nil
 	r.src = src
 	r.sr.reset(src)
-
 	if x, ok := r.d.(ReadResetter); ok {
-		x.Reset(r.sr.iface())
+		if err := x.Reset(r.sr.iface(), nil); err != nil {
+			r.err = err
+		}
 	} else {
 		r.d = r.ctor(r.sr.iface())
 	}
