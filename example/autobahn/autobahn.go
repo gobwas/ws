@@ -194,9 +194,50 @@ func wsflateHandler(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	if _, ok := e.Accepted(); !ok {
-		log.Printf("no accepted extension")
-		return
+		// The client did not request the permessage-deflate extension.
+		// The handler should still echo messages (uncompressed) so that
+		// Autobahn cases that do not negotiate the extension pass.
+		// When the extension is not negotiated we must not treat any
+		// frames as compressed: MessageState is only attached in the
+		// negotiated case below, otherwise the flate decoder would be
+		// fed raw payloads (RSV1 may be set by invalid-framing cases).
+		log.Printf("permessage-deflate not negotiated; serving uncompressed")
+
+		// Echo loop without compression support.
+		controlHandler := wsutil.ControlFrameHandler(conn, ws.StateServerSide)
+		rd := wsutil.Reader{
+			Source:         conn,
+			State:          ws.StateServerSide | ws.StateExtended,
+			CheckUTF8:      true,
+			OnIntermediate: controlHandler,
+		}
+		wr := wsutil.NewWriter(conn, ws.StateServerSide|ws.StateExtended, 0)
+		for {
+			h, err := rd.NextFrame()
+			if err != nil {
+				log.Printf("next frame error: %v", err)
+				return
+			}
+			if h.OpCode.IsControl() {
+				if err := controlHandler(h, &rd); err != nil {
+					log.Printf("handle control frame error: %v", err)
+					return
+				}
+				continue
+			}
+			wr.ResetOp(h.OpCode)
+			if _, err = io.Copy(wr, &rd); err != nil {
+				log.Printf("echo error: %v", err)
+				return
+			}
+			if err = wr.Flush(); err != nil {
+				log.Printf("flush error: %v", err)
+				return
+			}
+		}
 	}
+
+	// Extension negotiated: use the full compressed echo path below.
 
 	// Using nil as a destination io.Writer since we will Reset() it in the
 	// loop below.
