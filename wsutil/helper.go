@@ -26,9 +26,10 @@ type Message struct {
 // TODO(gobwas): add DefaultReader with buffer size options.
 func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
 	rd := Reader{
-		Source:    r,
-		State:     s,
-		CheckUTF8: true,
+		Source:       r,
+		State:        s,
+		CheckUTF8:    true,
+		MaxFrameSize: ws.MaxFramePayloadSize,
 		OnIntermediate: func(hdr ws.Header, src io.Reader) error {
 			bts, err := ioutil.ReadAll(src)
 			if err != nil {

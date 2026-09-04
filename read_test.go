@@ -2,11 +2,23 @@ package ws
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"reflect"
 	"testing"
 )
+
+func TestReadFrameRejectsOversizedPayload(t *testing.T) {
+	hdr := make([]byte, 10)
+	hdr[0] = 0x82
+	hdr[1] = 127
+	binary.BigEndian.PutUint64(hdr[2:], uint64(MaxFramePayloadSize)+1)
+	_, err := ReadFrame(bytes.NewReader(hdr))
+	if err != ErrFrameTooLarge {
+		t.Fatalf("ReadFrame() = %v, want ErrFrameTooLarge", err)
+	}
+}
 
 func TestReadHeader(t *testing.T) {
 	for i, test := range append([]RWTestCase{
