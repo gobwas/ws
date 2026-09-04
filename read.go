@@ -10,7 +10,13 @@ import (
 var (
 	ErrHeaderLengthMSB        = fmt.Errorf("header error: the most significant bit must be 0")
 	ErrHeaderLengthUnexpected = fmt.Errorf("header error: unexpected payload length bits")
+	ErrFrameTooLarge          = fmt.Errorf("frame too large")
 )
+
+// MaxFramePayloadSize is the largest payload ReadFrame will allocate.
+// Zero disables the limit. The default rejects peer-declared lengths that
+// would otherwise OOM the process.
+var MaxFramePayloadSize int64 = 32 << 20
 
 // ReadHeader reads a frame header from r.
 func ReadHeader(r io.Reader) (h Header, err error) {
@@ -111,8 +117,12 @@ func ReadFrame(r io.Reader) (f Frame, err error) {
 	}
 
 	if f.Header.Length > 0 {
-		// int(f.Header.Length) is safe here cause we have
-		// checked it for overflow above in ReadHeader.
+		if MaxFramePayloadSize > 0 && f.Header.Length > MaxFramePayloadSize {
+			return f, ErrFrameTooLarge
+		}
+		if uint64(f.Header.Length) > uint64(^uint(0)>>1) {
+			return f, ErrFrameTooLarge
+		}
 		f.Payload = make([]byte, int(f.Header.Length))
 		_, err = io.ReadFull(r, f.Payload)
 	}
