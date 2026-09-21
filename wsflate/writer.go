@@ -55,6 +55,10 @@ type Writer struct {
 	c    Compressor
 	cbuf cbuf
 	err  error
+	// flushed reports whether cbuf currently holds the validated
+	// per-message sync-flush marker. A compressor may append a final block
+	// when it is closed, but that block is not part of a PMCE message.
+	flushed bool
 }
 
 // NewWriter returns a new Writer.
@@ -74,6 +78,7 @@ func NewWriter(w io.Writer, ctor func(io.Writer) Compressor) *Writer {
 // Any not flushed data will be lost.
 func (w *Writer) Reset(dest io.Writer) {
 	w.err = nil
+	w.flushed = false
 	w.cbuf.reset(dest)
 	if x, ok := w.c.(WriteResetter); ok {
 		x.Reset(&w.cbuf)
@@ -87,6 +92,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	if w.err != nil {
 		return 0, w.err
 	}
+	w.flushed = false
 	n, w.err = w.c.Write(p)
 	return n, w.err
 }
@@ -96,8 +102,12 @@ func (w *Writer) Flush() error {
 	if w.err != nil {
 		return w.err
 	}
+	w.flushed = false
 	w.err = w.c.Flush()
 	w.checkTail()
+	if w.err == nil {
+		w.flushed = true
+	}
 	return w.err
 }
 
@@ -108,9 +118,22 @@ func (w *Writer) Close() error {
 		return w.err
 	}
 	if c, ok := w.c.(io.Closer); ok {
-		w.err = c.Close()
+		if w.flushed {
+			// PMCE requires the sync-flush marker to be omitted from the
+			// message. Keep it buffered while closing the compressor so a
+			// final block emitted by newer flate implementations cannot
+			// move any of those bytes to the destination.
+			dst := w.cbuf.dst
+			w.cbuf.dst = io.Discard
+			w.err = c.Close()
+			w.cbuf.dst = dst
+		} else {
+			w.err = c.Close()
+		}
 	}
-	w.checkTail()
+	if !w.flushed {
+		w.checkTail()
+	}
 	return w.err
 }
 

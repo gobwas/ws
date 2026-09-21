@@ -14,6 +14,53 @@ import (
 	"github.com/gobwas/ws"
 )
 
+type shortFinalBlockCompressor struct {
+	dst    io.Writer
+	closed bool
+}
+
+func (c *shortFinalBlockCompressor) Write(p []byte) (int, error) {
+	return c.dst.Write(p)
+}
+
+func (c *shortFinalBlockCompressor) Flush() error {
+	_, err := c.dst.Write(compressionTail[:])
+	return err
+}
+
+func (c *shortFinalBlockCompressor) Close() error {
+	c.closed = true
+	// Go 1.27's flate writer uses a short fixed-Huffman EOF block instead
+	// of the four-byte stored block emitted by older versions.
+	_, err := c.dst.Write([]byte{0x03, 0x00})
+	return err
+}
+
+func TestWriterCloseAfterFlushWithShortFinalBlock(t *testing.T) {
+	var buf bytes.Buffer
+	var compressor *shortFinalBlockCompressor
+	w := NewWriter(&buf, func(dst io.Writer) Compressor {
+		compressor = &shortFinalBlockCompressor{dst: dst}
+		return compressor
+	})
+
+	if _, err := w.Write([]byte("payload")); err != nil {
+		t.Fatalf("unexpected Write error: %v", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("unexpected Flush error: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("unexpected Close error: %v", err)
+	}
+	if !compressor.closed {
+		t.Fatal("Close did not close the compressor")
+	}
+	if got, want := buf.String(), "payload"; got != want {
+		t.Fatalf("unexpected output: %q; want %q", got, want)
+	}
+}
+
 func TestWriter(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf, func(w io.Writer) Compressor {
