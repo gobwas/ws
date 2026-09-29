@@ -105,9 +105,7 @@ func (w *Writer) Flush() error {
 	w.flushed = false
 	w.err = w.c.Flush()
 	w.checkTail()
-	if w.err == nil {
-		w.flushed = true
-	}
+	w.flushed = w.err == nil
 	return w.err
 }
 
