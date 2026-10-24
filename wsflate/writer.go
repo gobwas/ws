@@ -54,7 +54,10 @@ type Writer struct {
 	ctor func(io.Writer) Compressor
 	c    Compressor
 	cbuf cbuf
-	err  error
+	// tailChecked reports whether checkTail() already consumed the stream
+	// tail for the current (non-reset) message.
+	tailChecked bool
+	err         error
 }
 
 // NewWriter returns a new Writer.
@@ -74,6 +77,7 @@ func NewWriter(w io.Writer, ctor func(io.Writer) Compressor) *Writer {
 // Any not flushed data will be lost.
 func (w *Writer) Reset(dest io.Writer) {
 	w.err = nil
+	w.tailChecked = false
 	w.cbuf.reset(dest)
 	if x, ok := w.c.(WriteResetter); ok {
 		x.Reset(&w.cbuf)
@@ -119,11 +123,53 @@ func (w *Writer) Err() error {
 	return w.err
 }
 
+// tailBFINALFixed is the last 4 bytes cbuf holds when a compressor ends the
+// stream with an empty final fixed-Huffman block (BFINAL=1, BTYPE=01) instead
+// of the traditional empty non-final stored block.
+//
+// Starting with Go 1.27 (golang/go commit 388145c, "compress/flate: improve
+// compression speed"), compress/flate finishes a stream with a 3-byte empty
+// final fixed block (0x03 0x00 0x00: the 0x03 header has BFINAL|BTYPE=01 and
+// 5 zero padding bits) instead of the 4-byte empty stored block (0x00 0x00
+// 0xff 0xff) used before. cbuf holds back the last 4 bytes, so the new
+// tail reads as {0xff, 0xff, 0x03, 0x00}.
+//
+// Both tails are valid per RFC 7692 section 7.2.3.4 ("Using a DEFLATE Block
+// with BFINAL Set to 1"), which allows ending a message on a BFINAL block
+// rather than on an empty non-final stored block.
+var tailBFINALFixed = [4]byte{0xff, 0xff, 0x03, 0x00}
+
 func (w *Writer) checkTail() {
-	if w.err == nil && w.cbuf.buf != compressionTail {
+	if w.err != nil {
+		return
+	}
+	switch {
+	case w.tailChecked:
+		// Tail was already consumed by a previous checkTail() call (e.g.
+		// Flush() followed by Close()). Nothing left to do.
+	case w.cbuf.buf == compressionTail:
+		// Classic tail: the compressor ended on an empty non-final stored
+		// block. cbuf's 4 held bytes are the 0x00 0x00 0xff 0xff that the
+		// receiver appends back per RFC 7692 section 7.2.2, so they are
+		// dropped (nothing is written to dest).
+	case w.cbuf.buf == tailBFINALFixed:
+		// Go 1.27 tail: the stream ends with an empty final fixed-Huffman
+		// block (0x03 0x00) right after the empty non-final stored block.
+		// cbuf has already flushed the first 3 bytes of that stored block,
+		// so pass all 4 held bytes (FF FF 03 00) through to the destination
+		// to reconstruct the full, self-terminating stream:
+		//   … [00 00 00 FF FF] [03 00]
+		// (empty stored block + final fixed block). The receiver then
+		// appends 0x00 0x00 0xff 0xff per RFC 7692 7.2.2, which lands after
+		// the BFINAL block and is simply ignored by the decompressor.
+		w.cbuf.flush(w.cbuf.buf[:])
+		w.cbuf.buf = [4]byte{}
+		w.cbuf.n = 0
+		w.tailChecked = true
+	default:
 		w.err = fmt.Errorf(
-			"wsflate: bad compressor: unexpected stream tail: %#x vs %#x",
-			w.cbuf.buf, compressionTail,
+			"wsflate: bad compressor: unexpected stream tail: %#x (want %#x or %#x)",
+			w.cbuf.buf, compressionTail, tailBFINALFixed,
 		)
 	}
 }
