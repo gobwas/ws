@@ -2,33 +2,46 @@ package ws
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"testing"
 )
 
-type writeFunc func([]byte) (int, error)
+type writerFunc func([]byte) (int, error)
 
-func (fn writeFunc) Write(p []byte) (int, error) { return fn(p) }
+func (fn writerFunc) Write(p []byte) (int, error) { return fn(p) }
 
 func TestWriteHeaderWriteErrors(t *testing.T) {
 	failure := fmt.Errorf("writer failed")
 	for _, test := range []struct {
-		name string
-		err  error
-		want error
+		name     string
+		failWith error
+		want     error
 	}{
-		{"short", nil, io.ErrShortWrite},
-		{"error", failure, failure},
+		{
+			name: "short",
+			want: io.ErrShortWrite,
+		},
+		{
+			name:     "error",
+			failWith: failure,
+			want:     failure,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			w := writeFunc(func(p []byte) (int, error) { return len(p) - 1, test.err })
+			w := writerFunc(func(p []byte) (int, error) { return len(p) - 1, test.failWith })
 			for _, write := range []func(io.Writer, Header) error{
 				WriteHeader,
 				func(w io.Writer, h Header) error { return WriteHeaderBuffer(w, h, make([]byte, MaxHeaderSize)) },
 			} {
-				if err := write(w, Header{Fin: true, OpCode: OpText, Length: 5}); err != test.want {
+				h := Header{
+					Fin:    true,
+					OpCode: OpText,
+					Length: 5,
+				}
+				if err := write(w, h); !errors.Is(err, test.want) {
 					t.Fatalf("got %v, want %v", err, test.want)
 				}
 			}
@@ -39,30 +52,48 @@ func TestWriteHeaderWriteErrors(t *testing.T) {
 func TestWriteFrameWriteErrors(t *testing.T) {
 	failure := fmt.Errorf("writer failed")
 	for _, test := range []struct {
-		name string
-		call int
-		err  error
-		want error
+		name     string
+		retErrAt int
+		failWith error
+		want     error
 	}{
-		{"header_short", 1, nil, io.ErrShortWrite},
-		{"header_error", 1, failure, failure},
-		{"payload_short", 2, nil, io.ErrShortWrite},
-		{"payload_error", 2, failure, failure},
+		{
+			name:     "header_short",
+			retErrAt: 1,
+			want:     io.ErrShortWrite,
+		},
+		{
+			name:     "header_error",
+			retErrAt: 1,
+			failWith: failure,
+			want:     failure,
+		},
+		{
+			name:     "payload_short",
+			retErrAt: 2,
+			want:     io.ErrShortWrite,
+		},
+		{
+			name:     "payload_error",
+			retErrAt: 2,
+			failWith: failure,
+			want:     failure,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
-			w := writeFunc(func(p []byte) (int, error) {
+			w := writerFunc(func(p []byte) (int, error) {
 				calls++
-				if calls == test.call {
-					return len(p) - 1, test.err
+				if calls == test.retErrAt {
+					return len(p) - 1, test.failWith
 				}
 				return len(p), nil
 			})
-			if err := WriteFrame(w, NewTextFrame([]byte("hello"))); err != test.want {
+			if err := WriteFrame(w, NewTextFrame([]byte("hello"))); !errors.Is(err, test.want) {
 				t.Fatalf("got %v, want %v", err, test.want)
 			}
-			if calls != test.call {
-				t.Fatalf("got %d writes, want %d", calls, test.call)
+			if calls != test.retErrAt {
+				t.Fatalf("got %d writes, want %d", calls, test.retErrAt)
 			}
 		})
 	}
