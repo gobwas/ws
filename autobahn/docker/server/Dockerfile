@@ -1,4 +1,8 @@
-FROM golang:1.20.2-alpine3.17
+# GO_VERSION is passed by autobahn/script/test.sh from the host's
+# `go env GOVERSION`, so the server under test is built with the same Go as the
+# CI matrix entry. The default is only a fallback for manual builds.
+ARG GO_VERSION=1.27
+FROM golang:${GO_VERSION}-alpine
 
 WORKDIR /go/src/github.com/gobwas/ws
 
