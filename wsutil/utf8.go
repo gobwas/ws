@@ -22,7 +22,7 @@ var ErrInvalidUTF8 = fmt.Errorf("invalid utf8")
 // Another possible case is when some valid sequence become split by the read
 // bound. Then UTF8Reader can not make decision about validity of the last
 // sequence cause it is not fully read yet. And if the read stops, Valid() will
-// return false, even if Read() by itself dit not.
+// return false, even if Read() by itself did not.
 type UTF8Reader struct {
 	Source io.Reader
 
