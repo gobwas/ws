@@ -2,6 +2,14 @@
 
 FOLLOW_LOGS=0
 
+# Build the server image with the same Go version as the host (e.g. the CI
+# matrix entry). GO_VERSION may be set explicitly to override it.
+GO_VERSION="${GO_VERSION:-$(go env GOVERSION 2>/dev/null | sed 's/^go//')}"
+SERVER_BUILD_ARGS=()
+if [[ -n "$GO_VERSION" ]]; then
+	SERVER_BUILD_ARGS+=(--build-arg "GO_VERSION=$GO_VERSION")
+fi
+
 while [[ $# -gt 0 ]]; do
 	key="$1"
 	case $key in
@@ -17,12 +25,12 @@ while [[ $# -gt 0 ]]; do
 				shift
 			;;
 			server)
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}"
 				shift
 			;;
 			*)
 				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}"
 			;;
 		esac
 		;;
