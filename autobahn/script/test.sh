@@ -21,16 +21,16 @@ while [[ $# -gt 0 ]]; do
 		--build)
 		case "$2" in
 			autobahn)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn || exit 1
 				shift
 			;;
 			server)
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}"
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}" || exit 1
 				shift
 			;;
 			*)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}"
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn || exit 1
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}" || exit 1
 			;;
 		esac
 		;;
