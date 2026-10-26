@@ -2,7 +2,7 @@ package ws
 
 import (
 	"bufio"
-	"io/ioutil"
+	"io"
 	"net/textproto"
 	"net/url"
 	"testing"
@@ -109,7 +109,7 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 			host: "test-host",
 		},
 	} {
-		bw := bufio.NewWriter(ioutil.Discard)
+		bw := bufio.NewWriter(io.Discard)
 		nonce := make([]byte, nonceSize)
 		initNonce(nonce)
 

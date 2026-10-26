@@ -14,7 +14,7 @@ Overview:
 	r = wsutil.NewCipherReader(r, header.Mask)
 	r = wsutil.NewUTF8Reader(r)
 
-	payload, err := ioutil.ReadAll(r)
+	payload, err := io.ReadAll(r)
 	if err != nil {
 		// handle err
 	}
@@ -26,7 +26,7 @@ You could get the same behavior using just `wsutil.Reader`:
 		CheckUTF8: true,
 	}
 
-	payload, err := ioutil.ReadAll(r)
+	payload, err := io.ReadAll(r)
 	if err != nil {
 		// handle err
 	}

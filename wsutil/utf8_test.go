@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 	"unicode/utf8"
 )
@@ -199,7 +198,7 @@ func BenchmarkUTF8Reader(b *testing.B) {
 					sz:  bench.chop,
 				}
 				r := NewUTF8Reader(cr)
-				_, err := ioutil.ReadAll(r)
+				_, err := io.ReadAll(r)
 				if !bench.err && err != nil {
 					b.Fatal(err)
 				}

@@ -3,7 +3,6 @@ package wsutil
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"testing"
 	"unicode/utf8"
 
@@ -28,7 +27,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 	r := Reader{
 		Source: &buf,
 		OnIntermediate: func(h ws.Header, r io.Reader) error {
-			bts, err := ioutil.ReadAll(r)
+			bts, err := io.ReadAll(r)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +52,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 		t.Fatalf("unexpected NextFrame() header: %+v; want %+v", act, exp)
 	}
 
-	act, err := ioutil.ReadAll(&r)
+	act, err := io.ReadAll(&r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +214,7 @@ func TestReaderUTF8(t *testing.T) {
 	if _, err := r.NextFrame(); err != nil {
 		t.Fatal(err)
 	}
-	bts, err := ioutil.ReadAll(&r)
+	bts, err := io.ReadAll(&r)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -321,7 +320,7 @@ func TestNextReader(t *testing.T) {
 			var bts []byte
 			_, reader, err := NextReader(conn, 0)
 			if err == nil {
-				bts, err = ioutil.ReadAll(reader)
+				bts, err = io.ReadAll(reader)
 			}
 			if err != test.err {
 				t.Fatalf("unexpected error; got %v; want %v", err, test.err)
