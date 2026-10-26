@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 )
 
@@ -127,7 +126,7 @@ func BenchmarkWriteHeader(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if err := WriteHeader(ioutil.Discard, bench.header); err != nil {
+				if err := WriteHeader(io.Discard, bench.header); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -140,7 +139,7 @@ func BenchmarkWriteHeader(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				if err := WriteHeaderBuffer(ioutil.Discard, bench.header, bts); err != nil {
+				if err := WriteHeaderBuffer(io.Discard, bench.header, bts); err != nil {
 					b.Fatal(err)
 				}
 			}

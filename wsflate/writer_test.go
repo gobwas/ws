@@ -5,7 +5,6 @@ import (
 	"compress/flate"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/url"
 	"testing"
@@ -207,7 +206,7 @@ func TestWriter(t *testing.T) {
 	r := NewReader(&buf, func(r io.Reader) Decompressor {
 		return flate.NewReader(r)
 	})
-	act, err := ioutil.ReadAll(r)
+	act, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("unexpected Reader error: %v", err)
 	}

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"testing"
@@ -75,7 +74,7 @@ func TestDebugDialer(t *testing.T) {
 				StatusCode: http.StatusOK,
 				ProtoMajor: 1,
 				ProtoMinor: 1,
-				Body: ioutil.NopCloser(bytes.NewReader(
+				Body: io.NopCloser(bytes.NewReader(
 					bytes.Repeat([]byte("x"), 5000),
 				)),
 				ContentLength: 5000,
@@ -150,7 +149,7 @@ func TestDebugDialer(t *testing.T) {
 				t.Errorf("returned connection is non raw")
 			}
 			if br != nil {
-				body, err := ioutil.ReadAll(br)
+				body, err := io.ReadAll(br)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -534,7 +533,7 @@ func BenchmarkUpgrader(b *testing.B) {
 		b.Run(bench.label, func(b *testing.B) {
 			conn := make([]io.ReadWriter, b.N)
 			for i := 0; i < b.N; i++ {
-				conn[i] = benchReadWriter{bytes.NewReader(reqBytes), ioutil.Discard}
+				conn[i] = benchReadWriter{bytes.NewReader(reqBytes), io.Discard}
 			}
 
 			i := new(int64)
@@ -806,7 +805,7 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 		ProtoMinor:    1,
 		ContentLength: int64(len(body)),
 	}
-	res.Body = ioutil.NopCloser(
+	res.Body = io.NopCloser(
 		strings.NewReader(body),
 	)
 	for k, v := range headers {
