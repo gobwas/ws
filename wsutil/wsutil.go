@@ -38,6 +38,24 @@ Or even simplest:
 		// handle err
 	}
 
+Limits:
+
+The protocol has no limit on the size of a frame or a message, and neither has
+this package by default, while ReadMessage(), ReadData() and their shortcuts
+such as ReadClientText() read a whole message into memory. It is highly
+recommended to set the limits that fit your application, once, before reading:
+
+	// Reject a message, in all its fragments, bigger than 1 MiB.
+	wsutil.SetMaxMessageSize(1 << 20)
+	// Reject a single frame bigger than 64 KiB.
+	wsutil.SetMaxFrameSize(64 << 10)
+
+The same limits are the MaxMessageSize and MaxFrameSize fields of a Reader you
+build yourself; DefaultReader() returns the Reader the helpers read with. The
+declared length of a frame is never trusted for allocation beyond
+PreallocLimit(), 32 KiB by default, so a peer that lies about the length can
+not make you allocate what it has not sent.
+
 Package is also exports tools for buffered writing:
 
 	// Create buffered writer, that will buffer output bytes and send them as
