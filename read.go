@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/gobwas/ws/internal/saferio"
 )
 
 // Errors used by frame reader.
@@ -20,7 +22,6 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 	// after first hop that reads first 2 constant bytes, we could reuse 2 bytes.
 	// So 14 - 2 = 12.
 	bts := make([]byte, 2, MaxHeaderSize-2)
-
 	return ReadHeaderBuffer(r, bts)
 }
 
@@ -78,12 +79,12 @@ func ReadHeaderBuffer(r io.Reader, bts []byte) (h Header, err error) {
 		return h, err
 	}
 
-	switch {
-	case length == 126:
+	switch length {
+	case 126:
 		h.Length = int64(binary.BigEndian.Uint16(bts[:2]))
 		bts = bts[2:]
 
-	case length == 127:
+	case 127:
 		if bts[0]&0x80 != 0 {
 			err = ErrHeaderLengthMSB
 			return h, err
@@ -99,28 +100,38 @@ func ReadHeaderBuffer(r io.Reader, bts []byte) (h Header, err error) {
 	return h, nil
 }
 
+// payloadPreallocLimit is the maximum peer-declared payload length that
+// ReadFrame() trusts for allocation before the payload is read; a payload
+// declared bigger than that is read into a buffer that grows as bytes actually
+// arrive. The value is the same as io.Copy() chunk size.
+const payloadPreallocLimit = 32 * 1024
+
 // ReadFrame reads a frame from r.
-// It is not designed for high optimized use case cause it makes allocation
-// for frame.Header.Length size inside to read frame payload into.
 //
 // Note that ReadFrame does not unmask payload.
+//
+// Deprecated: the payload length is declared by the peer and ReadFrame reads
+// it whole into memory, so a peer can make the process run out of memory by
+// actually sending that much data. (The declared length is not trusted for
+// allocation though: at most 32 KiB are allocated before the data actually
+// arrives.) The only way to bound it is to wrap r with io.LimitReader(), which
+// fails in the middle of the payload with io.ErrUnexpectedEOF; it is simpler
+// and more precise to use ReadHeader(), check Header.Length against your own
+// limit and read the payload yourself.
 func ReadFrame(r io.Reader) (f Frame, err error) {
 	f.Header, err = ReadHeader(r)
 	if err != nil {
 		return f, err
 	}
-
 	if f.Header.Length > 0 {
-		// int(f.Header.Length) is safe here cause we have
-		// checked it for overflow above in ReadHeader.
-		f.Payload = make([]byte, int(f.Header.Length))
-		_, err = io.ReadFull(r, f.Payload)
+		f.Payload, err = saferio.ReadN(r, payloadPreallocLimit, f.Header.Length)
 	}
-
 	return f, err
 }
 
 // MustReadFrame is like ReadFrame but panics if frame can not be read.
+//
+// Deprecated: see ReadFrame.
 func MustReadFrame(r io.Reader) Frame {
 	f, err := ReadFrame(r)
 	if err != nil {

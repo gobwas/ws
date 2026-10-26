@@ -16,6 +16,10 @@ var ErrNoFrameAdvance = errors.New("no frame advance")
 // MaxFrameSize was being read.
 var ErrFrameTooLarge = errors.New("frame too large")
 
+// ErrMessageTooLarge indicates that a message of total length higher than
+// MaxMessageSize, that is, of all its fragments together, was being read.
+var ErrMessageTooLarge = errors.New("message too large")
+
 // FrameHandlerFunc handles parsed frame header and its body represented by
 // io.Reader.
 //
@@ -46,17 +50,38 @@ type Reader struct {
 	// header RSV segment.
 	Extensions []RecvExtension
 
-	// MaxFrameSize controls the maximum frame size in bytes
-	// that can be read. A message exceeding that size will return
-	// a ErrFrameTooLarge to the application.
+	// MaxFrameSize controls the maximum frame size in bytes that can be read.
+	// A message exceeding that size will return a ErrFrameTooLarge to the
+	// application.
 	//
 	// Not setting this field means there is no limit.
 	MaxFrameSize int64
 
+	// MaxMessageSize controls the maximum message size in bytes that can be
+	// read, that is, the total length of all fragments of a message. A message
+	// exceeding that size will return a ErrMessageTooLarge to the application
+	// from the NextFrame() call for the first fragment crossing the limit.
+	//
+	// This is the limit RFC 6455 section 10.4 talks about. Note that
+	// MaxFrameSize alone does not bound a fragmented message.
+	//
+	// Not setting this field means there is no limit.
+	MaxMessageSize int64
+
+	// OnContinuation is called by NextFrame() for every continuation frame of
+	// a fragmented message, with its header and body. The body is the same
+	// reader the fragment is then read from, so bytes consumed by the callback
+	// are not returned by Read().
 	OnContinuation FrameHandlerFunc
+
+	// OnIntermediate is called by NextFrame() for a control frame received in
+	// the middle of a fragmented message, with its header and body; the rest
+	// of the body is discarded after the callback returns. If it is nil, such
+	// frames are discarded silently, and only their header is returned.
 	OnIntermediate FrameHandlerFunc
 
 	opCode ws.OpCode                  // Used to store message op code on fragmentation.
+	msgLen int64                      // Declared length of the current message fragments so far.
 	frame  io.Reader                  // Used to as frame reader.
 	raw    io.LimitedReader           // Used to discard frames without cipher.
 	utf8   UTF8Reader                 // Used to check UTF8 sequences if CheckUTF8 is true.
@@ -188,6 +213,19 @@ func (r *Reader) NextFrame() (hdr ws.Header, err error) {
 	if n := r.MaxFrameSize; n > 0 && hdr.Length > n {
 		return hdr, ErrFrameTooLarge
 	}
+	if !r.fragmented() {
+		// First frame of a message.
+		r.msgLen = 0
+	}
+	if !r.fragmented() || !hdr.OpCode.IsControl() {
+		// Control frames in the middle of a fragmented message do not belong
+		// to it, everything else does. The subtraction can not overflow and
+		// the sum can not exceed the limit.
+		if n := r.MaxMessageSize; n > 0 && hdr.Length > n-r.msgLen {
+			return hdr, ErrMessageTooLarge
+		}
+		r.msgLen += hdr.Length
+	}
 
 	// Save raw reader to use it on discarding frame without ciphering and
 	// other streaming checks.
@@ -266,6 +304,7 @@ func (r *Reader) reset() {
 	r.frame = nil
 	r.utf8 = UTF8Reader{}
 	r.opCode = 0
+	r.msgLen = 0
 }
 
 // readHeader reads a frame header from in.
