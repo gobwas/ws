@@ -81,6 +81,13 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
+cleanup() {
+	# A container may have never started; ignore that.
+	docker rm "$server" >/dev/null 2>&1
+	docker rm "$autobahn" >/dev/null 2>&1
+	docker network rm "$network"
+}
+
 docker run \
 	--interactive \
 	--tty \
@@ -89,7 +96,7 @@ docker run \
 	--network-alias="ws-server" \
 	-v $(pwd)/autobahn/report:/report \
 	--name="$server" \
-	"ws-server"
+	"ws-server" || { cleanup; exit 1; }
 
 docker run \
 	--interactive \
@@ -98,8 +105,8 @@ docker run \
 	--network="$network" \
 	-v $(pwd)/autobahn/config:/config \
 	-v $(pwd)/autobahn/report:/report \
-   	--name="$autobahn" \
-	"ws-autobahn"
+	--name="$autobahn" \
+	"ws-autobahn" || { cleanup; exit 1; }
 
 
 if [[ $FOLLOW_LOGS -eq 1 ]]; then
@@ -115,12 +122,6 @@ ctrl_c () {
 	cleanup
 	exit 130
 } 
-
-cleanup() {
-	docker rm "$server" >/dev/null
-	docker rm "$autobahn" >/dev/null
-	docker network rm "$network"
-}
 
 docker wait "$autobahn" >/dev/null
 docker stop "$server" >/dev/null
