@@ -93,7 +93,10 @@ func WriteHeaderBuffer(w io.Writer, h Header, bts []byte) error {
 		n += copy(bts[n:], h.Mask[:])
 	}
 
-	_, err := w.Write(bts[:n])
+	nn, err := w.Write(bts[:n])
+	if nn < n && err == nil {
+		err = io.ErrShortWrite
+	}
 
 	return err
 }
@@ -104,7 +107,10 @@ func WriteFrame(w io.Writer, f Frame) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(f.Payload)
+	n, err := w.Write(f.Payload)
+	if n < len(f.Payload) && err == nil {
+		err = io.ErrShortWrite
+	}
 	return err
 }
 
