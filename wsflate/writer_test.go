@@ -14,6 +14,178 @@ import (
 	"github.com/gobwas/ws"
 )
 
+// fakeCompressor is a Compressor which passes data through as is, writes
+// given bytes on Flush() and Close(), and remembers whether it was closed.
+type fakeCompressor struct {
+	dst    io.Writer
+	flush  []byte
+	close  []byte
+	closed bool
+}
+
+func (c *fakeCompressor) Write(p []byte) (int, error) {
+	return c.dst.Write(p)
+}
+
+func (c *fakeCompressor) Flush() error {
+	_, err := c.dst.Write(c.flush)
+	return err
+}
+
+func (c *fakeCompressor) Close() error {
+	c.closed = true
+	_, err := c.dst.Write(c.close)
+	return err
+}
+
+func TestWriterClose(t *testing.T) {
+	// Go 1.27's flate writer terminates the stream with a short fixed-Huffman
+	// block instead of the empty stored block emitted by older versions. Both
+	// must stay out of the message.
+	for _, test := range []struct {
+		name  string
+		close []byte
+		flush bool
+		bad   bool
+	}{
+		{
+			name:  "stored final block, flushed",
+			close: []byte{0x01, 0x00, 0x00, 0xff, 0xff},
+			flush: true,
+		},
+		{
+			name:  "stored final block, not flushed",
+			close: []byte{0x01, 0x00, 0x00, 0xff, 0xff},
+		},
+		{
+			name:  "fixed final block, flushed",
+			close: []byte{0x03, 0x00},
+			flush: true,
+		},
+		{
+			name:  "fixed final block, not flushed",
+			close: []byte{0x03, 0x00},
+		},
+		{
+			name:  "no final block, not flushed",
+			close: nil,
+		},
+		{
+			name: "bad compressor",
+			bad:  true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			var compressor *fakeCompressor
+			w := NewWriter(&buf, func(dst io.Writer) Compressor {
+				compressor = &fakeCompressor{
+					dst:   dst,
+					flush: compressionTail[:],
+					close: test.close,
+				}
+				if test.bad {
+					// Does not sync flush.
+					compressor.flush = nil
+				}
+				return compressor
+			})
+			if _, err := w.Write([]byte("payload")); err != nil {
+				t.Fatalf("unexpected Write() error: %v", err)
+			}
+			if test.flush {
+				if err := w.Flush(); err != nil {
+					t.Fatalf("unexpected Flush() error: %v", err)
+				}
+			}
+			err := w.Close()
+			if test.bad {
+				if err == nil {
+					t.Fatalf("expected Close() error for bad compressor")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected Close() error: %v", err)
+			}
+			if !compressor.closed {
+				t.Fatalf("Close() did not close the compressor")
+			}
+			if got, want := buf.String(), "payload"; got != want {
+				t.Fatalf("unexpected output: %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestWriterCloseFlate checks that with the real compress/flate the message
+// bytes do not depend on whether Flush(), Close() or both were called.
+func TestWriterCloseFlate(t *testing.T) {
+	type config struct {
+		flush bool
+		close bool
+	}
+	var (
+		data    = []byte("hello, flate!")
+		configs = []config{
+			{
+				flush: true,
+			},
+			{
+				close: true,
+			},
+			{
+				flush: true,
+				close: true,
+			},
+		}
+		// Message bytes produced by each config and, inversely, the number
+		// of configs produced each message; all of them must agree.
+		output = make(map[config]string, len(configs))
+		seen   = make(map[string]int, len(configs))
+	)
+	for _, c := range configs {
+		var buf bytes.Buffer
+		w := NewWriter(&buf, func(w io.Writer) Compressor {
+			fw, _ := flate.NewWriter(w, 9)
+			return fw
+		})
+		if _, err := w.Write(data); err != nil {
+			t.Fatalf("%+v: unexpected Write() error: %v", c, err)
+		}
+		if c.flush {
+			if err := w.Flush(); err != nil {
+				t.Fatalf("%+v: unexpected Flush() error: %v", c, err)
+			}
+		}
+		if c.close {
+			if err := w.Close(); err != nil {
+				t.Fatalf("%+v: unexpected Close() error: %v", c, err)
+			}
+		}
+		output[c] = buf.String()
+		seen[output[c]]++
+
+		// Must be decompressible as a PMCE message.
+		r := NewReader(&buf, func(r io.Reader) Decompressor {
+			return flate.NewReader(r)
+		})
+		p, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("%+v: unexpected Reader error: %v", c, err)
+		}
+		if !bytes.Equal(p, data) {
+			t.Fatalf("%+v: unexpected bytes: %#q; want %#q", c, p, data)
+		}
+	}
+	if len(seen) > 1 {
+		for _, c := range configs {
+			t.Errorf("%+v: %x (seen %d times)", c, output[c], seen[output[c]])
+		}
+		t.Fatalf("Flush()/Close() combinations produced %d different outputs", len(seen))
+	}
+}
+
 func TestWriter(t *testing.T) {
 	var buf bytes.Buffer
 	w := NewWriter(&buf, func(w io.Writer) Compressor {
