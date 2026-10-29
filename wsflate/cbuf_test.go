@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"testing"
 )
 
@@ -148,7 +147,7 @@ func BenchmarkCBuf(b *testing.B) {
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			w := &cbuf{
-				dst: ioutil.Discard,
+				dst: io.Discard,
 			}
 			for i := 0; i < b.N; i++ {
 				w.Write(test.chunk)

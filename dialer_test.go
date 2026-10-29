@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -290,7 +289,7 @@ func TestDialerHandshake(t *testing.T) {
 					headerConnection: []string{"Upgrade"},
 					headerUpgrade:    []string{"websocket"},
 				},
-				Body:          ioutil.NopCloser(bytes.NewReader([]byte(`hello, gopher!`))),
+				Body:          io.NopCloser(bytes.NewReader([]byte(`hello, gopher!`))),
 				ContentLength: 14,
 			},
 			accept:     acceptValid,
@@ -327,7 +326,7 @@ func TestDialerHandshake(t *testing.T) {
 				ProtoMajor: 1,
 				ProtoMinor: 1,
 				Header:     make(http.Header),
-				Body: ioutil.NopCloser(bytes.NewReader(
+				Body: io.NopCloser(bytes.NewReader(
 					[]byte(`<error description here>`),
 				)),
 				ContentLength: 24,

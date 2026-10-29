@@ -74,7 +74,7 @@ Or:
 		// handle err
 	}
 
-	io.CopyN(ioutil.Discard, conn, header.Length)
+	io.CopyN(io.Discard, conn, header.Length)
 
 For more info see the documentation.
 */
