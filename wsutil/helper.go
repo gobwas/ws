@@ -3,9 +3,10 @@ package wsutil
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
+	"sync/atomic"
 
 	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/internal/saferio"
 )
 
 // Message represents a message from peer, that could be presented in one or
@@ -16,6 +17,103 @@ type Message struct {
 	Payload []byte
 }
 
+// defaultPreallocLimit is the default for SetPreallocLimit(): the same as
+// io.Copy() chunk size.
+const defaultPreallocLimit = 32 * 1024
+
+// Settings of the Reader used by ReadMessage(), ReadData() and their
+// shortcuts. They are accessed atomically, so that the setters below are safe
+// to call concurrently with the helpers.
+var (
+	helperMaxFrameSize   int64
+	helperMaxMessageSize int64
+	helperCheckUTF8      int32 = 1
+	helperPreallocLimit  int64 = defaultPreallocLimit
+)
+
+// SetMaxFrameSize sets the Reader.MaxFrameSize used by ReadMessage(),
+// ReadData() and their shortcuts. Zero, the default, means no limit.
+//
+// It is safe to call concurrently with the helpers.
+func SetMaxFrameSize(n int64) {
+	atomic.StoreInt64(&helperMaxFrameSize, n)
+}
+
+// MaxFrameSize returns the value set with SetMaxFrameSize().
+func MaxFrameSize() int64 {
+	return atomic.LoadInt64(&helperMaxFrameSize)
+}
+
+// SetMaxMessageSize sets the Reader.MaxMessageSize used by ReadMessage(),
+// ReadData() and their shortcuts: the total length of all fragments of a
+// message. Zero, the default, means no limit.
+//
+// It is safe to call concurrently with the helpers.
+func SetMaxMessageSize(n int64) {
+	atomic.StoreInt64(&helperMaxMessageSize, n)
+}
+
+// MaxMessageSize returns the value set with SetMaxMessageSize().
+func MaxMessageSize() int64 {
+	return atomic.LoadInt64(&helperMaxMessageSize)
+}
+
+// SetCheckUTF8 sets the [Reader.CheckUTF8] used by [ReadMessage], [ReadData]
+// and their shortcuts. It is true by default.
+//
+// It is safe to call concurrently with the helpers.
+func SetCheckUTF8(v bool) {
+	var x int32
+	if v {
+		x = 1
+	}
+	atomic.StoreInt32(&helperCheckUTF8, x)
+}
+
+// CheckUTF8 returns the value set with SetCheckUTF8().
+func CheckUTF8() bool {
+	return atomic.LoadInt32(&helperCheckUTF8) != 0
+}
+
+// SetPreallocLimit sets the maximum peer-declared payload length that
+// ReadMessage(), ReadData() and their shortcuts trust for allocation before
+// the payload is read; a payload declared bigger than that is read into a
+// buffer that grows as bytes actually arrive. The default is 32 KiB, the
+// io.Copy() chunk size. Limits set with SetMaxFrameSize() and
+// SetMaxMessageSize() reject frames; they do not raise this one.
+//
+// It panics if n is not positive: trusting nothing is not a sane
+// configuration, and the mistake is better reported here than in the middle of
+// a read.
+//
+// It is safe to call concurrently with the helpers.
+func SetPreallocLimit(n int64) {
+	if n <= 0 {
+		panic("wsutil: SetPreallocLimit() limit must be greater than zero")
+	}
+	atomic.StoreInt64(&helperPreallocLimit, n)
+}
+
+// PreallocLimit returns the value set with SetPreallocLimit().
+func PreallocLimit() int64 {
+	return atomic.LoadInt64(&helperPreallocLimit)
+}
+
+// DefaultReader returns a Reader for r and s configured with the package-level
+// settings, that is, the Reader that ReadMessage(), ReadData() and their
+// shortcuts read with. Unlike NewReader(), it applies MaxFrameSize() and
+// MaxMessageSize() and CheckUTF8(). The OnIntermediate field is left for the
+// caller to set.
+func DefaultReader(r io.Reader, s ws.State) *Reader {
+	return &Reader{
+		Source:         r,
+		State:          s,
+		CheckUTF8:      CheckUTF8(),
+		MaxFrameSize:   MaxFrameSize(),
+		MaxMessageSize: MaxMessageSize(),
+	}
+}
+
 // ReadMessage is a helper function that reads next message from r. It appends
 // received message(s) to the third argument and returns the result of it and
 // an error if some failure happened. That is, it probably could receive more
@@ -23,43 +121,58 @@ type Message struct {
 // want to send some control frame between fragments. Then returned slice will
 // contain those control frames at first, and then result of gluing fragments.
 //
-// TODO(gobwas): add DefaultReader with buffer size options.
+// Note that there is no limit on the message size by default, since the
+// message is read whole into memory; to set one, use SetMaxMessageSize().
+// Allocation does not trust the peer-declared size beyond the limit set with
+// SetPreallocLimit() and allocates as soon as the actual data is read.
+// DefaultReader() returns the Reader these settings apply to.
 func ReadMessage(r io.Reader, s ws.State, m []Message) ([]Message, error) {
-	rd := Reader{
-		Source:    r,
-		State:     s,
-		CheckUTF8: true,
-		OnIntermediate: func(hdr ws.Header, src io.Reader) error {
-			bts, err := ioutil.ReadAll(src)
-			if err != nil {
-				return err
-			}
-			m = append(m, Message{hdr.OpCode, bts})
-			return nil
-		},
+	rd := DefaultReader(r, s)
+	rd.OnIntermediate = func(hdr ws.Header, src io.Reader) error {
+		bts, err := io.ReadAll(src)
+		if err != nil {
+			return err
+		}
+		m = append(m, Message{hdr.OpCode, bts})
+		return nil
 	}
 	h, err := rd.NextFrame()
 	if err != nil {
 		return m, err
 	}
-	var p []byte
-	if h.Fin {
-		// No more frames will be read. Use fixed sized buffer to read payload.
-		p = make([]byte, h.Length)
-		// It is not possible to receive io.EOF here because Reader does not
-		// return EOF if frame payload was successfully fetched.
-		// Thus we consistent here with io.Reader behavior.
-		_, err = io.ReadFull(&rd, p)
-	} else {
-		// Frame is fragmented, thus use ioutil.ReadAll behavior.
-		var buf bytes.Buffer
-		_, err = buf.ReadFrom(&rd)
-		p = buf.Bytes()
-	}
+	p, err := readMessagePayload(rd, h)
 	if err != nil {
 		return m, err
 	}
 	return append(m, Message{h.OpCode, p}), nil
+}
+
+// readMessagePayload reads from rd the payload of a message whose first frame
+// header is hdr.
+func readMessagePayload(rd *Reader, hdr ws.Header) ([]byte, error) {
+	if hdr.Fin {
+		// No more frames will be read, so the message size is known. Note that
+		// it is declared by the peer and can not be trusted for allocation
+		// beyond the prealloc limit, which saferio.ReadN() takes care of.
+		//
+		// MaxFrameSize and MaxMessageSize do not raise that trust: a bound
+		// above the limit still allocates as bytes arrive, and a bound below
+		// it has already rejected in NextFrame() any frame the limit could
+		// matter for.
+		return saferio.ReadN(rd, PreallocLimit(), hdr.Length)
+	}
+	// Message is fragmented, so its total size is unknown: let the buffer
+	// grow as bytes actually arrive, like io.ReadAll() does. The first
+	// fragment's declared length is a hint for the start size, trusted up to
+	// the same limit as a whole frame would be.
+	n := hdr.Length
+	if lim := PreallocLimit(); n > lim {
+		n = lim
+	}
+	var buf bytes.Buffer
+	buf.Grow(int(n))
+	_, err := buf.ReadFrom(rd)
+	return buf.Bytes(), err
 }
 
 // ReadClientMessage reads next message from r, considering that caller
@@ -84,6 +197,12 @@ func ReadServerMessage(r io.Reader, m []Message) ([]Message, error) {
 //
 // Note this may handle and write control frames into the writer part of a
 // given io.ReadWriter.
+//
+// Note that there is no limit on the message size by default, since the
+// message is read whole into memory; to set one, use SetMaxMessageSize().
+// Allocation does not trust the peer-declared size beyond the limit set with
+// SetPreallocLimit() and allocates as soon as the actual data is read.
+// DefaultReader() returns the Reader these settings apply to.
 func ReadData(rw io.ReadWriter, s ws.State) ([]byte, ws.OpCode, error) {
 	return readData(rw, s, ws.OpText|ws.OpBinary)
 }
@@ -247,20 +366,15 @@ func ControlFrameHandler(w io.Writer, state ws.State) FrameHandlerFunc {
 
 func readData(rw io.ReadWriter, s ws.State, want ws.OpCode) ([]byte, ws.OpCode, error) {
 	controlHandler := ControlFrameHandler(rw, s)
-	rd := Reader{
-		Source:          rw,
-		State:           s,
-		CheckUTF8:       true,
-		SkipHeaderCheck: false,
-		OnIntermediate:  controlHandler,
-	}
+	rd := DefaultReader(rw, s)
+	rd.OnIntermediate = controlHandler
 	for {
 		hdr, err := rd.NextFrame()
 		if err != nil {
 			return nil, 0, err
 		}
 		if hdr.OpCode.IsControl() {
-			if err := controlHandler(hdr, &rd); err != nil {
+			if err := controlHandler(hdr, rd); err != nil {
 				return nil, 0, err
 			}
 			continue
@@ -272,7 +386,7 @@ func readData(rw io.ReadWriter, s ws.State, want ws.OpCode) ([]byte, ws.OpCode, 
 			continue
 		}
 
-		bts, err := ioutil.ReadAll(&rd)
+		bts, err := readMessagePayload(rd, hdr)
 
 		return bts, hdr.OpCode, err
 	}

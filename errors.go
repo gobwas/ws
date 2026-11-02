@@ -54,6 +54,7 @@ func (r *ConnectionRejectedError) Error() string {
 	return r.reason
 }
 
+// StatusCode returns the HTTP status code for the connection rejection.
 func (r *ConnectionRejectedError) StatusCode() int {
 	return r.code
 }

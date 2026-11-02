@@ -3,7 +3,6 @@ package wsutil
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"testing"
 	"unicode/utf8"
 
@@ -28,7 +27,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 	r := Reader{
 		Source: &buf,
 		OnIntermediate: func(h ws.Header, r io.Reader) error {
-			bts, err := ioutil.ReadAll(r)
+			bts, err := io.ReadAll(r)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +52,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 		t.Fatalf("unexpected NextFrame() header: %+v; want %+v", act, exp)
 	}
 
-	act, err := ioutil.ReadAll(&r)
+	act, err := io.ReadAll(&r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +214,7 @@ func TestReaderUTF8(t *testing.T) {
 	if _, err := r.NextFrame(); err != nil {
 		t.Fatal(err)
 	}
-	bts, err := ioutil.ReadAll(&r)
+	bts, err := io.ReadAll(&r)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -321,7 +320,7 @@ func TestNextReader(t *testing.T) {
 			var bts []byte
 			_, reader, err := NextReader(conn, 0)
 			if err == nil {
-				bts, err = ioutil.ReadAll(reader)
+				bts, err = io.ReadAll(reader)
 			}
 			if err != test.err {
 				t.Fatalf("unexpected error; got %v; want %v", err, test.err)
@@ -350,4 +349,159 @@ func (c chopReader) Read(p []byte) (n int, err error) {
 		sz = len(p)
 	}
 	return c.src.Read(p[:sz])
+}
+
+func TestMaxMessageSize(t *testing.T) {
+	// frames writes the given frames into a buffer the Reader reads from.
+	frames := func(fs ...ws.Frame) *bytes.Buffer {
+		var buf bytes.Buffer
+		for _, f := range fs {
+			err := ws.WriteFrame(&buf, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		return &buf
+	}
+	// fragment returns a frame carrying n bytes of a fragmented message.
+	fragment := func(op ws.OpCode, fin bool, n int) ws.Frame {
+		return ws.NewFrame(op, fin, make([]byte, n))
+	}
+	for _, test := range []struct {
+		name   string
+		limit  int64
+		frames []ws.Frame
+		// Payload sizes of the messages read before the error, if any.
+		messages []int
+		err      error
+	}{
+		{
+			name:  "single frame at limit",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, true, 10),
+			},
+			messages: []int{10},
+		},
+		{
+			name:  "single frame above limit",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, true, 11),
+			},
+			err: ErrMessageTooLarge,
+		},
+		{
+			name:  "fragments at limit",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 4),
+				fragment(ws.OpContinuation, false, 4),
+				fragment(ws.OpContinuation, true, 2),
+			},
+			messages: []int{10},
+		},
+		{
+			name:  "fragments above limit",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 4),
+				fragment(ws.OpContinuation, false, 4),
+				fragment(ws.OpContinuation, true, 3),
+			},
+			err: ErrMessageTooLarge,
+		},
+		{
+			name:  "many small fragments above limit",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, false, 1),
+				fragment(ws.OpContinuation, true, 1),
+			},
+			err: ErrMessageTooLarge,
+		},
+		{
+			name:  "intermediate control does not count",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 5),
+				ws.NewPingFrame(make([]byte, 5)),
+				fragment(ws.OpContinuation, true, 5),
+			},
+			messages: []int{10},
+		},
+		{
+			name:  "counter resets between messages",
+			limit: 10,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 5),
+				fragment(ws.OpContinuation, true, 5),
+				fragment(ws.OpBinary, false, 5),
+				fragment(ws.OpContinuation, true, 5),
+			},
+			messages: []int{10, 10},
+		},
+		{
+			name:  "no limit",
+			limit: 0,
+			frames: []ws.Frame{
+				fragment(ws.OpBinary, false, 5000),
+				fragment(ws.OpContinuation, true, 5000),
+			},
+			messages: []int{10000},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := Reader{
+				Source:         frames(test.frames...),
+				MaxMessageSize: test.limit,
+			}
+			var messages []int
+			var err error
+			for err == nil {
+				_, err = r.NextFrame()
+				if err != nil {
+					break
+				}
+				var p []byte
+				p, err = io.ReadAll(&r)
+				if err != nil {
+					break
+				}
+				messages = append(messages, len(p))
+			}
+			if err == io.EOF {
+				err = nil
+			}
+			if err != test.err {
+				t.Fatalf(
+					"unexpected error: %v; want %v",
+					err, test.err,
+				)
+			}
+			if len(messages) != len(test.messages) {
+				t.Fatalf(
+					"read %d messages: %v; want %d: %v",
+					len(messages), messages, len(test.messages), test.messages,
+				)
+			}
+			for i, n := range messages {
+				if n != test.messages[i] {
+					t.Fatalf(
+						"message #%d has %d bytes; want %d",
+						i, n, test.messages[i],
+					)
+				}
+			}
+		})
+	}
 }

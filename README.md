@@ -57,6 +57,10 @@ import (
 )
 
 func main() {
+	// Bound the messages read by the wsutil helpers; there is no limit
+	// otherwise (see Limits below).
+	wsutil.SetMaxMessageSize(1 << 20)
+
 	http.ListenAndServe(":8080", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
@@ -226,6 +230,37 @@ func main() {
 }
 ```
 
+# Limits
+
+The protocol does not limit the size of a frame or a message, and neither does
+this library by default: it is up to you. A peer can declare a 16 GiB frame or
+send a message in a million fragments, and the `wsutil` helpers read a whole
+message into memory. It is highly recommended to set the limits that fit your
+application:
+
+```go
+// Reject a message, in all its fragments, bigger than 1 MiB.
+wsutil.SetMaxMessageSize(1 << 20)
+// Reject a single frame bigger than 64 KiB.
+wsutil.SetMaxFrameSize(64 << 10)
+```
+
+These apply to `wsutil.ReadMessage()`, `wsutil.ReadData()` and their shortcuts
+such as `wsutil.ReadClientData()`. `wsutil.DefaultReader()` returns the
+`wsutil.Reader` they use. The same limits are the `MaxMessageSize` and
+`MaxFrameSize` fields of a `wsutil.Reader` you build yourself.
+
+The declared length of a frame is never trusted for allocation: at most
+`wsutil.PreallocLimit()` bytes (32 KiB by default, see
+`wsutil.SetPreallocLimit()`) are allocated before the payload actually arrives,
+so a peer that lies about the length can not make you allocate what it has not
+sent.
+
+The lower level `ws` package has no such knobs: read the header with
+`ws.ReadHeader()`, check `Header.Length` against your own limit, and only then
+read the payload (see the compression example below). `ws.ReadFrame()` is
+deprecated for exactly that reason.
+
 # Zero-copy upgrade
 
 Zero-copy upgrade helps to avoid unnecessary allocations and copying while
@@ -369,12 +404,16 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"log"
 	"net"
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsflate"
 )
+
+// maxPayloadLength bounds the frames we accept; ws does not do it for us.
+const maxPayloadLength = 1 << 20
 
 func main() {
 	ln, err := net.Listen("tcp", "localhost:8080")
@@ -414,8 +453,20 @@ func main() {
 		go func() {
 			defer conn.Close()
 			for {
-				frame, err := ws.ReadFrame(conn)
+				header, err := ws.ReadHeader(conn)
 				if err != nil {
+					// Handle error.
+					return
+				}
+				if header.Length > maxPayloadLength {
+					// Handle too large frame: ws does not limit it for you.
+					return
+				}
+				frame := ws.Frame{
+					Header:  header,
+					Payload: make([]byte, header.Length),
+				}
+				if _, err := io.ReadFull(conn, frame.Payload); err != nil {
 					// Handle error.
 					return
 				}

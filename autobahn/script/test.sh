@@ -2,6 +2,14 @@
 
 FOLLOW_LOGS=0
 
+# Build the server image with the same Go version as the host (e.g. the CI
+# matrix entry). GO_VERSION may be set explicitly to override it.
+GO_VERSION="${GO_VERSION:-$(go env GOVERSION 2>/dev/null | sed 's/^go//')}"
+SERVER_BUILD_ARGS=()
+if [[ -n "$GO_VERSION" ]]; then
+	SERVER_BUILD_ARGS+=(--build-arg "GO_VERSION=$GO_VERSION")
+fi
+
 while [[ $# -gt 0 ]]; do
 	key="$1"
 	case $key in
@@ -13,16 +21,16 @@ while [[ $# -gt 0 ]]; do
 		--build)
 		case "$2" in
 			autobahn)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn || exit 1
 				shift
 			;;
 			server)
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}" || exit 1
 				shift
 			;;
 			*)
-				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn
-				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server
+				docker build . --file autobahn/docker/autobahn/Dockerfile --tag ws-autobahn || exit 1
+				docker build . --file autobahn/docker/server/Dockerfile --tag ws-server "${SERVER_BUILD_ARGS[@]}" || exit 1
 			;;
 		esac
 		;;
@@ -73,6 +81,13 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
+cleanup() {
+	# A container may have never started; ignore that.
+	docker rm "$server" >/dev/null 2>&1
+	docker rm "$autobahn" >/dev/null 2>&1
+	docker network rm "$network"
+}
+
 docker run \
 	--interactive \
 	--tty \
@@ -81,7 +96,7 @@ docker run \
 	--network-alias="ws-server" \
 	-v $(pwd)/autobahn/report:/report \
 	--name="$server" \
-	"ws-server"
+	"ws-server" || { cleanup; exit 1; }
 
 docker run \
 	--interactive \
@@ -90,8 +105,8 @@ docker run \
 	--network="$network" \
 	-v $(pwd)/autobahn/config:/config \
 	-v $(pwd)/autobahn/report:/report \
-   	--name="$autobahn" \
-	"ws-autobahn"
+	--name="$autobahn" \
+	"ws-autobahn" || { cleanup; exit 1; }
 
 
 if [[ $FOLLOW_LOGS -eq 1 ]]; then
@@ -107,12 +122,6 @@ ctrl_c () {
 	cleanup
 	exit 130
 } 
-
-cleanup() {
-	docker rm "$server" >/dev/null
-	docker rm "$autobahn" >/dev/null
-	docker network rm "$network"
-}
 
 docker wait "$autobahn" >/dev/null
 docker stop "$server" >/dev/null

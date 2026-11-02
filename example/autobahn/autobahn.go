@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -326,7 +325,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 
 		case ws.OpPong:
-			io.CopyN(ioutil.Discard, conn, header.Length)
+			io.CopyN(io.Discard, conn, header.Length)
 			continue
 
 		case ws.OpClose:

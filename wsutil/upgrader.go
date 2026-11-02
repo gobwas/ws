@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/gobwas/ws"
@@ -40,7 +39,7 @@ func (d *DebugUpgrader) Upgrade(conn io.ReadWriter) (hs ws.Handshake, err error)
 		))
 		if err == nil {
 			// Fulfill the buffer with the response body.
-			io.Copy(ioutil.Discard, req.Body)
+			io.Copy(io.Discard, req.Body)
 			req.Body.Close()
 		}
 		onRequest(buf.Bytes())

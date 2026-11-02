@@ -281,9 +281,9 @@ type Upgrader struct {
 	// The argument is only valid until the callback returns.
 	Protocol func([]byte) bool
 
-	// ProtocolCustrom allow user to parse Sec-WebSocket-Protocol header manually.
+	// ProtocolCustom allows users to parse Sec-WebSocket-Protocol header manually.
 	// Note that returned bytes must be valid until Upgrade returns.
-	// If ProtocolCustom is set, it used instead of Protocol function.
+	// If ProtocolCustom is set, it is used instead of Protocol function.
 	ProtocolCustom func([]byte) (string, bool)
 
 	// Extension is a select function that is used to select extensions

@@ -3,7 +3,7 @@ package wsutil
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"reflect"
 	"testing"
 
@@ -36,7 +36,7 @@ func TestCipherReader(t *testing.T) {
 			src := &chopReader{bytes.NewReader(masked), test.chop}
 			rd := NewCipherReader(src, mask)
 
-			bts, err := ioutil.ReadAll(rd)
+			bts, err := io.ReadAll(rd)
 			if err != nil {
 				t.Fatalf("unexpected error: %s", err)
 			}
