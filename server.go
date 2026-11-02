@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -436,8 +437,8 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 	// Prepare I/O buffers.
 	// TODO(gobwas): make it configurable.
-	br := pool.GetReader(nonZero(u.ReadBufferSize, DefaultServerReadBufferSize))
-	bw := pool.GetWriter(nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize))
+	br := pool.GetReader(cmp.Or(u.ReadBufferSize, DefaultServerReadBufferSize))
+	bw := pool.GetWriter(cmp.Or(u.WriteBufferSize, DefaultServerWriteBufferSize))
 	defer func() {
 		pool.PutReader(br)
 		pool.PutWriter(bw)

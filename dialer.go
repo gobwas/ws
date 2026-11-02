@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -302,8 +303,8 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 			headerSeenSecAccept
 	)
 
-	br = pool.GetReader(nonZero(d.ReadBufferSize, DefaultClientReadBufferSize))
-	bw := pool.GetWriter(nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize))
+	br = pool.GetReader(cmp.Or(d.ReadBufferSize, DefaultClientReadBufferSize))
+	bw := pool.GetWriter(cmp.Or(d.WriteBufferSize, DefaultClientWriteBufferSize))
 	defer func() {
 		pool.PutWriter(bw)
 		if br.Buffered() == 0 || err != nil {

@@ -183,17 +183,3 @@ func readLine(br *bufio.Reader) ([]byte, error) {
 		return line, nil
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func nonZero(a, b int) int {
-	if a != 0 {
-		return a
-	}
-	return b
-}

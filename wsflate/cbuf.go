@@ -125,10 +125,3 @@ func (r *suffixedReader) reset(src io.Reader) {
 	r.r = src
 	r.pos = 0
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
