@@ -15,6 +15,9 @@ concurrency:
 jobs:
   test:
     strategy:
+      # The two jobs are independent diagnostics: a failure in one must not
+      # cancel the other before it uploads its own report.
+      fail-fast: false
       matrix:
         os: [ ubuntu-latest ]
         go: [ 'stable', 'oldstable' ]
@@ -39,8 +42,10 @@ jobs:
 
     - name: Autobahn Report Artifact
       # Keep the report, with the wire log of every case, only when the suite
-      # failed: that is the only time anyone reads it.
-      if: steps.autobahn.outcome == 'failure'
+      # failed: that is the only time anyone reads it. The failure() call is
+      # required: an if without a status function is implicitly wrapped in
+      # success() and would never run after a failed step.
+      if: failure() && steps.autobahn.outcome == 'failure'
       uses: actions/upload-artifact@v6
       with:
         name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
