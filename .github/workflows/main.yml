@@ -16,7 +16,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest ]
         go: [ 'stable', 'oldstable' ]
 
     runs-on: ${{ matrix.os }}
@@ -45,3 +45,9 @@ jobs:
     - name: Test
       run: |
         go test -v -race -shuffle=on -cover ./...
+
+    - name: Test (pure Go)
+      # The purego tag selects the Go fallbacks for the assembly kernels and
+      # the unsafe helpers; keep them honest.
+      run: |
+        go test -tags purego ./...

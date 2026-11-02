@@ -27,6 +27,9 @@ can inspect results there.
   paths come with `go test -bench` numbers before and after.
 - Prefer the standard library. Hand-written replacements need a measurement and
   a comment saying why.
+- Assembly kernels (see `cipher_*.s`) come with a pure Go fallback selected
+  by the `purego` build tag, and tests that pass with and without it. CI runs
+  both.
 - Package-level settings must be safe to change concurrently.
 - Code shared by `ws` and `wsutil` lives under `internal/`.
 

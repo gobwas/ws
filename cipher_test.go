@@ -193,3 +193,30 @@ func sinkValue(v int64) {
 		panic(fmt.Sprintf("impossible %g: %v", r, v))
 	}
 }
+
+// TestCipherLarge checks Cipher() against the byte-by-byte cipher on payloads
+// long enough to go through the vector kernel several times, at every mask
+// offset and with every tail length.
+func TestCipherLarge(t *testing.T) {
+	data := make([]byte, 4096+64)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	var mask [4]byte
+	if _, err := rand.Read(mask[:]); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int{64, 65, 127, 128, 1000, 4096, 4097, 4099, 4159} {
+		for offset := range 4 {
+			exp := cipherNaive(data[:n], mask, offset)
+			act := bytes.Clone(data[:n])
+			Cipher(act, mask, offset)
+			if !bytes.Equal(act, exp) {
+				t.Fatalf(
+					"Cipher(%d bytes, offset %d) differs from the naive cipher",
+					n, offset,
+				)
+			}
+		}
+	}
+}
