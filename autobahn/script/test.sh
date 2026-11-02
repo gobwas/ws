@@ -131,6 +131,11 @@ code=$(docker wait "$autobahn")
 docker stop "$server" >/dev/null
 if [ "$code" -ne 0 ] || [ ! -f autobahn/report/index.json ]; then
 	echo "autobahn suite exited with status $code, report index: $(ls autobahn/report/index.json 2>&1)" >&2
+	# Exit status 137 only says SIGKILL; these say whether the kernel sent it
+	# for memory. free and dmesg exist on the Linux CI runner only.
+	docker inspect -f "container: OOMKilled={{.State.OOMKilled}} exit={{.State.ExitCode}}" "$autobahn" >&2
+	command -v free >/dev/null && free -m >&2
+	sudo -n dmesg 2>/dev/null | grep -i -E "killed process|out of memory" | tail -5 >&2
 	echo "--- last 100 lines of the suite log:" >&2
 	docker logs --tail 100 "$autobahn" >&2 2>&1
 	cleanup
