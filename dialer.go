@@ -158,7 +158,7 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 
 	// Prepare context to dial with. Initially it is the same as original, but
 	// if d.Timeout is non-zero and points to time that is before ctx.Deadline,
-	// we use more shorter context for dial.
+	// we use shorter context for dial.
 	dialctx := ctx
 
 	var deadline time.Time
@@ -178,14 +178,18 @@ func (d Dialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, br *buf
 			conn.Close()
 		}
 	}()
-	if ctx == context.Background() {
+	if ctx.Done() == nil {
+		// Context can never be done, so only Timeout can bound the handshake.
 		// No need to start I/O interrupter goroutine which is not zero-cost.
 		conn.SetDeadline(deadline)
 		defer conn.SetDeadline(noDeadline)
 	} else {
 		// Context could be canceled or its deadline could be exceeded.
 		// Start the interrupter goroutine to handle context cancelation.
-		done := setupContextDeadliner(ctx, conn)
+		//
+		// NOTE: dialctx, not ctx: Timeout bounds the handshake too, not only
+		// the connect, and dialctx is the shorter of the two.
+		done := setupContextDeadliner(dialctx, conn)
 		defer func() {
 			// Map Upgrade() error to a possible context expiration error. That
 			// is, even if Upgrade() err is nil, context could be already
