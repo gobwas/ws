@@ -86,6 +86,7 @@ func helpersHighLevelHandler(w http.ResponseWriter, r *http.Request) {
 		bts, op, err := wsutil.ReadClientData(conn)
 		if err != nil {
 			log.Printf("read message error: %v", err)
+			failConn(conn, err)
 			return
 		}
 		err = wsutil.WriteServerMessage(conn, op, bts)
@@ -110,6 +111,7 @@ func helpersLowLevelHandler(w http.ResponseWriter, r *http.Request) {
 		msg, err = wsutil.ReadClientMessage(conn, msg[:0])
 		if err != nil {
 			log.Printf("read message error: %v", err)
+			failConn(conn, err)
 			return
 		}
 		for _, m := range msg {
@@ -128,6 +130,35 @@ func helpersLowLevelHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// failConn fails the WebSocket connection as RFC 6455 §7.1.7 asks when the
+// read error is a protocol error: send a Close frame with the protocol error
+// status, then close the TCP connection the way §7.1.1 describes: shut down
+// the write side, read until the peer closes too, close.
+//
+// The read is what makes the close clean. close() on a socket that still holds
+// unread data makes the kernel send RST and drop what is not sent yet, and the
+// last echo may be exactly that: it was written right before the offending
+// frame was read. Shutting down the write side first makes the peer answer
+// with its own Close and FIN, so the read returns on EOF within a round trip;
+// the deadline only guards against a peer that never does.
+//
+// Other errors (the peer went away, I/O error) leave nothing to fail cleanly
+// and fall through to the deferred Close().
+func failConn(conn net.Conn, err error) {
+	if _, ok := err.(ws.ProtocolError); !ok {
+		return
+	}
+	_, err = conn.Write(ws.CompiledCloseProtocolError)
+	if err != nil {
+		return
+	}
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		cw.CloseWrite()
+	}
+	conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	io.Copy(io.Discard, conn)
 }
 
 func wsutilHandler(res http.ResponseWriter, req *http.Request) {
