@@ -26,9 +26,9 @@ func TestCipher(t *testing.T) {
 			mask: [4]byte{255, 255, 255, 255},
 		},
 	}
-	for offset := 0; offset < 4; offset++ {
-		for tail := 0; tail < 8; tail++ {
-			for b64 := 0; b64 < 3; b64++ {
+	for offset := range 4 {
+		for tail := range 8 {
+			for b64 := range 3 {
 				var (
 					ln = remain[offset]
 					rn = tail
@@ -118,7 +118,7 @@ func cipherNaive(p []byte, m [4]byte, pos int) []byte {
 }
 
 func cipherNaiveNoCp(p []byte, m [4]byte, pos int) []byte {
-	for i := 0; i < len(p); i++ {
+	for i := range p {
 		p[i] ^= m[(pos+i)%4]
 	}
 	return p

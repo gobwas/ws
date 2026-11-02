@@ -640,7 +640,7 @@ func omitMask(f ws.Frame) ws.Frame {
 }
 
 func omitMasks(f []ws.Frame) []ws.Frame {
-	for i := 0; i < len(f); i++ {
+	for i := range f {
 		f[i] = omitMask(f[i])
 	}
 	return f

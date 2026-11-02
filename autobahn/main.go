@@ -194,7 +194,7 @@ type entryReport struct {
 	Duration    int    `json:"duration"`
 }
 
-func decodeFile(path string, x interface{}) error {
+func decodeFile(path string, x any) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err

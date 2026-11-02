@@ -25,8 +25,8 @@ const defaultPreallocLimit = 32 * 1024
 // shortcuts. They are accessed atomically, so that the setters below are safe
 // to call concurrently with the helpers.
 var (
-	helperMaxFrameSize   int64
-	helperMaxMessageSize int64
+	helperMaxFrameSize   atomic.Int64
+	helperMaxMessageSize atomic.Int64
 	helperCheckUTF8      int32 = 1
 	helperPreallocLimit  int64 = defaultPreallocLimit
 )
@@ -36,12 +36,12 @@ var (
 //
 // It is safe to call concurrently with the helpers.
 func SetMaxFrameSize(n int64) {
-	atomic.StoreInt64(&helperMaxFrameSize, n)
+	helperMaxFrameSize.Store(n)
 }
 
 // MaxFrameSize returns the value set with SetMaxFrameSize().
 func MaxFrameSize() int64 {
-	return atomic.LoadInt64(&helperMaxFrameSize)
+	return helperMaxFrameSize.Load()
 }
 
 // SetMaxMessageSize sets the Reader.MaxMessageSize used by ReadMessage(),
@@ -50,12 +50,12 @@ func MaxFrameSize() int64 {
 //
 // It is safe to call concurrently with the helpers.
 func SetMaxMessageSize(n int64) {
-	atomic.StoreInt64(&helperMaxMessageSize, n)
+	helperMaxMessageSize.Store(n)
 }
 
 // MaxMessageSize returns the value set with SetMaxMessageSize().
 func MaxMessageSize() int64 {
-	return atomic.LoadInt64(&helperMaxMessageSize)
+	return helperMaxMessageSize.Load()
 }
 
 // SetCheckUTF8 sets the [Reader.CheckUTF8] used by [ReadMessage], [ReadData]

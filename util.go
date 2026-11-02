@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"slices"
 
 	"github.com/gobwas/httphead"
 )
@@ -22,12 +23,7 @@ func SelectFromSlice(accept []string) func(string) bool {
 		}
 	}
 	return func(p string) bool {
-		for _, ok := range accept {
-			if p == ok {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(accept, p)
 	}
 }
 

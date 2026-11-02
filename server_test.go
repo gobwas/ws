@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -414,7 +416,7 @@ func TestHTTPUpgrader(t *testing.T) {
 			if act, exp := len(hs.Extensions), len(test.hs.Extensions); act != exp {
 				t.Errorf("handshake got %d extensions; want %d", act, exp)
 			} else {
-				for i := 0; i < act; i++ {
+				for i := range act {
 					if act, exp := hs.Extensions[i], test.hs.Extensions[i]; !act.Equal(exp) {
 						t.Errorf("handshake %d-th extension is %s; want %s", i, act, exp)
 					}
@@ -473,7 +475,7 @@ func TestUpgrader(t *testing.T) {
 			if act, exp := len(hs.Extensions), len(test.hs.Extensions); act != exp {
 				t.Errorf("handshake got %d extensions; want %d", act, exp)
 			} else {
-				for i := 0; i < act; i++ {
+				for i := range act {
 					if act, exp := hs.Extensions[i], test.hs.Extensions[i]; !act.Equal(exp) {
 						t.Errorf("handshake %d-th extension is %s; want %s", i, act, exp)
 					}
@@ -625,9 +627,9 @@ func randProtocols(n, m int) []string {
 	ret := make([]string, n)
 	bts := make([]byte, m)
 	uniq := map[string]bool{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		for {
-			for j := 0; j < m; j++ {
+			for j := range m {
 				bts[j] = byte(rand.Intn('x'-'a') + 'a')
 			}
 			str := string(bts)
@@ -650,11 +652,8 @@ func dumpRequest(req *http.Request) []byte {
 
 func dumpResponse(res *http.Response) []byte {
 	if !res.Close {
-		for _, v := range res.Header[headerConnection] {
-			if v == "close" {
-				res.Close = true
-				break
-			}
+		if slices.Contains(res.Header[headerConnection], "close") {
+			res.Close = true
 		}
 	}
 	bts, err := httputil.DumpResponse(res, true)
@@ -811,9 +810,7 @@ func mustMakeErrResponse(code int, err error, headers http.Header) *http.Respons
 	res.Body = io.NopCloser(
 		strings.NewReader(body),
 	)
-	for k, v := range headers {
-		res.Header[k] = v
-	}
+	maps.Copy(res.Header, headers)
 	return res
 }
 

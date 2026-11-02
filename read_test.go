@@ -49,7 +49,7 @@ func BenchmarkReadHeader(b *testing.B) {
 	setup := func(header Header, n int) (rds []io.Reader) {
 		bts := MustCompileFrame(Frame{Header: header})
 		rds = make([]io.Reader, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			rds[i] = bytes.NewReader(bts)
 		}
 

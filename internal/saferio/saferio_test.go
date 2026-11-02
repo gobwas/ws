@@ -168,10 +168,7 @@ func TestReadN(t *testing.T) {
 					err, test.err,
 				)
 			}
-			want := test.n
-			if test.avail < want {
-				want = test.avail
-			}
+			want := min(test.avail, test.n)
 			if !bytes.Equal(p, data[:want]) {
 				t.Fatalf(
 					"unexpected bytes: %v; want %v",

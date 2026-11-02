@@ -28,7 +28,7 @@ func Cipher(payload []byte, mask [4]byte, offset int) {
 	// This is done to process payload by 16 bytes in each iteration of main loop.
 	rn := (n - ln) % 16
 
-	for i := 0; i < ln; i++ {
+	for i := range ln {
 		payload[i] ^= mask[(mpos+i)%4]
 	}
 	for i := n - rn; i < n; i++ {
