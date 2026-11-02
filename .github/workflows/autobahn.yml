@@ -41,7 +41,7 @@ jobs:
       # Keep the report, with the wire log of every case, only when the suite
       # failed: that is the only time anyone reads it.
       if: steps.autobahn.outcome == 'failure'
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
         path: autobahn/report
