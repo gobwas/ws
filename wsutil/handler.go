@@ -80,11 +80,12 @@ func (c ControlHandler) HandlePing(h ws.Header) error {
 	}
 
 	// In other way reply with Pong frame with copied payload.
-	p := pool.GetBytes(int(h.Length) + ws.HeaderSize(ws.Header{
+	bp := pool.GetBytes(int(h.Length) + ws.HeaderSize(ws.Header{
 		Length: h.Length,
 		Masked: c.State.ClientSide(),
 	}))
-	defer pool.PutBytes(p)
+	defer pool.PutBytes(bp)
+	p := *bp
 
 	// Deal with ciphering i/o:
 	// Masking key is used to mask the "Payload data" defined in the same
@@ -115,8 +116,9 @@ func (c ControlHandler) HandlePong(h ws.Header) error {
 		return nil
 	}
 
-	buf := pool.GetBytes(int(h.Length))
-	defer pool.PutBytes(buf)
+	bp := pool.GetBytes(int(h.Length))
+	defer pool.PutBytes(bp)
+	buf := *bp
 
 	// Discard pong message according to the RFC6455:
 	// A Pong frame MAY be sent unsolicited. This serves as a
@@ -152,11 +154,12 @@ func (c ControlHandler) HandleClose(h ws.Header) error {
 	}
 
 	// Prepare bytes both for reading reason and sending response.
-	p := pool.GetBytes(int(h.Length) + ws.HeaderSize(ws.Header{
+	bp := pool.GetBytes(int(h.Length) + ws.HeaderSize(ws.Header{
 		Length: h.Length,
 		Masked: c.State.ClientSide(),
 	}))
-	defer pool.PutBytes(p)
+	defer pool.PutBytes(bp)
+	p := *bp
 
 	// Get the subslice to read the frame payload out.
 	subp := p[:h.Length]

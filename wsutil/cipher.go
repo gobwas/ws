@@ -60,8 +60,9 @@ func (c *CipherWriter) Reset(w io.Writer, mask [4]byte) {
 // Write implements io.Writer interface. It applies masking during
 // initialization to every sent byte. It does not modify original slice.
 func (c *CipherWriter) Write(p []byte) (n int, err error) {
-	cp := pool.GetBytes(len(p))
-	defer pool.PutBytes(cp)
+	bp := pool.GetBytes(len(p))
+	defer pool.PutBytes(bp)
+	cp := *bp
 
 	copy(cp, p)
 	ws.Cipher(cp, c.mask, c.pos)

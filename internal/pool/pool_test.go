@@ -158,7 +158,8 @@ func TestGetBytes(t *testing.T) {
 			expCap: 70000,
 		},
 	} {
-		p := GetBytes(test.n)
+		bp := GetBytes(test.n)
+		p := *bp
 		if len(p) != test.n {
 			t.Errorf(
 				"GetBytes(%d) len = %d; want %d",
@@ -171,7 +172,7 @@ func TestGetBytes(t *testing.T) {
 				test.n, cap(p), test.expCap,
 			)
 		}
-		PutBytes(p)
+		PutBytes(bp)
 	}
 }
 

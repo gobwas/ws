@@ -396,8 +396,9 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 	}
 	if w.state.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
-		payload := pool.GetBytes(len(p))
-		defer pool.PutBytes(payload)
+		bp := pool.GetBytes(len(p))
+		defer pool.PutBytes(bp)
+		payload := *bp
 		copy(payload, p)
 
 		frame.Payload = payload
@@ -554,8 +555,9 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	var frame ws.Frame
 	if s.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
-		payload := pool.GetBytes(len(p))
-		defer pool.PutBytes(payload)
+		bp := pool.GetBytes(len(p))
+		defer pool.PutBytes(bp)
+		payload := *bp
 
 		copy(payload, p)
 

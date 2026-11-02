@@ -56,21 +56,27 @@ func (p *Pool[T]) Put(x T, size int) {
 	}
 }
 
-var bytesPool = New[[]byte](128, 65536)
+var bytesPool = New[*[]byte](128, 65536)
 
-// GetBytes returns a byte slice of length n, reused if possible.
-func GetBytes(n int) []byte {
-	bts, c := bytesPool.Get(n)
-	if bts == nil {
-		return make([]byte, n, c)
+// GetBytes returns a pointer to a byte slice of length n, reused if possible.
+//
+// The pointer, not the slice, is what the pool holds: a slice stored in a
+// sync.Pool is boxed into an interface, which allocates its header on every
+// Put. With a pointer the warm path does not allocate at all.
+func GetBytes(n int) *[]byte {
+	bp, c := bytesPool.Get(n)
+	if bp == nil {
+		b := make([]byte, n, c)
+		return &b
 	}
-	return bts[:n]
+	*bp = (*bp)[:n]
+	return bp
 }
 
-// PutBytes stores p for reuse by GetBytes(). Slices whose capacity is not a
+// PutBytes stores bp for reuse by GetBytes(). Slices whose capacity is not a
 // power of two in the pool's range are dropped.
-func PutBytes(p []byte) {
-	bytesPool.Put(p, cap(p))
+func PutBytes(bp *[]byte) {
+	bytesPool.Put(bp, cap(*bp))
 }
 
 var (
