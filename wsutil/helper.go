@@ -165,10 +165,7 @@ func readMessagePayload(rd *Reader, hdr ws.Header) ([]byte, error) {
 	// grow as bytes actually arrive, like io.ReadAll() does. The first
 	// fragment's declared length is a hint for the start size, trusted up to
 	// the same limit as a whole frame would be.
-	n := hdr.Length
-	if lim := PreallocLimit(); n > lim {
-		n = lim
-	}
+	n := min(hdr.Length, PreallocLimit())
 	var buf bytes.Buffer
 	buf.Grow(int(n))
 	_, err := buf.ReadFrom(rd)

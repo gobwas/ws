@@ -3,6 +3,7 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -155,7 +156,10 @@ type HTTPUpgrader struct {
 func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.Conn, rw *bufio.ReadWriter, hs Handshake, err error) {
 	// Hijack connection first to get the ability to write rejection errors the
 	// same way as in Upgrader.
-	conn, rw, err = hijack(w)
+	conn, rw, err = http.NewResponseController(w).Hijack()
+	if errors.Is(err, http.ErrNotSupported) {
+		err = ErrNotHijacker
+	}
 	if err != nil {
 		httpError(w, err.Error(), http.StatusInternalServerError)
 		return conn, rw, hs, err

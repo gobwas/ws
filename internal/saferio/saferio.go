@@ -41,10 +41,7 @@ func ReadN(r io.Reader, lim, n int64) ([]byte, error) {
 	if lim <= 0 {
 		panic("saferio: ReadN() limit must be greater than zero")
 	}
-	c := n
-	if c > lim {
-		c = lim
-	}
+	c := min(n, lim)
 	p := make([]byte, 0, c)
 	for {
 		// NOTE: cap(p) never exceeds n, so reading up to the capacity never
@@ -60,10 +57,7 @@ func ReadN(r io.Reader, lim, n int64) ([]byte, error) {
 		if int64(len(p)) == n {
 			return p, nil
 		}
-		c = 2 * int64(cap(p))
-		if c > n {
-			c = n
-		}
+		c = min(2*int64(cap(p)), n)
 		q := make([]byte, len(p), c)
 		copy(q, p)
 		p = q

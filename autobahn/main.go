@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,7 +112,7 @@ func main() {
 		for id := range report[server] {
 			cases = append(cases, id)
 		}
-		sortBySegment(cases)
+		slices.SortFunc(cases, compareBySegment)
 		for _, id := range cases {
 			c := report[server][id]
 
