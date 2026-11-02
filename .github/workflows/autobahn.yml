@@ -7,6 +7,7 @@ on:
     branches: [ master ]
   schedule:
   - cron: '0 10 * * 1' # run "At 10:00 on Monday"
+  workflow_dispatch:   # enable manual runs
 
 concurrency:
   group: autobahn-${{ github.workflow }}-${{ github.ref }}
