@@ -123,7 +123,18 @@ ctrl_c () {
 	exit 130
 } 
 
-docker wait "$autobahn" >/dev/null
+# docker wait prints the exit status of the container; keep it. The suite
+# writes its whole report only at the very end, so a crash leaves nothing
+# behind but these logs: show them, the --follow readers above may have
+# been cut off before the end.
+code=$(docker wait "$autobahn")
 docker stop "$server" >/dev/null
+if [ "$code" -ne 0 ] || [ ! -f autobahn/report/index.json ]; then
+	echo "autobahn suite exited with status $code, report index: $(ls autobahn/report/index.json 2>&1)" >&2
+	echo "--- last 100 lines of the suite log:" >&2
+	docker logs --tail 100 "$autobahn" >&2 2>&1
+	cleanup
+	exit 1
+fi
 
 cleanup
