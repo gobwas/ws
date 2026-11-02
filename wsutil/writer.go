@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/gobwas/pool"
-	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/internal/pool"
 )
 
 // DefaultWriteBuffer contains size of Writer's default buffer. It used by
@@ -84,7 +83,7 @@ func (c *ControlWriter) Flush() error {
 	return c.w.Flush()
 }
 
-var writers = pool.New(128, 65536)
+var writers = pool.New[*Writer](128, 65536)
 
 // GetWriter tries to reuse Writer getting it from the pool.
 //
@@ -96,9 +95,8 @@ var writers = pool.New(128, 65536)
 // If you have your own bytes buffer pool you could use NewWriterBuffer to use
 // pooled bytes in writer.
 func GetWriter(dest io.Writer, state ws.State, op ws.OpCode, n int) *Writer {
-	x, m := writers.Get(n)
-	if x != nil {
-		w := x.(*Writer)
+	w, m := writers.Get(n)
+	if w != nil {
 		w.Reset(dest, state, op)
 		return w
 	}
@@ -398,8 +396,8 @@ func (w *Writer) WriteThrough(p []byte) (n int, err error) {
 	}
 	if w.state.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
-		payload := pbytes.GetLen(len(p))
-		defer pbytes.Put(payload)
+		payload := pool.GetBytes(len(p))
+		defer pool.PutBytes(payload)
 		copy(payload, p)
 
 		frame.Payload = payload
@@ -556,8 +554,8 @@ func writeFrame(w io.Writer, s ws.State, op ws.OpCode, fin bool, p []byte) error
 	var frame ws.Frame
 	if s.ClientSide() {
 		// Should copy bytes to prevent corruption of caller data.
-		payload := pbytes.GetLen(len(p))
-		defer pbytes.Put(payload)
+		payload := pool.GetBytes(len(p))
+		defer pool.PutBytes(payload)
 
 		copy(payload, p)
 

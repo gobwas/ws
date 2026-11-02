@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gobwas/httphead"
-	"github.com/gobwas/pool/pbufio"
+	"github.com/gobwas/ws/internal/pool"
 )
 
 // Constants used by Dialer.
@@ -302,18 +302,18 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 			headerSeenSecAccept
 	)
 
-	br = pbufio.GetReader(conn,
+	br = pool.GetReader(conn,
 		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
 	)
-	bw := pbufio.GetWriter(conn,
+	bw := pool.GetWriter(conn,
 		nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize),
 	)
 	defer func() {
-		pbufio.PutWriter(bw)
+		pool.PutWriter(bw)
 		if br.Buffered() == 0 || err != nil {
 			// Server does not wrote additional bytes to the connection or
 			// error occurred. That is, no reason to return buffer.
-			pbufio.PutReader(br)
+			pool.PutReader(br)
 			br = nil
 		}
 	}()
@@ -459,7 +459,7 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 // contains unprocessed buffered data, that was sent by the server quickly
 // right after handshake.
 func PutReader(br *bufio.Reader) {
-	pbufio.PutReader(br)
+	pool.PutReader(br)
 }
 
 // StatusError contains an unexpected status-line code from the server.

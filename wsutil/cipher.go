@@ -3,8 +3,8 @@ package wsutil
 import (
 	"io"
 
-	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
+	"github.com/gobwas/ws/internal/pool"
 )
 
 // CipherReader implements io.Reader that applies xor-cipher to the bytes read
@@ -60,8 +60,8 @@ func (c *CipherWriter) Reset(w io.Writer, mask [4]byte) {
 // Write implements io.Writer interface. It applies masking during
 // initialization to every sent byte. It does not modify original slice.
 func (c *CipherWriter) Write(p []byte) (n int, err error) {
-	cp := pbytes.GetLen(len(p))
-	defer pbytes.Put(cp)
+	cp := pool.GetBytes(len(p))
+	defer pool.PutBytes(cp)
 
 	copy(cp, p)
 	ws.Cipher(cp, c.mask, c.pos)

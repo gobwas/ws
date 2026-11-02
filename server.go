@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gobwas/httphead"
-	"github.com/gobwas/pool/pbufio"
+	"github.com/gobwas/ws/internal/pool"
 )
 
 // Constants used by ConnUpgrader.
@@ -436,15 +436,15 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 	// Prepare I/O buffers.
 	// TODO(gobwas): make it configurable.
-	br := pbufio.GetReader(conn,
+	br := pool.GetReader(conn,
 		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
 	)
-	bw := pbufio.GetWriter(conn,
+	bw := pool.GetWriter(conn,
 		nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
 	)
 	defer func() {
-		pbufio.PutReader(br)
-		pbufio.PutWriter(bw)
+		pool.PutReader(br)
+		pool.PutWriter(bw)
 	}()
 
 	// Read HTTP request line like "GET /ws HTTP/1.1".

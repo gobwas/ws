@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/gobwas/httphead"
-	"github.com/gobwas/pool/pbufio"
+	"github.com/gobwas/ws/internal/pool"
 )
 
 // TODO(gobwas): upgradeGenericCase with methods like configureUpgrader,
@@ -746,8 +746,8 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 		}
 	}
 
-	br := pbufio.GetReader(conn, DefaultClientReadBufferSize)
-	bw := pbufio.GetWriter(conn, DefaultClientWriteBufferSize)
+	br := pool.GetReader(conn, DefaultClientReadBufferSize)
+	bw := pool.GetWriter(conn, DefaultClientWriteBufferSize)
 
 	brw = bufio.NewReadWriter(br, bw)
 
