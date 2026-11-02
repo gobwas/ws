@@ -746,8 +746,11 @@ func (r *recorder) Hijack() (conn net.Conn, brw *bufio.ReadWriter, err error) {
 		}
 	}
 
-	br := pool.GetReader(conn, DefaultClientReadBufferSize)
-	bw := pool.GetWriter(conn, DefaultClientWriteBufferSize)
+	br := pool.GetReader(DefaultClientReadBufferSize)
+	bw := pool.GetWriter(DefaultClientWriteBufferSize)
+
+	br.Reset(conn)
+	bw.Reset(conn)
 
 	brw = bufio.NewReadWriter(br, bw)
 

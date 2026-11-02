@@ -9,7 +9,6 @@ package pool
 
 import (
 	"bufio"
-	"io"
 	"math/bits"
 	"sync"
 )
@@ -84,14 +83,13 @@ var (
 	writers = New[*bufio.Writer](256, 65536)
 )
 
-// GetReader returns a bufio.Reader on r whose buffer has at least size bytes,
-// reused if possible.
-func GetReader(r io.Reader, size int) *bufio.Reader {
+// GetReader returns a bufio.Reader whose buffer has at least size bytes,
+// reused if possible. It reads from nothing until the caller calls Reset().
+func GetReader(size int) *bufio.Reader {
 	br, n := readers.Get(size)
 	if br == nil {
-		return bufio.NewReaderSize(r, n)
+		return bufio.NewReaderSize(nil, n)
 	}
-	br.Reset(r)
 	return br
 }
 
@@ -102,14 +100,13 @@ func PutReader(br *bufio.Reader) {
 	readers.Put(br, br.Size())
 }
 
-// GetWriter returns a bufio.Writer on w whose buffer has at least size bytes,
-// reused if possible.
-func GetWriter(w io.Writer, size int) *bufio.Writer {
+// GetWriter returns a bufio.Writer whose buffer has at least size bytes,
+// reused if possible. It writes to nothing until the caller calls Reset().
+func GetWriter(size int) *bufio.Writer {
 	bw, n := writers.Get(size)
 	if bw == nil {
-		return bufio.NewWriterSize(w, n)
+		return bufio.NewWriterSize(nil, n)
 	}
-	bw.Reset(w)
 	return bw
 }
 

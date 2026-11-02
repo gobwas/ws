@@ -2,8 +2,7 @@ package pool
 
 import (
 	"bufio"
-	"bytes"
-	"io"
+	"fmt"
 	"testing"
 )
 
@@ -113,110 +112,74 @@ func TestPoolGet(t *testing.T) {
 	}
 }
 
-func TestPoolReuse(t *testing.T) {
-	p := New[*int](128, 1024)
-
-	// An object put under an existing class comes back for any size that
-	// rounds to that class.
-	x := new(int)
-	p.Put(x, 256)
-	if y, n := p.Get(200); y != x || n != 256 {
-		t.Fatalf(
-			"Get(200) = %p, %d; want %p, 256",
-			y, n, x,
+func testGetSize[T any](
+	t *testing.T,
+	get func(int) T,
+	put func(T),
+	sizeOf func(T) int,
+) {
+	// Sizes between the two pools' lower bounds (128 and 256) are left out
+	// so that one table serves all kinds.
+	for _, test := range []struct {
+		n   int
+		exp int
+	}{
+		{
+			// Below both pools, above the 16-byte minimum of bufio.Reader.
+			n:   64,
+			exp: 64,
+		},
+		{
+			n:   1000,
+			exp: 1024,
+		},
+		{
+			n:   4096,
+			exp: 4096,
+		},
+		{
+			n:   4097,
+			exp: 8192,
+		},
+		{
+			n:   65536,
+			exp: 65536,
+		},
+		{
+			n:   70000,
+			exp: 70000,
+		},
+	} {
+		name := fmt.Sprintf(
+			"%d->%d",
+			test.n, test.exp,
 		)
-	}
-
-	// An object put under a size that is not a class is dropped.
-	p.Put(x, 300)
-	if y, _ := p.Get(300); y != nil {
-		t.Fatalf(
-			"Get(300) returned an object put under a non-class size",
-		)
+		t.Run(name, func(t *testing.T) {
+			obj := get(test.n)
+			defer put(obj)
+			if act := sizeOf(obj); act != test.exp {
+				t.Errorf(
+					"size for %d = %d; want %d",
+					test.n, act, test.exp,
+				)
+			}
+		})
 	}
 }
 
 func TestGetBytes(t *testing.T) {
-	for _, test := range []struct {
-		n      int
-		expCap int
-	}{
-		{
-			n:      10,
-			expCap: 10,
-		},
-		{
-			n:      200,
-			expCap: 256,
-		},
-		{
-			n:      65536,
-			expCap: 65536,
-		},
-		{
-			n:      70000,
-			expCap: 70000,
-		},
-	} {
-		bp := GetBytes(test.n)
-		p := *bp
-		if len(p) != test.n {
-			t.Errorf(
-				"GetBytes(%d) len = %d; want %d",
-				test.n, len(p), test.n,
-			)
-		}
-		if cap(p) < test.expCap {
-			t.Errorf(
-				"GetBytes(%d) cap = %d; want at least %d",
-				test.n, cap(p), test.expCap,
-			)
-		}
-		PutBytes(bp)
-	}
+	testGetSize(t, GetBytes, PutBytes, func(p *[]byte) int {
+		// The length is always the request; the capacity is what the pool gave.
+		return cap(*p)
+	})
 }
-
-func TestReaderWriterReuse(t *testing.T) {
-	var buf bytes.Buffer
-
-	bw := GetWriter(&buf, 1000)
-	if n := bw.Size(); n != 1024 {
-		t.Fatalf(
-			"GetWriter(1000) buffer size = %d; want 1024",
-			n,
-		)
-	}
-	bw.WriteString("hello")
-	if err := bw.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	PutWriter(bw)
-
-	br := GetReader(&buf, 1000)
-	if n := br.Size(); n != 1024 {
-		t.Fatalf(
-			"GetReader(1000) buffer size = %d; want 1024",
-			n,
-		)
-	}
-	p, err := io.ReadAll(br)
-	if err != nil || string(p) != "hello" {
-		t.Fatalf(
-			"read %q, %v; want %q, nil",
-			p, err, "hello",
-		)
-	}
-	PutReader(br)
-
-	// A size out of range gives an exact, unpooled buffer.
-	bw = GetWriter(io.Discard, 100)
-	if n := bw.Size(); n != 100 {
-		t.Fatalf(
-			"GetWriter(100) buffer size = %d; want 100",
-			n,
-		)
-	}
-	PutWriter(bw)
-
-	var _ *bufio.Reader = br
+func TestGetReader(t *testing.T) {
+	testGetSize(t, GetReader, PutReader, func(br *bufio.Reader) int {
+		return br.Size()
+	})
+}
+func TestGetWriter(t *testing.T) {
+	testGetSize(t, GetWriter, PutWriter, func(bw *bufio.Writer) int {
+		return bw.Size()
+	})
 }

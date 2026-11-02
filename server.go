@@ -436,16 +436,15 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 	// Prepare I/O buffers.
 	// TODO(gobwas): make it configurable.
-	br := pool.GetReader(conn,
-		nonZero(u.ReadBufferSize, DefaultServerReadBufferSize),
-	)
-	bw := pool.GetWriter(conn,
-		nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize),
-	)
+	br := pool.GetReader(nonZero(u.ReadBufferSize, DefaultServerReadBufferSize))
+	bw := pool.GetWriter(nonZero(u.WriteBufferSize, DefaultServerWriteBufferSize))
 	defer func() {
 		pool.PutReader(br)
 		pool.PutWriter(bw)
 	}()
+
+	br.Reset(conn)
+	bw.Reset(conn)
 
 	// Read HTTP request line like "GET /ws HTTP/1.1".
 	rl, err := readLine(br)

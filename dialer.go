@@ -302,12 +302,8 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 			headerSeenSecAccept
 	)
 
-	br = pool.GetReader(conn,
-		nonZero(d.ReadBufferSize, DefaultClientReadBufferSize),
-	)
-	bw := pool.GetWriter(conn,
-		nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize),
-	)
+	br = pool.GetReader(nonZero(d.ReadBufferSize, DefaultClientReadBufferSize))
+	bw := pool.GetWriter(nonZero(d.WriteBufferSize, DefaultClientWriteBufferSize))
 	defer func() {
 		pool.PutWriter(bw)
 		if br.Buffered() == 0 || err != nil {
@@ -317,6 +313,9 @@ func (d Dialer) Upgrade(conn io.ReadWriter, u *url.URL) (br *bufio.Reader, hs Ha
 			br = nil
 		}
 	}()
+
+	br.Reset(conn)
+	bw.Reset(conn)
 
 	nonce := make([]byte, nonceSize)
 	initNonce(nonce)
