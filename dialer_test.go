@@ -4,10 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -121,7 +120,7 @@ func BenchmarkPutAccept(b *testing.B) {
 	}
 	p := make([]byte, acceptSize)
 	b.StartTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		initAcceptFromNonce(p, nonce)
 	}
 }
@@ -135,8 +134,7 @@ func BenchmarkCheckNonce(b *testing.B) {
 
 	accept := makeAccept(nonce)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = checkAcceptFromNonce(nonce, accept)
 	}
 }
@@ -675,20 +673,10 @@ func BenchmarkDialer(b *testing.B) {
 			dialer: DefaultDialer,
 		},
 	} {
-		// We need to "mock" the rand.Read method used to generate nonce random
-		// bytes for Sec-WebSocket-Key header.
-		rand.Seed(0)
-		need := b.N * nonceKeySize
-		nonceBytes := make([]byte, need)
-		n, err := rand.Read(nonceBytes)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if n != need {
-			b.Fatalf("not enough random nonce bytes: %d; want %d", n, need)
-		}
-		rand.Seed(0)
-
+		// The stub connection answers every upgrade request with a response
+		// whose Sec-WebSocket-Accept matches the nonce the dialer has just
+		// sent. The response is built once and only the accept value is
+		// rewritten in place, so the loop measures Dial() alone.
 		resp := &http.Response{
 			StatusCode: http.StatusSwitchingProtocols,
 			ProtoMajor: 1,
@@ -696,32 +684,33 @@ func BenchmarkDialer(b *testing.B) {
 			Header: http.Header{
 				headerConnection: []string{"Upgrade"},
 				headerUpgrade:    []string{"websocket"},
-				headerSecAccept:  []string{"fill it later"},
+				headerSecAccept:  []string{string(bytes.Repeat([]byte{'x'}, acceptSize))},
 			},
 		}
-		rs := make([][]byte, b.N)
-		for i := range rs {
-			nonce := make([]byte, nonceSize)
-			base64.StdEncoding.Encode(
-				nonce,
-				nonceBytes[i*nonceKeySize:i*nonceKeySize+nonceKeySize],
-			)
-			accept := makeAccept(nonce)
-			resp.Header[headerSecAccept] = []string{string(accept)}
-			rs[i] = dumpResponse(resp)
-		}
+		res := dumpResponse(resp)
+		accept := res[bytes.Index(res, []byte(headerSecAccept+": "))+len(headerSecAccept)+2:]
+		accept = accept[:acceptSize]
 
-		var i int
+		key := []byte(headerSecKey + ": ")
 		conn := stubConn{
+			write: func(p []byte) (int, error) {
+				i := bytes.Index(p, key)
+				if i == -1 {
+					b.Fatalf(
+						"no %s header in the request",
+						headerSecKey,
+					)
+				}
+				nonce := p[i+len(key):]
+				nonce = nonce[:bytes.IndexByte(nonce, '\r')]
+				initAcceptFromNonce(accept, nonce)
+				return len(p), nil
+			},
 			read: func(p []byte) (int, error) {
-				bts := rs[i]
-				if len(p) < len(bts) {
+				if len(p) < len(res) {
 					b.Fatalf("short buffer")
 				}
-				return copy(p, bts), io.EOF
-			},
-			write: func(p []byte) (int, error) {
-				return len(p), nil
+				return copy(p, res), io.EOF
 			},
 		}
 		var nc net.Conn = conn
@@ -729,8 +718,7 @@ func BenchmarkDialer(b *testing.B) {
 			return nc, nil
 		}
 
-		b.ResetTimer()
-		for i = 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _, _, err := test.dialer.Dial(context.Background(), "ws://example.org")
 			if err != nil {
 				b.Fatal(err)

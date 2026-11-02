@@ -5,7 +5,7 @@ import "testing"
 func BenchmarkInitAcceptFromNonce(b *testing.B) {
 	dst := make([]byte, acceptSize)
 	nonce := mustMakeNonce()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		initAcceptFromNonce(dst, nonce)
 	}
 }

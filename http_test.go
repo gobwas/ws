@@ -86,7 +86,7 @@ func TestHeaderNames(t *testing.T) {
 func BenchmarkParseHttpVersion(b *testing.B) {
 	for _, c := range httpVersionCases {
 		b.Run(string(c.in), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _, _ = httpParseVersion(c.in)
 			}
 		})
@@ -120,7 +120,7 @@ func BenchmarkHttpWriteUpgradeRequest(b *testing.B) {
 
 		b.ResetTimer()
 		b.Run("", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				httpWriteUpgradeRequest(bw,
 					test.url,
 					nonce,

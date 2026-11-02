@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -54,8 +55,7 @@ func TestCipher(t *testing.T) {
 			// naive implementation of xor-cipher
 			exp := cipherNaive(test.in, test.mask, test.offset)
 
-			res := make([]byte, len(test.in))
-			copy(res, test.in)
+			res := bytes.Clone(test.in)
 			Cipher(res, test.mask, test.offset)
 
 			if !reflect.DeepEqual(res, exp) {
@@ -111,8 +111,7 @@ func TestCipherChops(t *testing.T) {
 }
 
 func cipherNaive(p []byte, m [4]byte, pos int) []byte {
-	r := make([]byte, len(p))
-	copy(r, p)
+	r := bytes.Clone(p)
 	cipherNaiveNoCp(r, m, pos)
 	return r
 }
@@ -170,8 +169,7 @@ func BenchmarkCipher(b *testing.B) {
 		b.Run(fmt.Sprintf("naive_bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
 			var sink int64
 			b.SetBytes(int64(bench.size))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				r := cipherNaiveNoCp(bts, mask, bench.offset)
 				sink += int64(len(r))
 			}
@@ -180,8 +178,7 @@ func BenchmarkCipher(b *testing.B) {
 		b.Run(fmt.Sprintf("bytes=%d;offset=%d", bench.size, bench.offset), func(b *testing.B) {
 			var sink int64
 			b.SetBytes(int64(bench.size))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				Cipher(bts, mask, bench.offset)
 				sink += int64(len(bts))
 			}

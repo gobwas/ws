@@ -1,4 +1,4 @@
-// +build autobahn
+//go:build autobahn
 
 package main
 

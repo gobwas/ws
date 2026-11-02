@@ -13,7 +13,6 @@ import (
 	"net/http/httputil"
 	"reflect"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -606,16 +605,14 @@ func BenchmarkSelectProtocol(b *testing.B) {
 		},
 	} {
 		b.Run(fmt.Sprintf("String/%s", bench.label), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				strSelectProtocol(bench.header, bench.acceptStr)
 			}
 		})
 		if bench.acceptBts != nil {
 			b.Run(fmt.Sprintf("Bytes/%s", bench.label), func(b *testing.B) {
 				h := []byte(bench.header)
-				b.StartTimer()
-
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					btsSelectProtocol(h, bench.acceptBts)
 				}
 			})
@@ -667,12 +664,6 @@ func dumpResponse(res *http.Response) []byte {
 	return bts
 }
 
-type headersBytes [][]byte
-
-func (h headersBytes) Len() int           { return len(h) }
-func (h headersBytes) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h headersBytes) Less(i, j int) bool { return bytes.Compare(h[i], h[j]) == -1 }
-
 func maskHeader(bts []byte, key, mask string) []byte {
 	lines := bytes.Split(bts, []byte("\r\n"))
 	for i, line := range lines {
@@ -689,7 +680,7 @@ func sortHeaders(bts []byte) []byte {
 	if len(lines) <= 1 {
 		return bts
 	}
-	sort.Sort(headersBytes(lines[1 : len(lines)-2]))
+	slices.SortFunc(lines[1:len(lines)-2], bytes.Compare)
 	return bytes.Join(lines, []byte("\r\n"))
 }
 

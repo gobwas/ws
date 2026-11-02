@@ -192,7 +192,7 @@ func BenchmarkUTF8Reader(b *testing.B) {
 		},
 	} {
 		b.Run(fmt.Sprintf("%s#%d", bench.label, i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				cr := &chopReader{
 					src: bytes.NewReader(bench.data),
 					sz:  bench.chop,

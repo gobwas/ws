@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -97,7 +96,7 @@ func main() {
 	for s := range report {
 		servers = append(servers, s)
 	}
-	sort.Strings(servers)
+	slices.Sort(servers)
 
 	var failed bool
 	tw := tabwriter.NewWriter(os.Stderr, 0, 4, 1, ' ', 0)

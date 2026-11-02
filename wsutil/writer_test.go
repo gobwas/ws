@@ -130,13 +130,20 @@ func genReserveTestCases(s ws.State, n, m, exp int) []reserveTestCase {
 	return ret
 }
 
-func fakeMake(n int) (r []byte) {
-	rh := (*reflect.SliceHeader)(unsafe.Pointer(&r))
-	*rh = reflect.SliceHeader{
-		Len: n,
-		Cap: n,
+// fakeMake returns a slice of length n that points to no memory. The writer
+// only slices its buffer at construction, so the offset math can be probed
+// near math.MaxInt without allocating. There is no supported way to build
+// such a slice; this spells out the slice header that reflect.SliceHeader
+// used to describe.
+func fakeMake(n int) []byte {
+	type sliceHeader struct {
+		data unsafe.Pointer
+		len  int
+		cap  int
 	}
-	return r
+	var s []byte
+	*(*sliceHeader)(unsafe.Pointer(&s)) = sliceHeader{len: n, cap: n}
+	return s
 }
 
 var reserveTestCases = []reserveTestCase{

@@ -84,7 +84,7 @@ func BenchmarkReadLine(b *testing.B) {
 		sr := strings.NewReader(test.in)
 		br := bufio.NewReaderSize(sr, test.bufSize)
 		b.Run(test.label, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, _ = readLine(br)
 				sr.Reset(test.in)
 				br.Reset(sr)
@@ -329,7 +329,7 @@ func BenchmarkHasToken(b *testing.B) {
 		{"Keep-Alive, Close,  hello", "upgrade"},
 	} {
 		b.Run(fmt.Sprintf("#%d", i), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = strHasToken(bench.header, bench.token)
 			}
 		})
@@ -416,7 +416,7 @@ var canonicalHeaderCases = [][]byte{
 func TestCanonicalizeHeaderKey(t *testing.T) {
 	for _, bts := range canonicalHeaderCases {
 		t.Run(string(bts), func(t *testing.T) {
-			act := append([]byte(nil), bts...)
+			act := bytes.Clone(bts)
 			canonicalizeHeaderKey(act)
 
 			exp := strToBytes(textproto.CanonicalMIMEHeaderKey(string(bts)))
@@ -434,7 +434,7 @@ func TestCanonicalizeHeaderKey(t *testing.T) {
 func BenchmarkCanonicalizeHeaderKey(b *testing.B) {
 	for _, bts := range canonicalHeaderCases {
 		b.Run(string(bts), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				canonicalizeHeaderKey(bts)
 			}
 		})

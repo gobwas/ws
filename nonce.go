@@ -3,10 +3,10 @@ package ws
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
-	"math/rand"
 )
 
 const (

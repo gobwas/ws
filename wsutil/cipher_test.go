@@ -29,8 +29,7 @@ func TestCipherReader(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s#%d", test.label, i), func(t *testing.T) {
 			mask := ws.NewMask()
-			masked := make([]byte, len(test.data))
-			copy(masked, test.data)
+			masked := bytes.Clone(test.data)
 			ws.Cipher(masked, mask, 0)
 
 			src := &chopReader{bytes.NewReader(masked), test.chop}

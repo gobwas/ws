@@ -125,7 +125,7 @@ func BenchmarkWriteHeader(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if err := WriteHeader(io.Discard, bench.header); err != nil {
 					b.Fatal(err)
 				}
@@ -138,7 +138,7 @@ func BenchmarkWriteHeader(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if err := WriteHeaderBuffer(io.Discard, bench.header, bts); err != nil {
 					b.Fatal(err)
 				}

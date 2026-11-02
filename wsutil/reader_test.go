@@ -33,7 +33,7 @@ func TestReadFromWithIntermediateControl(t *testing.T) {
 			}
 			intermediate = append(
 				intermediate,
-				append([]byte(nil), bts...),
+				bytes.Clone(bts),
 			)
 			return nil
 		},
