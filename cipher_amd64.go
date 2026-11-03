@@ -19,11 +19,21 @@ var useAVX2 = cpuHasAVX2()
 
 // cpuHasAVX2 reports whether AVX2 instructions can be used: the CPU has them
 // and the OS saves the YMM registers on context switches.
+//
+// The standard library does the same in internal/cpu/cpu_x86.go, which is not
+// importable from outside it.
 func cpuHasAVX2() bool {
 	maxID, _, _, _ := cpuid(0, 0)
 	if maxID < 7 {
 		return false
 	}
+	// This is the procedure from the Intel 64 and IA-32 Architectures Software
+	// Developer's Manual, Volume 1, section 14.3 "Detection of AVX
+	// instructions" (https://www.intel.com/sdm): check CPUID.1:ECX.OSXSAVE
+	// (bit 27), check that XGETBV reports XCR0 bits 1 and 2 set (XMM and YMM
+	// state are saved by the OS), check CPUID.1:ECX.AVX (bit 28), and for AVX2
+	// itself CPUID.(EAX=7,ECX=0):EBX.AVX2 (bit 5). The bit positions are from
+	// Volume 2A, the CPUID instruction.
 	const (
 		osxsave = 1 << 27     // CPUID.1:ECX
 		avx     = 1 << 28     // CPUID.1:ECX
