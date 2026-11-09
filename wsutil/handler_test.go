@@ -99,6 +99,19 @@ func TestControlHandler(t *testing.T) {
 		{
 			name: "close",
 			in: ws.NewCloseFrame(ws.NewCloseFrameBody(
+				1012, "service restart",
+			)),
+			out: ws.NewCloseFrame(ws.NewCloseFrameBody(
+				1012, "",
+			)),
+			err: ClosedError{
+				Code:   1012,
+				Reason: "service restart",
+			},
+		},
+		{
+			name: "close",
+			in: ws.NewCloseFrame(ws.NewCloseFrameBody(
 				ws.StatusNormalClosure, string([]byte{0, 200}),
 			)),
 			out: ws.NewCloseFrame(ws.NewCloseFrameBody(

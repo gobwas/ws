@@ -149,6 +149,12 @@ func (s StatusCode) IsProtocolDefined() bool {
 		StatusAbnormalClosure,
 		StatusTLSHandshake:
 		return true
+
+	// Service Restart, Try Again Later and Bad Gateway are not in RFC6455,
+	// but are registered in the IANA "WebSocket Close Code Number Registry"
+	// that its section 11.7 establishes.
+	case 1012, 1013, 1014:
+		return true
 	}
 	return false
 }
