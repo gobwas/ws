@@ -32,22 +32,41 @@ func TestCompiledClose(t *testing.T) {
 		code  StatusCode
 		value StatusCode
 	}{
-		{CompiledCloseServiceRestart, StatusServiceRestart, 1012},
-		{CompiledCloseTryAgainLater, StatusTryAgainLater, 1013},
-		{CompiledCloseBadGateway, StatusBadGateway, 1014},
+		{
+			frame: CompiledCloseServiceRestart,
+			code:  StatusServiceRestart,
+			value: 1012,
+		},
+		{
+			frame: CompiledCloseTryAgainLater,
+			code:  StatusTryAgainLater,
+			value: 1013,
+		},
+		{
+			frame: CompiledCloseBadGateway,
+			code:  StatusBadGateway,
+			value: 1014,
+		},
 	} {
 		t.Run(fmt.Sprintf("%d", test.value), func(t *testing.T) {
 			if test.code != test.value {
-				t.Fatalf("code = %d; want %d", test.code, test.value)
+				t.Fatalf(
+					"code = %d; want %d",
+					test.code, test.value,
+				)
 			}
 			f, err := ReadFrame(bytes.NewReader(test.frame))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if f.Header.OpCode != OpClose || !f.Header.Fin {
-				t.Fatalf("unexpected header: %+v", f.Header)
+				t.Fatalf(
+					"unexpected header: %+v",
+					f.Header,
+				)
 			}
-			if code, reason := ParseCloseFrameData(f.Payload); code != test.code || reason != "" {
+			code, reason := ParseCloseFrameData(f.Payload)
+			if code != test.code || reason != "" {
 				t.Errorf(
 					"ParseCloseFrameData() = %d, %q; want %d, %q",
 					code, reason, test.code, "",
