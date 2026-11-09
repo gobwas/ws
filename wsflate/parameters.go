@@ -83,15 +83,15 @@ func (p *Parameters) Parse(opt httphead.Option) (err error) {
 	opt.Parameters.ForEach(func(key, val []byte) (ok bool) {
 		switch string(key) {
 		case clientMaxWindowBits:
-			if len(val) == 0 {
-				p.ClientMaxWindowBits = 1
-				return true
-			}
 			if seen&clientMaxWindowBitsSeen != 0 {
 				err = paramError("duplicate", key, val)
 				return false
 			}
 			seen |= clientMaxWindowBitsSeen
+			if len(val) == 0 {
+				p.ClientMaxWindowBits = 1
+				return true
+			}
 			if p.ClientMaxWindowBits, ok = bitsFromASCII(val); !ok {
 				err = paramError("invalid", key, val)
 				return false
