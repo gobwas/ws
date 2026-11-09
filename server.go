@@ -179,7 +179,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = ErrHandshakeBadUpgrade
 	} else if c := httpGetHeader(r.Header, headerConnectionCanonical); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
-	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); len(nonce) != nonceSize {
+	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); !checkNonce(strToBytes(nonce)) {
 		err = ErrHandshakeBadSecKey
 	} else if v := httpGetHeader(r.Header, headerSecVersionCanonical); v != "13" {
 		// According to RFC6455:
@@ -545,7 +545,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		case headerSecKeyCanonical:
 			headerSeen |= headerSeenSecKey
-			if len(v) != nonceSize {
+			if !checkNonce(v) {
 				err = ErrHandshakeBadSecKey
 			} else {
 				copy(nonce, v)
