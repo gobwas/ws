@@ -47,7 +47,7 @@ jobs:
       # required: an if without a status function is implicitly wrapped in
       # success() and would never run after a failed step.
       if: failure() && steps.autobahn.outcome == 'failure'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: autobahn report ${{ matrix.go }} ${{ matrix.os }}
         path: autobahn/report
