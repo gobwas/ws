@@ -16,18 +16,15 @@ func TestCheckCloseFrameData(t *testing.T) {
 			err:  nil,
 		},
 		{
-			// Service Restart, IANA registered.
-			code: 1012,
+			code: StatusServiceRestart,
 			err:  nil,
 		},
 		{
-			// Try Again Later, IANA registered.
-			code: 1013,
+			code: StatusTryAgainLater,
 			err:  nil,
 		},
 		{
-			// Bad Gateway, IANA registered.
-			code: 1014,
+			code: StatusBadGateway,
 			err:  nil,
 		},
 		{
