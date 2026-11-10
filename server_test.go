@@ -327,6 +327,31 @@ var upgradeCases = []upgradeCase{
 		err: ErrHandshakeBadSecKey,
 	},
 	{
+		// RFC 6455 section 4.2.1: the key is a base64-encoded value that,
+		// when decoded, is 16 bytes in length.
+		label: "bad_sec_key_not_base64",
+		nonce: []byte("!!!!!!!!!!!!!!!!!!!!!!!!"),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"13"},
+		}),
+		res: mustMakeErrResponse(400, ErrHandshakeBadSecKey, nil),
+		err: ErrHandshakeBadSecKey,
+	},
+	{
+		// 24 base64 characters without padding decode to 18 bytes.
+		label: "bad_sec_key_not_16_bytes",
+		nonce: []byte("AAAAAAAAAAAAAAAAAAAAAAAA"),
+		req: mustMakeRequest("GET", "ws://example.org", http.Header{
+			headerUpgrade:    []string{"websocket"},
+			headerConnection: []string{"Upgrade"},
+			headerSecVersion: []string{"13"},
+		}),
+		res: mustMakeErrResponse(400, ErrHandshakeBadSecKey, nil),
+		err: ErrHandshakeBadSecKey,
+	},
+	{
 		label: "bad_ws_extension",
 		nonce: mustMakeNonce(),
 		req: mustMakeRequest("GET", "ws://example.org", http.Header{

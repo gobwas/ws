@@ -35,6 +35,18 @@ func initNonce(dst []byte) {
 	base64.StdEncoding.Encode(dst, bts)
 }
 
+// checkNonce reports whether given nonce is a base64-encoded value that, when
+// decoded, is 16 bytes in length, as RFC6455 section 4.2.1 requires.
+func checkNonce(nonce []byte) bool {
+	if len(nonce) != nonceSize {
+		return false
+	}
+	// NOTE: key does not escape.
+	var key [nonceSize]byte
+	n, err := base64.StdEncoding.Decode(key[:], nonce)
+	return err == nil && n == nonceKeySize
+}
+
 // checkAcceptFromNonce reports whether given accept bytes are valid for given
 // nonce bytes.
 func checkAcceptFromNonce(accept, nonce []byte) bool {
