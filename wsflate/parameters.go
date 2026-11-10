@@ -161,9 +161,23 @@ func isValidBits(x int) bool {
 	return 8 <= x && x <= 15
 }
 
+// bitsFromASCII parses window bits value, which RFC7692 defines as a decimal
+// integer value without leading zeroes between 8 to 15, inclusive.
+//
+// Note that httphead.IntFromASCII() is not used here because it allows leading
+// zeroes and treats ASCII characters ':' to '?' as digits.
 func bitsFromASCII(p []byte) (WindowBits, bool) {
-	n, ok := httphead.IntFromASCII(p)
-	if !ok || !isValidBits(n) {
+	if len(p) == 0 || len(p) > 2 || p[0] == '0' {
+		return 0, false
+	}
+	var n int
+	for _, c := range p {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	if !isValidBits(n) {
 		return 0, false
 	}
 	return WindowBits(n), true
