@@ -79,6 +79,11 @@ var (
 
 // Status codes defined by specification.
 // See https://tools.ietf.org/html/rfc6455#section-7.4.1
+//
+// StatusServiceRestart, StatusTryAgainLater and StatusBadGateway are not in
+// RFC6455, but are registered in the IANA "WebSocket Close Code Number
+// Registry" that its section 11.7 establishes.
+// See https://www.iana.org/assignments/websocket/websocket.xhtml#close-code-number
 const (
 	StatusNormalClosure           StatusCode = 1000
 	StatusGoingAway               StatusCode = 1001
@@ -90,6 +95,9 @@ const (
 	StatusMessageTooBig           StatusCode = 1009
 	StatusMandatoryExt            StatusCode = 1010
 	StatusInternalServerError     StatusCode = 1011
+	StatusServiceRestart          StatusCode = 1012
+	StatusTryAgainLater           StatusCode = 1013
+	StatusBadGateway              StatusCode = 1014
 	StatusTLSHandshake            StatusCode = 1015
 
 	// StatusAbnormalClosure is a special code designated for use in
@@ -145,6 +153,9 @@ func (s StatusCode) IsProtocolDefined() bool {
 		StatusMessageTooBig,
 		StatusMandatoryExt,
 		StatusInternalServerError,
+		StatusServiceRestart,
+		StatusTryAgainLater,
+		StatusBadGateway,
 		StatusNoStatusRcvd,
 		StatusAbnormalClosure,
 		StatusTLSHandshake:
@@ -183,6 +194,9 @@ var (
 	CompiledCloseMessageTooBig           = MustCompileFrame(closeFrameMessageTooBig)
 	CompiledCloseMandatoryExt            = MustCompileFrame(closeFrameMandatoryExt)
 	CompiledCloseInternalServerError     = MustCompileFrame(closeFrameInternalServerError)
+	CompiledCloseServiceRestart          = MustCompileFrame(closeFrameServiceRestart)
+	CompiledCloseTryAgainLater           = MustCompileFrame(closeFrameTryAgainLater)
+	CompiledCloseBadGateway              = MustCompileFrame(closeFrameBadGateway)
 	CompiledCloseTLSHandshake            = MustCompileFrame(closeFrameTLSHandshake)
 )
 
@@ -416,5 +430,8 @@ var (
 	closeFrameMessageTooBig           = makeCloseFrame(StatusMessageTooBig)
 	closeFrameMandatoryExt            = makeCloseFrame(StatusMandatoryExt)
 	closeFrameInternalServerError     = makeCloseFrame(StatusInternalServerError)
+	closeFrameServiceRestart          = makeCloseFrame(StatusServiceRestart)
+	closeFrameTryAgainLater           = makeCloseFrame(StatusTryAgainLater)
+	closeFrameBadGateway              = makeCloseFrame(StatusBadGateway)
 	closeFrameTLSHandshake            = makeCloseFrame(StatusTLSHandshake)
 )
