@@ -33,6 +33,61 @@ func TestCompiledClose(t *testing.T) {
 		value StatusCode
 	}{
 		{
+			frame: CompiledClose,
+			code:  0,
+			value: 0,
+		},
+		{
+			frame: CompiledCloseNormalClosure,
+			code:  StatusNormalClosure,
+			value: 1000,
+		},
+		{
+			frame: CompiledCloseGoingAway,
+			code:  StatusGoingAway,
+			value: 1001,
+		},
+		{
+			frame: CompiledCloseProtocolError,
+			code:  StatusProtocolError,
+			value: 1002,
+		},
+		{
+			frame: CompiledCloseUnsupportedData,
+			code:  StatusUnsupportedData,
+			value: 1003,
+		},
+		{
+			frame: CompiledCloseNoMeaningYet,
+			code:  StatusNoMeaningYet,
+			value: 1004,
+		},
+		{
+			frame: CompiledCloseInvalidFramePayloadData,
+			code:  StatusInvalidFramePayloadData,
+			value: 1007,
+		},
+		{
+			frame: CompiledClosePolicyViolation,
+			code:  StatusPolicyViolation,
+			value: 1008,
+		},
+		{
+			frame: CompiledCloseMessageTooBig,
+			code:  StatusMessageTooBig,
+			value: 1009,
+		},
+		{
+			frame: CompiledCloseMandatoryExt,
+			code:  StatusMandatoryExt,
+			value: 1010,
+		},
+		{
+			frame: CompiledCloseInternalServerError,
+			code:  StatusInternalServerError,
+			value: 1011,
+		},
+		{
 			frame: CompiledCloseServiceRestart,
 			code:  StatusServiceRestart,
 			value: 1012,
@@ -46,6 +101,11 @@ func TestCompiledClose(t *testing.T) {
 			frame: CompiledCloseBadGateway,
 			code:  StatusBadGateway,
 			value: 1014,
+		},
+		{
+			frame: CompiledCloseTLSHandshake,
+			code:  StatusTLSHandshake,
+			value: 1015,
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", test.value), func(t *testing.T) {
@@ -63,6 +123,16 @@ func TestCompiledClose(t *testing.T) {
 				t.Fatalf(
 					"unexpected header: %+v",
 					f.Header,
+				)
+			}
+			wantLength := 2
+			if test.value == 0 {
+				wantLength = 0
+			}
+			if len(f.Payload) != wantLength {
+				t.Fatalf(
+					"payload length = %d; want %d",
+					len(f.Payload), wantLength,
 				)
 			}
 			code, reason := ParseCloseFrameData(f.Payload)
