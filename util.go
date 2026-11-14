@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/gobwas/httphead"
@@ -35,36 +36,26 @@ func SelectEqual(v string) func(string) bool {
 	}
 }
 
-// asciiToInt converts bytes to int.
+// asciiToInt converts bytes to int. It returns an error if the bytes are empty,
+// contain a non-digit character or represent a value that does not fit into int.
 func asciiToInt(bts []byte) (ret int, err error) {
-	// ASCII numbers all start with the high-order bits 0011.
-	// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
-	// bits and interpret them directly as an integer.
-	var n int
-	if n = len(bts); n < 1 {
+	if len(bts) < 1 {
 		return 0, fmt.Errorf("converting empty bytes to int")
 	}
-	for i := 0; i < n; i++ {
-		if bts[i]&0xf0 != 0x30 {
-			return 0, fmt.Errorf("%s is not a numeric character", string(bts[i]))
+	for _, c := range bts {
+		// ASCII numbers all start with the high-order bits 0011.
+		// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
+		// bits and interpret them directly as an integer.
+		if c&0xf0 != 0x30 {
+			return 0, fmt.Errorf("%s is not a numeric character", string(c))
 		}
-		ret += int(bts[i]&0xf) * pow(10, n-i-1)
+		d := int(c & 0xf)
+		if ret > (math.MaxInt-d)/10 {
+			return 0, fmt.Errorf("%s overflows int", string(bts))
+		}
+		ret = ret*10 + d
 	}
 	return ret, nil
-}
-
-// pow for integers implementation.
-// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3.
-func pow(a, b int) int {
-	p := 1
-	for b > 0 {
-		if b&1 != 0 {
-			p *= a
-		}
-		b >>= 1
-		a *= a
-	}
-	return p
 }
 
 func bsplit3(bts []byte, sep byte) (b1, b2, b3 []byte) {

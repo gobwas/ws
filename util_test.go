@@ -6,10 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"net"
 	"net/http"
 	"net/textproto"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -338,26 +341,101 @@ func BenchmarkHasToken(b *testing.B) {
 
 func TestAsciiToInt(t *testing.T) {
 	for _, test := range []struct {
-		bts []byte
-		exp int
-		err bool
+		name string
+		bts  []byte
+		exp  int
+		err  bool
 	}{
-		{[]byte{'0'}, 0, false},
-		{[]byte{'1'}, 1, false},
-		{[]byte("42"), 42, false},
-		{[]byte("420"), 420, false},
-		{[]byte("010050042"), 10050042, false},
+		{
+			name: "zero",
+			bts:  []byte{'0'},
+			exp:  0,
+		},
+		{
+			name: "one",
+			bts:  []byte{'1'},
+			exp:  1,
+		},
+		{
+			name: "two digits",
+			bts:  []byte("42"),
+			exp:  42,
+		},
+		{
+			name: "three digits",
+			bts:  []byte("420"),
+			exp:  420,
+		},
+		{
+			name: "leading zeros",
+			bts:  []byte("010050042"),
+			exp:  10050042,
+		},
+		{
+			name: "many leading zeros",
+			bts:  []byte(strings.Repeat("0", 64) + "101"),
+			exp:  101,
+		},
+		{
+			name: "max int",
+			bts:  []byte(strconv.Itoa(math.MaxInt)),
+			exp:  math.MaxInt,
+		},
+		{
+			name: "max int with leading zeros",
+			bts:  []byte(strings.Repeat("0", 64) + strconv.Itoa(math.MaxInt)),
+			exp:  math.MaxInt,
+		},
+		{
+			name: "max int plus one",
+			bts:  []byte(maxIntPlus(1)),
+			err:  true,
+		},
+		{
+			name: "wraps to a valid status",
+			bts:  []byte(maxIntPlus(math.MaxInt + 103)),
+			err:  true,
+		},
+		{
+			name: "many nines",
+			bts:  []byte(strings.Repeat("9", 40)),
+			err:  true,
+		},
+		{
+			name: "empty",
+			bts:  nil,
+			err:  true,
+		},
+		{
+			name: "not a digit",
+			bts:  []byte("4x2"),
+			err:  true,
+		},
 	} {
-		t.Run(string(test.bts), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			act, err := asciiToInt(test.bts)
 			if (test.err && err == nil) || (!test.err && err != nil) {
-				t.Errorf("unexpected error: %v", err)
+				t.Errorf(
+					"unexpected error: %v",
+					err,
+				)
 			}
 			if act != test.exp {
-				t.Errorf("asciiToInt(%v) = %v; want %v", test.bts, act, test.exp)
+				t.Errorf(
+					"asciiToInt(%q) = %v; want %v",
+					test.bts, act, test.exp,
+				)
 			}
 		})
 	}
+}
+
+// maxIntPlus returns decimal representation of math.MaxInt + n, where n is
+// not negative.
+func maxIntPlus(n uint) string {
+	v := new(big.Int).SetInt64(math.MaxInt)
+	v.Add(v, new(big.Int).SetUint64(uint64(n)))
+	return v.String()
 }
 
 func TestBtrim(t *testing.T) {
