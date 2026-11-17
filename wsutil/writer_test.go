@@ -671,3 +671,97 @@ func chunks(p []byte, n int, fn func(p []byte) error) error {
 	}
 	return nil
 }
+
+func TestControlWriterMultipleWrites(t *testing.T) {
+	for _, state := range []ws.State{ws.StateServerSide, ws.StateClientSide} {
+		for _, op := range []ws.OpCode{ws.OpPing, ws.OpPong} {
+			for _, size := range []int{0, 10} {
+				name := fmt.Sprintf("state=%d/op=%d/size=%d", state, op, size)
+				t.Run(name, func(t *testing.T) {
+					var buf bytes.Buffer
+					var w *ControlWriter
+					limit := ws.MaxControlFramePayloadSize
+					if size == 0 {
+						w = NewControlWriter(&buf, state, op)
+					} else {
+						limit = size
+						w = NewControlWriterBuffer(&buf, state, op, make([]byte, size+headerSize(state, size)))
+					}
+					// Each flush starts a new control frame with its own limit.
+					for message := 0; message < 2; message++ {
+						prefix := bytes.Repeat([]byte{'a'}, limit/2)
+						suffix := bytes.Repeat([]byte{'b'}, limit-len(prefix))
+						n, err := w.Write(prefix)
+						if n != len(prefix) || err != nil {
+							t.Fatalf(
+								"prefix write = %d, %v; want %d, nil",
+								n, err, len(prefix),
+							)
+						}
+						n, err = w.Write(append(append([]byte{}, suffix...), 'x'))
+						if n != 0 || err != ErrControlOverflow {
+							t.Fatalf(
+								"overflow write = %d, %v; want 0, %v",
+								n, err, ErrControlOverflow,
+							)
+						}
+						if buf.Len() != 0 {
+							t.Fatal("overflow write emitted a fragmented control frame")
+						}
+						n, err = w.Write(suffix)
+						if n != len(suffix) || err != nil {
+							t.Fatalf(
+								"suffix write = %d, %v; want %d, nil",
+								n, err, len(suffix),
+							)
+						}
+						err = w.Flush()
+						if err != nil {
+							t.Fatal(err)
+						}
+						frame, err := ws.ReadFrame(&buf)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if !frame.Header.Fin || frame.Header.OpCode != op || frame.Header.Masked != state.ClientSide() {
+							t.Fatalf(
+								"unexpected control header: %+v",
+								frame.Header,
+							)
+						}
+						frame = ws.UnmaskFrameInPlace(frame)
+						if !bytes.Equal(frame.Payload, append(prefix, suffix...)) || buf.Len() != 0 {
+							t.Fatal("unexpected control payload or trailing frame")
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func BenchmarkControlWriterChunks(b *testing.B) {
+	for _, state := range []ws.State{ws.StateServerSide, ws.StateClientSide} {
+		for _, chunks := range []int{1, 5} {
+			b.Run(fmt.Sprintf("state=%d/chunks=%d", state, chunks), func(b *testing.B) {
+				w := NewControlWriter(io.Discard, state, ws.OpPing)
+				payload := bytes.Repeat([]byte{'x'}, ws.MaxControlFramePayloadSize/chunks)
+				b.SetBytes(ws.MaxControlFramePayloadSize)
+				b.ReportAllocs()
+				b.ResetTimer()
+				for b.Loop() {
+					for i := 0; i < chunks; i++ {
+						_, err := w.Write(payload)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+					err := w.Flush()
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}

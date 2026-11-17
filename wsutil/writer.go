@@ -36,7 +36,6 @@ const (
 type ControlWriter struct {
 	w     *Writer
 	limit int
-	n     int
 }
 
 // NewControlWriter contains ControlWriter with Writer inside whose buffer size
@@ -72,7 +71,7 @@ func NewControlWriterBuffer(dest io.Writer, state ws.State, op ws.OpCode, buf []
 // Write implements io.Writer. It writes to the underlying Writer until it
 // returns error or until ControlWriter write limit will be exceeded.
 func (c *ControlWriter) Write(p []byte) (n int, err error) {
-	if c.n+len(p) > c.limit {
+	if len(p) > c.limit-c.w.Buffered() {
 		return 0, ErrControlOverflow
 	}
 	return c.w.Write(p)
