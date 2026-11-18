@@ -59,6 +59,14 @@ func TestCheckCloseFrameData(t *testing.T) {
 			code: 4999,
 			err:  nil,
 		},
+		{
+			code: 5000,
+			err:  ErrProtocolStatusCodeUnknown,
+		},
+		{
+			code: 65535,
+			err:  ErrProtocolStatusCodeUnknown,
+		},
 	} {
 		if err := CheckCloseFrameData(test.code, ""); err != test.err {
 			t.Errorf(
