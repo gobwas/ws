@@ -19,7 +19,7 @@ type ReadResetter interface {
 // PMCE specs.
 //
 // After all data has been written client should call Flush() method.
-// If any error occurs after reading from Reader, all subsequent calls to
+// If a non-EOF error occurs while reading from Reader, all subsequent calls to
 // Read() or Close() will return the error.
 //
 // Reader might be reused for different io.Reader objects after its Reset()
@@ -63,7 +63,11 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	if r.err != nil {
 		return 0, r.err
 	}
-	return r.d.Read(p)
+	n, err = r.d.Read(p)
+	if err != io.EOF {
+		r.err = err
+	}
+	return n, err
 }
 
 // Close closes Reader and a Decompressor instance used under the hood (if it
