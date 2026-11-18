@@ -168,7 +168,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 
 	// See https://tools.ietf.org/html/rfc6455#section-4.1
 	// The method of the request MUST be GET, and the HTTP version MUST be at least 1.1.
-	var nonce string
+	var nonce []byte
 	if r.Method != http.MethodGet {
 		err = ErrHandshakeBadMethod
 	} else if r.ProtoMajor < 1 || (r.ProtoMajor == 1 && r.ProtoMinor < 1) {
@@ -179,7 +179,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		err = ErrHandshakeBadUpgrade
 	} else if c := httpGetHeader(r.Header, headerConnectionCanonical); c != "Upgrade" && !strHasToken(c, "upgrade") {
 		err = ErrHandshakeBadConnection
-	} else if nonce = httpGetHeader(r.Header, headerSecKeyCanonical); len(nonce) != nonceSize {
+	} else if nonce = strToBytes(httpGetHeader(r.Header, headerSecKeyCanonical)); !checkNonce(nonce) {
 		err = ErrHandshakeBadSecKey
 	} else if v := httpGetHeader(r.Header, headerSecVersionCanonical); v != "13" {
 		// According to RFC6455:
@@ -247,7 +247,7 @@ func (u HTTPUpgrader) Upgrade(r *http.Request, w http.ResponseWriter) (conn net.
 		header[0] = HandshakeHeaderHTTP(h)
 	}
 	if err == nil {
-		httpWriteResponseUpgrade(rw.Writer, strToBytes(nonce), hs, header.WriteTo)
+		httpWriteResponseUpgrade(rw.Writer, nonce, hs, header.WriteTo)
 		err = rw.Writer.Flush()
 	} else {
 		var code int
@@ -545,7 +545,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		case headerSecKeyCanonical:
 			headerSeen |= headerSeenSecKey
-			if len(v) != nonceSize {
+			if !checkNonce(v) {
 				err = ErrHandshakeBadSecKey
 			} else {
 				copy(nonce, v)
