@@ -14,8 +14,9 @@ const (
 	// randomly selected 16-byte value that has been base64-encoded (see
 	// Section 4 of [RFC4648]).  The nonce MUST be selected randomly for each
 	// connection.
-	nonceKeySize = 16
-	nonceSize    = 24 // base64.StdEncoding.EncodedLen(nonceKeySize)
+	nonceKeySize    = 16
+	nonceSize       = 24 // base64.StdEncoding.EncodedLen(nonceKeySize)
+	nonceDecodedLen = 18 // base64.StdEncoding.DecodedLen(nonceSize)
 
 	// RFC6455: The value of this header field is constructed by concatenating
 	// /key/, defined above in step 4 in Section 4.2.2, with the string
@@ -42,7 +43,7 @@ func checkNonce(nonce []byte) bool {
 		return false
 	}
 	// NOTE: key does not escape.
-	var key [nonceSize]byte
+	var key [nonceDecodedLen]byte
 	n, err := base64.StdEncoding.Decode(key[:], nonce)
 	return err == nil && n == nonceKeySize
 }
