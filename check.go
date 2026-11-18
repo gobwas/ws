@@ -133,7 +133,7 @@ func CheckCloseFrameData(code StatusCode, reason string) error {
 	case code == StatusNoMeaningYet:
 		return ErrProtocolStatusCodeNoMeaning
 
-	case code.IsProtocolSpec() && !code.IsProtocolDefined():
+	case code > StatusRangePrivate.Max, code.IsProtocolSpec() && !code.IsProtocolDefined():
 		return ErrProtocolStatusCodeUnknown
 
 	case !utf8.ValidString(reason):
