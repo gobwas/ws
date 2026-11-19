@@ -35,7 +35,7 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		reqBuf bytes.Buffer
 		resBuf bytes.Buffer
 
-		resContentLength int64
+		resBodyLength int
 	)
 	userWrap := dialer.WrapConn
 	dialer.WrapConn = func(c net.Conn) net.Conn {
@@ -52,9 +52,9 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		)
 		if d.OnResponse != nil {
 			r = &prefetchResponseReader{
-				source:        conn,
-				buffer:        &resBuf,
-				contentLength: &resContentLength,
+				source:     conn,
+				buffer:     &resBuf,
+				bodyLength: &resBodyLength,
 			}
 		}
 		if d.OnRequest != nil {
@@ -73,8 +73,8 @@ func (d *DebugDialer) Dial(ctx context.Context, urlstr string) (conn net.Conn, b
 		// bytes from server.
 		p := resBuf.Bytes()
 		n := bytes.Index(p, headEnd)
-		h := n + len(headEnd)         // Head end index.
-		n = h + int(resContentLength) // Body end index.
+		h := n + len(headEnd) // Head end index.
+		n = h + resBodyLength // Body end index.
 
 		onResponse(p[:n])
 
@@ -124,17 +124,19 @@ type prefetchResponseReader struct {
 	reader io.Reader // Wrapped reader used to read from by clients.
 	buffer *bytes.Buffer
 
-	contentLength *int64
+	bodyLength *int
 }
 
 func (r *prefetchResponseReader) Read(p []byte) (int, error) {
 	if r.reader == nil {
-		resp, err := http.ReadResponse(bufio.NewReader(
-			io.TeeReader(r.source, r.buffer),
-		), nil)
+		br := bufio.NewReader(io.TeeReader(r.source, r.buffer))
+		resp, err := http.ReadResponse(br, nil)
 		if err == nil {
-			*r.contentLength, _ = io.Copy(io.Discard, resp.Body)
+			start := r.buffer.Len() - br.Buffered()
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
+			// Count the wire bytes, including any chunk framing and trailers.
+			*r.bodyLength = r.buffer.Len() - br.Buffered() - start
 		}
 		bts := r.buffer.Bytes()
 		r.reader = io.MultiReader(

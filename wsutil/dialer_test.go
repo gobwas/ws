@@ -66,6 +66,20 @@ func TestDebugDialer(t *testing.T) {
 		},
 
 		{
+			name: "chunked response with trailer",
+			resp: &http.Response{
+				StatusCode:       http.StatusOK,
+				ProtoMajor:       1,
+				ProtoMinor:       1,
+				Body:             io.NopCloser(bytes.NewBufferString("hello")),
+				ContentLength:    -1,
+				TransferEncoding: []string{"chunked"},
+				Trailer:          http.Header{"X-Result": {"complete"}},
+			},
+			body: []byte("after the response"),
+			err:  ws.StatusError(200),
+		},
+		{
 			name: "big response",
 			// This test expects that even when server sent unsuccessful
 			// response with body that does not fit to Dialer read buffer,
