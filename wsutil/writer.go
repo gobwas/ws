@@ -235,6 +235,7 @@ func (w *Writer) Reset(dest io.Writer, state ws.State, op ws.OpCode) {
 	w.n = 0
 	w.dirty = false
 	w.fseq = 0
+	w.err = nil
 	w.extensions = w.extensions[:0]
 	w.noFlush = false
 }
