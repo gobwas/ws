@@ -68,6 +68,13 @@ func initAcceptFromNonce(accept, nonce []byte) {
 }
 
 func writeAccept(bw *bufio.Writer, nonce []byte) (int, error) {
+	// Build the accept bytes in the free space of bw, so they need no heap
+	// allocation.
+	if buf := bw.AvailableBuffer(); cap(buf) >= acceptSize {
+		accept := buf[:acceptSize]
+		initAcceptFromNonce(accept, nonce)
+		return bw.Write(accept)
+	}
 	accept := make([]byte, acceptSize)
 	initAcceptFromNonce(accept, nonce)
 	// NOTE: write accept bytes as a string to prevent heap allocation –
